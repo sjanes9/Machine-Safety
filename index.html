@@ -104,6 +104,11 @@ nav.steps{padding:8px}
 .devtbl th:nth-child(12),.devtbl td:nth-child(12){width:104px}
 .bulkbar{display:flex;align-items:center;gap:10px;padding:6px 0 10px}
 .bulkcount{font-weight:600;font-size:12.5px}
+.subcard{border:1px solid var(--rule-2);border-radius:6px;padding:10px 12px;margin:10px 0 0;background:var(--panel-2)}
+.cardhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.refchip{cursor:pointer;border:1px solid var(--rule);text-decoration:none}
+.refchip:hover,.refchip:focus-visible{background:var(--accent);border-color:var(--accent);color:var(--paper);outline:none}
+.tblsec{display:block;margin:0 0 8px}
 .signed{font-family:"Segoe Script","Bradley Hand","Brush Script MT",cursive;font-size:17px;line-height:1.2}
 .fieldflash{outline:2px solid var(--warn);outline-offset:3px;border-radius:4px;animation:fieldflash 2.6s ease-out}
 @keyframes fieldflash{0%,60%{background:var(--warn-bg)}100%{background:transparent}}
@@ -328,10 +333,11 @@ table.mx select{padding:3px 5px;font-size:11.5px}
       <button class="step" data-view="risk" type="button"><span class="num">01</span> Risk assessment <span class="cnt" data-cnt="risk">0</span></button>
       <button class="step" data-view="dev" type="button"><span class="num">02</span> Safety devices <span class="cnt" data-cnt="dev">0</span></button>
       <button class="step" data-view="sf" type="button"><span class="num">03</span> Safety functions <span class="cnt" data-cnt="sf">0</span></button>
-      <button class="step" data-view="check" type="button"><span class="num">3b</span> Safeguarding checklist <span class="cnt" data-cnt="check">0</span></button>
-      <button class="step" data-view="vv" type="button"><span class="num">04</span> V&amp;V records <span class="cnt" data-cnt="vv">0</span></button>
-      <button class="step" data-view="report" type="button"><span class="num">05</span> Report</button>
+      <button class="step" data-view="vv" type="button"><span class="num">04</span> Risk assessment verification <span class="cnt" data-cnt="vv">0</span></button>
+      <button class="step" data-view="check" type="button"><span class="num">05</span> Field verification <span class="cnt" data-cnt="check">0</span></button>
+      <button class="step" data-view="report" type="button"><span class="num">06</span> Report</button>
       <button class="step" data-view="tables" type="button"><span class="num">RF</span> Lookup tables</button>
+      <button class="step" data-view="guide" type="button"><span class="num">?</span> How to use this</button>
     </nav>
     <div class="rail-foot">
       <button class="btn ghost sm" id="btnNew" type="button">New</button>
@@ -435,10 +441,26 @@ table.mx select{padding:3px 5px;font-size:11.5px}
         <div id="devList"></div>
       </section>
 
+      <!-- ============ HOW TO GUIDE ============ -->
+      <section class="view" id="v-guide" aria-labelledby="h-guide">
+        <h2 class="sec" id="h-guide">How to use this</h2>
+        <div id="guideBody"></div>
+      </section>
+
       <!-- ============ 3b SAFEGUARDING CHECKLIST ============ -->
       <section class="view" id="v-check" aria-labelledby="h-check">
-        <h2 class="sec" id="h-check">Safeguarding checklist</h2>
-        <p class="lede">The onsite record of what the guarding actually does. Four of these questions are access prevention questions, marked below, and they decide whether exposure can be scored E0 anywhere on this file. A control system that reaches its required performance level does not prevent access on its own: if a guard has a gap in it, exposure is not prevented no matter how good the circuit is.</p>
+        <h2 class="sec" id="h-check">Field verification</h2>
+        <p class="lede">The final step, and a different question from the one before it. Step 4 asks whether the analysis is right. This asks whether the hardware bolted to the machine does what the analysis says it does. It is done device by device, on the installed equipment, with the machine in front of you.</p>
+        <p class="lede">An emergency stop is not proved by pressing it. It is proved by pressing it, then by removing channel A, then by removing channel B, because a device wired single channel passes the first step and fails the other two. Each step carries its own verdict for that reason.</p>
+        <div class="grid g4" id="fieldStats"></div>
+        <div class="btnbar noprint">
+          <button class="btn" id="btnGenField" type="button">Generate baseline procedures</button>
+          <button class="btn ghost" id="btnAddField" type="button">Add a procedure</button>
+        </div>
+        <div id="fieldList"></div>
+
+        <h2 class="sec">Safeguarding checklist</h2>
+        <p class="lede">Part of the same step: an observation of installed guarding, not an analysis. Four of these are access prevention questions, marked below, and they decide whether exposure can be scored as prevented anywhere on this file. A control system that reaches its required performance level does not prevent access on its own.</p>
         <div class="btnbar noprint">
           <button class="btn ghost" id="btnCheckReset" type="button">Reset to the shipped question set</button>
         </div>
@@ -588,9 +610,9 @@ function debounce(fn, ms) {
 }
 
 /* ---------- 20.2 Schema and state ---------- */
-var SCHEMA = 8;
-var STORE_KEY = 'safetyFile.v8';
-var LEGACY_KEYS = ['safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
+var SCHEMA = 9;
+var STORE_KEY = 'safetyFile.v9';
+var LEGACY_KEYS = ['safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
 
 function blankProject() {
   return {
@@ -610,6 +632,7 @@ function blankProject() {
     guardOpenings: [],     // ANSI B11.19 reach measurements
     reportSections: null,  // null means "every section"
     signatures: [],        // e-signed approvals
+    fieldTests: [],        // per-device proving of the installed hardware
     tables: null,          // null means "use shipped defaults"
     tablesEdited: false
   };
@@ -682,6 +705,7 @@ function migrate(data) {
   base.checklist = Array.isArray(data.checklist) ? data.checklist : null;
   base.guardOpenings = Array.isArray(data.guardOpenings) ? data.guardOpenings : [];
   base.signatures = Array.isArray(data.signatures) ? data.signatures : [];
+  base.fieldTests = Array.isArray(data.fieldTests) ? data.fieldTests : [];
   base.reportSections = Array.isArray(data.reportSections) ? data.reportSections : null;
   base.tablesEdited = !!data.tablesEdited;
   if (v < 4) { migrateV3(base); }
@@ -689,6 +713,7 @@ function migrate(data) {
   if (v < 6) { migrateV5(base); }
   if (v < 7) { migrateV6(base); }
   if (v < 8) { migrateV7(base); }
+  if (v < 9) { migrateV8(base); }
   normalise(base);
   return base;
 }
@@ -817,11 +842,23 @@ function migrateV6(base) {
 /* v7 had no provenance on determinations, no safeguarding checklist and no
    level overrides. Everything carried over is design analysis that has not
    been field checked, so it lands on OUTSTANDING rather than OBSERVED. */
+/* v8 kept field proving inside the analytical V&V list. They answer
+   different questions: one asks whether the design is right, the other
+   whether the thing bolted to the machine does what the design says.
+   Nothing is thrown away; the old records stay where they are. */
+function migrateV8(base) {
+  base.fieldTests = base.fieldTests || [];
+  base.signatures = base.signatures || [];
+  return base;
+}
+
 function migrateV7(base) {
   base.checklist = base.checklist || null;
   base.guardOpenings = base.guardOpenings || [];
   base.guardOpenings = base.guardOpenings || [];
   base.signatures = base.signatures || [];
+  base.fieldTests = base.fieldTests || [];
+  base.fieldTests.forEach(function (ft) { ft.steps = ft.steps || []; });
   base.sfs.forEach(function (sf) { sf.ccfMeasures = sf.ccfMeasures || []; });
   if (base.meta.capCat4At100 === undefined) { base.meta.capCat4At100 = false; }
   if (base.meta.plRoute === undefined) { base.meta.plRoute = 'K1'; }
@@ -1675,6 +1712,138 @@ var APPROACH_NOTES = [
   'ISO 13855 does not cover safeguards that can be moved nearer to the hazard zone by hand without tools, hazards from emissions, or hazards arising from failure of mechanical parts or gravity falls.'
 ];
 var APPROACH_CALC_NOTE = 'The separation distance calculation itself, the approach speed constants and the intrusion distance terms are in clause 6 of ISO 13855, which is not in the copy held with this project. Record the calculated distance and the source it came from rather than relying on this tool to compute it.';
+
+/* ---------------------------------------------------------------------
+   11. Field verification.
+
+   Separate from the verification of the risk assessment, because they
+   answer different questions. The risk assessment verification asks
+   whether the analysis is right: whether the scoring holds, whether the
+   performance level meets the requirement, whether the specification is
+   complete. Field verification asks whether the hardware bolted to the
+   machine actually does what the analysis says it does.
+
+   The unit is one installed device, and the shape is a procedure of
+   steps, each proved separately. An emergency stop is not proved by
+   pressing it. It is proved by pressing it, then by removing channel A,
+   then by removing channel B, because a device wired single channel
+   passes the first step and fails the other two. That is exactly how a
+   Category 3 claim turns out to be a Category 2 installation, and it is
+   why each step carries its own verdict rather than the procedure
+   carrying one.
+
+   The safeguarding checklist and the guard opening measurements belong
+   here too: they are field observations of installed hardware, not
+   analysis, and they were only ever elsewhere by accident.
+   --------------------------------------------------------------------- */
+var FIELD_VERDICTS = ['Not run', 'Pass', 'Fail', 'N/A'];
+
+function newFieldStep(text, expected) {
+  return { uid: uid(), text: text || '', expected: expected || '', result: '', verdict: 'Not run', note: '' };
+}
+function newFieldTest(deviceUid, sfId, title) {
+  return {
+    uid: uid(), deviceUid: deviceUid || '', sfId: sfId || '', title: title || '',
+    steps: [], testedBy: '', witnessedBy: '', date: '', equipment: '', notes: ''
+  };
+}
+function fieldTestsForDevice(u) {
+  return (P.fieldTests || []).filter(function (t) { return t.deviceUid === u; });
+}
+function fieldTestById(u) {
+  for (var i = 0; i < (P.fieldTests || []).length; i += 1) { if (P.fieldTests[i].uid === u) return P.fieldTests[i]; }
+  return null;
+}
+/* A procedure passes only when every applicable step passes. One
+   unproven step leaves the whole thing unproven. */
+function fieldTestState(t) {
+  var steps = (t.steps || []);
+  var live = steps.filter(function (x) { return x.verdict !== 'N/A'; });
+  var fail = live.filter(function (x) { return x.verdict === 'Fail'; });
+  var open = live.filter(function (x) { return x.verdict === 'Not run' || !x.verdict; });
+  if (!steps.length) return { k: 'empty', label: 'no steps', tone: 'warn' };
+  if (fail.length) return { k: 'fail', label: fail.length + ' failed', tone: 'bad' };
+  if (open.length) return { k: 'open', label: open.length + ' not run', tone: 'warn' };
+  return { k: 'pass', label: 'passed', tone: 'ok' };
+}
+function fieldStateForDevice(u) {
+  var list = fieldTestsForDevice(u);
+  if (!list.length) return { k: 'none', label: 'not proved', tone: 'warn' };
+  var states = list.map(fieldTestState);
+  if (states.some(function (x) { return x.k === 'fail'; })) return { k: 'fail', label: 'failed', tone: 'bad' };
+  if (states.some(function (x) { return x.k !== 'pass'; })) return { k: 'open', label: 'in progress', tone: 'warn' };
+  return { k: 'pass', label: 'proved', tone: 'ok' };
+}
+
+/* ---------------------------------------------------------------------
+   Baseline procedures.
+
+   Generated from what the device is and how it is wired, so the steps
+   that catch a single channel installation are there by default rather
+   than by someone remembering to write them.
+   --------------------------------------------------------------------- */
+function baselineFieldSteps(dv, sf) {
+  var name = dv.tag || dv.name || 'the device';
+  var fn = sf ? (sf.id + ', ' + (sf.name || 'the safety function')) : 'the safety function';
+  var out = [];
+  var role = dv.role || 'Input';
+  var dual = String(dv.cat) === '3' || String(dv.cat) === '4' || dv.oneChannelOfTwo;
+
+  if (role === 'Input') {
+    out.push(newFieldStep(
+      'Actuate ' + name + ' in normal running.',
+      fn + ' activates and the machine reaches its safe state.'));
+  } else if (role === 'Output') {
+    out.push(newFieldStep(
+      'Demand ' + fn + ' and observe ' + name + '.',
+      name + ' de-energises and the driven load comes to rest.'));
+  } else {
+    out.push(newFieldStep(
+      'Demand ' + fn + ' and observe the reaction at ' + name + '.',
+      name + ' processes the demand and its outputs de-energise.'));
+  }
+
+  if (dual) {
+    out.push(newFieldStep(
+      'With the machine safe, disconnect channel A at ' + name + ', then restore and attempt to run.',
+      fn + ' activates on the loss of channel A, and the machine cannot be restarted until the fault is cleared and reset.'));
+    out.push(newFieldStep(
+      'With the machine safe, disconnect channel B at ' + name + ', then restore and attempt to run.',
+      fn + ' activates on the loss of channel B, and the machine cannot be restarted until the fault is cleared and reset.'));
+    out.push(newFieldStep(
+      'Short the two channels together at ' + name + ' where the wiring makes this credible.',
+      'The fault is detected and the machine cannot be restarted.'));
+  } else {
+    out.push(newFieldStep(
+      'With the machine safe, disconnect the signal at ' + name + ', then restore and attempt to run.',
+      fn + ' activates on the loss of the signal.'));
+  }
+
+  if (role === 'Output' && dv.externalDiagnostics) {
+    out.push(newFieldStep(
+      'Hold the feedback contact of ' + name + ' in the closed position and demand ' + fn + '.',
+      'The monitoring detects the feedback fault and prevents a reset.'));
+  }
+
+  out.push(newFieldStep(
+    'Restore ' + name + ' to normal, reset, and confirm the machine runs.',
+    'Normal operation is restored only by a deliberate reset, with no unexpected start.'));
+
+  return out;
+}
+function generateFieldTests() {
+  var made = 0;
+  P.devices.forEach(function (dv) {
+    if (fieldTestsForDevice(dv.uid).length) return;
+    var users = sfsUsingDevice(dv.uid);
+    var sf = users[0] || null;
+    var t = newFieldTest(dv.uid, sf ? sf.id : '', 'Prove ' + (dv.tag || dv.name || 'device') + ' as installed');
+    t.steps = baselineFieldSteps(dv, sf);
+    P.fieldTests.push(t);
+    made += 1;
+  });
+  return made;
+}
 
 var SCHEME_RIA = 'ANSI/RIA R15.306';
 var SCHEME_ISO = 'ISO 13849-1';
@@ -3153,6 +3322,44 @@ function findings() {
     }
   }());
 
+  /* ---------- field verification ---------- */
+  (function () {
+    var anySf = P.sfs.length > 0;
+    P.devices.forEach(function (d) {
+      var st = fieldStateForDevice(d.uid);
+      var dl2 = d.tag || d.name || 'a device';
+      if (st.k === 'none' && anySf && sfsUsingDevice(d.uid).length) {
+        add('warn', 'dev', d.uid, dl2 + ' has no field procedure. A performance level determined on paper is not evidence that the installed device does what the paper says.', 'field verification');
+      }
+      if (st.k === 'fail') {
+        add('bad', 'dev', d.uid, dl2 + ' failed field verification. The installation does not do what the analysis says it does, so every performance level and category resting on it is unsupported.', 'field verification');
+      }
+    });
+    (P.fieldTests || []).forEach(function (t) {
+      var dv = deviceByUid(t.deviceUid);
+      var tl = (t.title || 'a procedure');
+      if (!dv) {
+        add('bad', 'field', t.uid, tl + ' is written against a device that is no longer in the library.', 'field verification');
+        return;
+      }
+      var ts = fieldTestState(t);
+      if (ts.k === 'empty') {
+        add('warn', 'field', t.uid, tl + ' has no steps, so it proves nothing.', 'field verification');
+      }
+      if (ts.k === 'pass' && !String(t.testedBy || '').trim()) {
+        add('warn', 'field', t.uid, tl + ' has passed with nobody named against it. A verdict with no name behind it cannot be questioned later.', '4.6');
+      }
+      (t.steps || []).forEach(function (stp, i) {
+        if (stp.verdict === 'Fail' && !String(stp.result || '').trim()) {
+          add('bad', 'field', t.uid, tl + ', step ' + (i + 1) + ' is marked failed with nothing recorded about what happened.', '4.6');
+        }
+        if (stp.verdict === 'N/A' && !String(stp.note || '').trim() && !String(stp.result || '').trim()) {
+          add('warn', 'field', t.uid, tl + ', step ' + (i + 1) + ' is marked not applicable with no reason recorded.', '4.6');
+        }
+      });
+    });
+  }());
+
   /* ---------- 2b. the checklist itself ---------- */
   (function () {
     var cs = complianceScore();
@@ -3956,7 +4163,11 @@ function findingTarget(f) {
     if (f.id) { for (var i = 0; i < P.tests.length; i += 1) { if (P.tests[i].uid === f.id || P.tests[i].id === f.id) { t = P.tests[i]; } } }
     return { view: 'vv', open: t ? function () { testForm(t); } : null, label: t ? ('open ' + (t.id || 'record')) : 'go to verification' };
   }
-  if (w === 'check') { return { view: 'check', open: null, label: 'go to the safeguarding checklist' }; }
+  if (w === 'field') {
+    var ft = f.id ? fieldTestById(f.id) : null;
+    return { view: 'check', open: ft ? function () { fieldTestForm(ft); } : null, label: ft ? ('open ' + (ft.title || 'the procedure')) : 'go to field verification' };
+  }
+  if (w === 'check') { return { view: 'check', open: null, label: 'go to field verification' }; }
   if (w === 'meta' || w === 'project') { return { view: 'project', open: null, label: 'go to scope' }; }
   return null;
 }
@@ -4000,7 +4211,7 @@ function findingsBox(scope) {
     var t = findingTarget(f);
     var kids = [
       el('span', { text: (f.sev === 'bad' ? 'Blocking: ' : 'Review: ') + f.msg + ' ' }),
-      f.ref ? el('span', { cls: 'chip tag', text: SRC + ' ' + f.ref }) : null
+      f.ref ? refChip(f.ref) : null
     ];
     if (t) {
       kids.push(' ');
@@ -4121,7 +4332,340 @@ function kvRow(k, v, mono) {
 /* =====================================================================
    Safeguarding checklist view
    ===================================================================== */
+/* =====================================================================
+   Field verification: one card per procedure, one row per step.
+   ===================================================================== */
+function renderFieldTests() {
+  var list = P.fieldTests || [];
+  var proved = P.devices.filter(function (d) { return fieldStateForDevice(d.uid).k === 'pass'; }).length;
+  var failed = P.devices.filter(function (d) { return fieldStateForDevice(d.uid).k === 'fail'; }).length;
+  var untested = P.devices.filter(function (d) { return fieldStateForDevice(d.uid).k === 'none'; }).length;
+  var openSteps = list.reduce(function (n, t) {
+    return n + (t.steps || []).filter(function (x) { return x.verdict === 'Not run' || !x.verdict; }).length;
+  }, 0);
+
+  put($('fieldStats'), [
+    statCard('Procedures', list.length),
+    statCard('Devices proved', proved + ' of ' + P.devices.length, proved === P.devices.length && P.devices.length ? 'Every device tested as installed' : null, proved === P.devices.length && P.devices.length ? 'good' : ''),
+    statCard('Devices failed', failed, failed ? 'The installation does not match the design' : null, failed ? 'alert' : ''),
+    statCard('Steps not run', openSteps, untested ? untested + ' devices have no procedure' : null, openSteps ? 'alert' : 'good')
+  ]);
+
+  var host = clear($('fieldList'));
+  if (!list.length) {
+    host.appendChild(el('div', { cls: 'card empty', text: 'No field procedures yet. Generate baseline procedures to get one per device, with the channel tests that catch a single channel installation already written in.' }));
+    return;
+  }
+
+  /* grouped by device, so a tester works down one piece of hardware */
+  var byDevice = {};
+  list.forEach(function (t) { (byDevice[t.deviceUid] || (byDevice[t.deviceUid] = [])).push(t); });
+
+  Object.keys(byDevice).forEach(function (u) {
+    var dv = deviceByUid(u);
+    var st = fieldStateForDevice(u);
+    var card = el('div', { cls: 'card' });
+    card.appendChild(el('div', { cls: 'cardhead' }, [
+      el('div', {}, [
+        el('h3', { text: dv ? (dv.tag || dv.name || 'Device') : 'Device no longer in the library' }),
+        el('div', { cls: 'hint', text: dv ? [dv.manufacturer, dv.partNumber, dv.role].filter(Boolean).join(' / ') : 'The device this procedure was written for has been deleted.' })
+      ]),
+      el('div', { cls: 'rowacts' }, [
+        el('span', { cls: 'chip ' + st.tone, text: st.label }),
+        actBtn('Add a procedure', function () { fieldTestForm(null, u); })
+      ])
+    ]));
+
+    byDevice[u].forEach(function (t) {
+      var ts = fieldTestState(t);
+      var sub = el('div', { cls: 'subcard' });
+      sub.appendChild(el('div', { cls: 'cardhead' }, [
+        el('div', {}, [
+          el('strong', { text: t.title || 'Untitled procedure' }),
+          el('div', { cls: 'hint', text: [t.sfId, t.testedBy ? 'tested by ' + t.testedBy : '', t.date].filter(Boolean).join(' / ') })
+        ]),
+        el('div', { cls: 'rowacts noprint' }, [
+          el('span', { cls: 'chip ' + ts.tone, text: ts.label }),
+          actBtn('Edit', function () { fieldTestForm(t); }),
+          actBtn('Delete', function () {
+            confirmDelete('the procedure "' + (t.title || 'untitled') + '"', function () {
+              P.fieldTests = P.fieldTests.filter(function (x) { return x.uid !== t.uid; });
+              commit('Procedure removed');
+            });
+          }, 'danger')
+        ])
+      ]));
+
+      var tbl = el('table', { cls: 'dt' });
+      var hr = el('tr');
+      ['#', 'Step', 'What proves it', 'Observed', 'Verdict'].forEach(function (h) { hr.appendChild(el('th', { scope: 'col', text: h })); });
+      tbl.appendChild(el('thead', null, hr));
+      var tb = el('tbody');
+      (t.steps || []).forEach(function (stp, i) {
+        var vs = el('select', { cls: 'inp' });
+        FIELD_VERDICTS.forEach(function (v) {
+          var o = el('option', { value: v, text: v });
+          if ((stp.verdict || 'Not run') === v) { o.selected = true; }
+          vs.appendChild(o);
+        });
+        vs.addEventListener('change', function () { stp.verdict = vs.value; commit('Step verdict recorded'); });
+
+        var obs = el('input', { cls: 'inp' });
+        obs.type = 'text';
+        obs.value = stp.result || '';
+        obs.placeholder = 'What actually happened';
+        obs.addEventListener('input', function () { stp.result = obs.value; saveLocalSoon(); });
+
+        tb.appendChild(el('tr', null, [
+          el('td', { cls: 'mono num', text: String(i + 1) }),
+          el('td', { text: stp.text }),
+          el('td', { cls: 'hint', text: stp.expected }),
+          el('td', null, obs),
+          el('td', null, vs)
+        ]));
+      });
+      tbl.appendChild(tb);
+      sub.appendChild(el('div', { cls: 'tw' }, tbl));
+      card.appendChild(sub);
+    });
+
+    host.appendChild(card);
+  });
+}
+
+/* The editor: title, links, who tested it, and the steps themselves. */
+function fieldTestForm(existing, seedDeviceUid) {
+  var isNew = !existing;
+  var work = existing
+    ? JSON.parse(JSON.stringify(existing))
+    : newFieldTest(seedDeviceUid || (P.devices[0] || {}).uid || '', '', '');
+  work.steps = work.steps || [];
+  var bag = [];
+  var body = [];
+
+  var devOpts = P.devices.map(function (d) { return { k: d.uid, label: (d.tag || d.name || 'device') + (d.role ? ', ' + d.role : '') }; });
+  var sfOpts = [{ k: '', label: 'not linked' }].concat(P.sfs.map(function (x) { return { k: x.id, label: x.id + ' ' + (x.name || '') }; }));
+
+  body.push(fset('What this procedure proves', [
+    fText(bag, 'title', 'Procedure title', work, { ph: 'Prove ESTOP-1 as installed' }),
+    row('g2', [
+      fSel(bag, 'deviceUid', 'Device under test', work, devOpts, { help: 'The installed device this procedure proves. One device can carry several procedures.' }),
+      fSel(bag, 'sfId', 'Safety function', work, sfOpts, { mono: true, help: 'The function the device is expected to bring about. Each step is judged against this function activating.' })
+    ]),
+    row('g3', [
+      fText(bag, 'testedBy', 'Tested by', work),
+      fText(bag, 'witnessedBy', 'Witnessed by', work),
+      fText(bag, 'date', 'Date', work, { type: 'date' })
+    ]),
+    fText(bag, 'equipment', 'Test equipment and calibration', work, { ph: 'Meter, stopwatch or analyser used, with calibration status' })
+  ]));
+
+  var stepHost = el('div');
+  function drawSteps() {
+    var kids = [el('p', { cls: 'hint', text: 'One step per thing being proved. Keep the channel tests separate: a device wired single channel passes the actuation step and fails the channel ones, and that difference is the whole point of testing in the field.' })];
+    work.steps.forEach(function (stp, i) {
+      var txt = el('textarea', { rows: 2, value: stp.text, placeholder: 'What the tester does' });
+      var exp = el('textarea', { rows: 2, value: stp.expected, placeholder: 'What counts as proof' });
+      txt.addEventListener('input', function () { stp.text = txt.value; });
+      exp.addEventListener('input', function () { stp.expected = exp.value; });
+      kids.push(el('div', { cls: 'subcard' }, [
+        el('div', { cls: 'cardhead' }, [
+          el('strong', { text: 'Step ' + (i + 1) }),
+          el('div', { cls: 'rowacts' }, [
+            actBtn('Up', function () { if (i > 0) { work.steps.splice(i - 1, 0, work.steps.splice(i, 1)[0]); drawSteps(); } }),
+            actBtn('Down', function () { if (i < work.steps.length - 1) { work.steps.splice(i + 1, 0, work.steps.splice(i, 1)[0]); drawSteps(); } }),
+            actBtn('Remove', function () { work.steps.splice(i, 1); drawSteps(); }, 'danger')
+          ])
+        ]),
+        row('g2', [
+          el('label', { cls: 'f' }, [fLabel('Step', 'What the tester physically does, in the order they do it.'), txt]),
+          el('label', { cls: 'f' }, [fLabel('What proves it', 'The observation that counts as proof. Written before the test, not after the result is known.'), exp])
+        ])
+      ]));
+    });
+    kids.push(el('div', { cls: 'rowacts' }, [
+      el('button', {
+        cls: 'btn ghost sm', type: 'button', text: 'Add a step',
+        on: { click: function () { work.steps.push(newFieldStep('', '')); drawSteps(); } }
+      }),
+      el('button', {
+        cls: 'btn ghost sm', type: 'button', text: 'Use the baseline steps for this device',
+        on: {
+          click: function () {
+            var dv = deviceByUid(work.deviceUid);
+            if (!dv) { say('Choose a device first'); return; }
+            work.steps = baselineFieldSteps(dv, sfById(work.sfId));
+            drawSteps();
+          }
+        }
+      })
+    ]));
+    put(stepHost, kids);
+  }
+  drawSteps();
+  body.push(fset('Steps', [stepHost]));
+  body.push(fset('Notes', [fArea(bag, 'notes', 'Notes', work, { ph: 'Anything about the conditions of the test that a reader would need.' })]));
+
+  openDlg(isNew ? 'New field procedure' : 'Edit procedure', body, function () {
+    bag.forEach(function (fn) { fn(); });
+    if (!work.deviceUid) { say('Choose the device under test'); return false; }
+    if (isNew) { P.fieldTests.push(work); }
+    else {
+      for (var i = 0; i < P.fieldTests.length; i += 1) {
+        if (P.fieldTests[i].uid === work.uid) { P.fieldTests[i] = work; }
+      }
+    }
+    commit(isNew ? 'Procedure added' : 'Procedure updated');
+    return true;
+  });
+}
+
+/* =====================================================================
+   How to use this
+   ---------------------------------------------------------------------
+   Written as a walkthrough rather than a feature list, because the
+   order the steps are done in is most of what a newcomer needs, and
+   because the app enforces rules that make no sense until you know
+   which question each step is answering.
+   ===================================================================== */
+var GUIDE = [
+  {
+    k: 'idea', title: 'What this is, in one paragraph',
+    body: [
+      'One HTML file that holds a whole machine safety file: the risk assessment, the device library, the safety functions, the verification of the analysis, and the proving of the installed hardware. It runs from the file itself with no server, no install and no network. What you save is a single .json that contains everything, including the photographs.',
+      'The app checks your work as you go and lists what it finds. A blocking finding means something in the file contradicts a standard or contradicts itself. A review finding means something is missing that an auditor would ask about. Neither stops you working; both appear on the report until resolved.'
+    ]
+  },
+  {
+    k: 'start', title: 'Starting and saving',
+    body: [
+      'New starts a blank file. Save as writes it to disk and links it, after which Save writes back to that same file rather than making another copy. The rail shows which file is linked and whether there are unsaved changes.',
+      'Chrome and Edge support writing back to a file. Firefox and Safari do not, so there Save downloads a fresh copy and says so rather than pretending it overwrote anything. After a page reload the link needs re-establishing with Open, because a browser will not hold a file permission across a refresh.',
+      'The Demo button loads a worked example. It is deliberately imperfect: it carries a performance level shortfall so you can see what a finding looks like.'
+    ]
+  },
+  {
+    k: 'order', title: 'The order to work in',
+    steps: [
+      { n: '00', t: 'Scope', d: 'Identify the machine, the revision, who is doing the work, and what is inside and outside the assessment. The exclusions matter more than the inclusions: name the adjacent equipment you did not assess.' },
+      { n: '01', t: 'Risk assessment', d: 'One row per task and hazard pair. Score the initial risk with no protective measure in place, list the measures, then score the residual. The level is computed for you and is never left blank.' },
+      { n: '02', t: 'Safety devices', d: 'Every interlock, relay, contactor and drive that makes up a safety circuit, with its safety values and where those values came from. Import a manufacturer library in VDMA 66413 XML if you have one.' },
+      { n: '03', t: 'Safety functions', d: 'Chain the devices into functions: input, logic, output. The app works out the achieved performance level and structure category and checks them against what the risk rows require.' },
+      { n: '04', t: 'Risk assessment verification', d: 'Does the analysis hold? Verification of the scoring, the specification and the performance claims. This is desk work.' },
+      { n: '05', t: 'Field verification', d: 'Does the hardware do what the analysis says? Device by device, on the machine, with the guarding checklist and the reach measurements. This is the last step and it is done standing at the equipment.' },
+      { n: '06', t: 'Report', d: 'Choose which sections to print, sign the revision, and issue.' }
+    ]
+  },
+  {
+    k: 'scoring', title: 'Scoring a risk row',
+    body: [
+      'The initial score assumes no protective measure at all. That is not the risk you observe today, and it is not the risk with the guard fitted. Safety-rated features that could be installed are excluded on purpose, because the assessment is what decides whether they are needed.',
+      'Read the criteria from the top of each factor and take the most likely. If any criterion for a rating applies, that is the rating. The exposure column is deliberately printed prevented, high, low rather than in severity order.',
+      'Exposure prevented is a claim with two independent conditions, and both have to hold. Guards must prevent access, which is what the safeguarding checklist records. And where functional safety is part of the measure, the implemented performance level must meet the required one. Meeting one is not enough: a control system that reaches its required level does not close a gap in a guard.'
+    ],
+    tip: 'An unchanged residual score can be the right answer. If barrier guarding has gaps, exposure is not reduced however good the circuit is. The app asks you to write down why rather than to change the score.'
+  },
+  {
+    k: 'devices', title: 'Devices, and where their numbers come from',
+    body: [
+      'Every safety value needs a source, and the app ranks them: manufacturer data first, then a recognised data collection, then a typical value from a standard. Choosing a typical value from ISO 13849-1 Table C.1 writes the source for you and drops the rank accordingly.',
+      'A device imported from a manufacturer library carries whatever the manufacturer published. The app does not nag about fields they chose to omit. It still checks the things that are your decisions rather than theirs.',
+      'Where a mechanical, hydraulic or pneumatic part has no reliability data at all, and the good engineering practice method cannot be applied either, the alternative procedure in clause 6.1.9 gives a performance level from the architecture alone. It is a last resort with three preconditions, and the app asks you to state that all three hold.'
+    ]
+  },
+  {
+    k: 'provenance', title: 'Modelled against observed',
+    body: [
+      'A Category 3 taken from a schematic and a Category 3 confirmed in the panel are not the same claim. Every device and every function records which it is, and the default is modelled, because anything from a design review starts there.',
+      'When you look at the installed hardware, record what you saw. If the observed category differs from the recorded one, the app raises it as a divergence and marks every performance level that rests on that device as unsupported until it is resolved.'
+    ],
+    tip: 'This is the check that catches a contactor drawn as dual channel and wired single channel, which is the most common way a Category 3 claim turns out to be a Category 2 installation.'
+  },
+  {
+    k: 'field', title: 'Proving the hardware',
+    body: [
+      'Field verification is done per installed device, as a procedure of steps, each with its own verdict. Generate baseline procedures and the app writes the steps for you from the device role and its wiring.',
+      'The channel steps are the point. Pressing an emergency stop proves it is connected. Removing channel A and then channel B proves it is connected twice, which is what a Category 3 claim actually asserts. A single channel installation passes the first step and fails the other two.',
+      'A step marked failed needs a note about what happened. A step marked not applicable needs a reason. A whole procedure that has passed with nobody named against it is flagged, because a verdict with no name behind it cannot be questioned later.'
+    ]
+  },
+  {
+    k: 'findings', title: 'Working through the findings',
+    body: [
+      'Every finding names the record it is about and offers a link to it. Following the link opens that record and, where the finding is about a particular field, scrolls to that field, rings it and puts the cursor in it.',
+      'Findings that cite a table carry a link to it. Clicking the citation opens that table over the page rather than sending you to the reference section and back.'
+    ]
+  },
+  {
+    k: 'report', title: 'Reporting and signing',
+    body: [
+      'The report is assembled from sections you choose. Presets cover the combinations people actually ask for: risk assessment only, controls package, field verification only. Numbering follows what is included, so a two section report numbers them 1 and 2.',
+      'Signing records who signed, in what role, when, against a stated declaration, and a fingerprint of the file contents. Change anything afterwards and the signature is marked as given against different contents. It is an attributability record, not a cryptographic signature, and the report says so.'
+    ]
+  },
+  {
+    k: 'limits', title: 'What this does not do',
+    body: [
+      'It does not compute separation distances. The formulae are in clause 6 of ISO 13855, which is not held with this project, so the app records the distance and where it came from and says plainly that it did not calculate it.',
+      'It does not replace SISTEMA. It reproduces the numerical route from Annex K and flags where the simplified graphical route disagrees, but a SISTEMA project remains the reference for a submitted calculation.',
+      'It does not decide anything for you. Every enforcement it applies is traceable to a clause, and every value it holds is either from a standard or entered by you with its source recorded.'
+    ]
+  }
+];
+
+function renderGuide() {
+  var host = clear($('guideBody'));
+  host.appendChild(el('p', { cls: 'lede', text: 'A walkthrough rather than a feature list. The order the steps are done in is most of what is worth knowing, because each step answers a different question and the app enforces rules that only make sense once you know which question you are on.' }));
+
+  var toc = el('div', { cls: 'card noprint' });
+  var tl = el('ul');
+  GUIDE.forEach(function (g) {
+    tl.appendChild(el('li', {}, [
+      el('button', {
+        cls: 'linkbtn', type: 'button', text: g.title,
+        on: { click: function () {
+          var node = document.getElementById('g-' + g.k);
+          if (node && node.scrollIntoView) { node.scrollIntoView({ block: 'start' }); }
+        } }
+      })
+    ]));
+  });
+  put(toc, [el('strong', { text: 'On this page' }), tl]);
+  host.appendChild(toc);
+
+  GUIDE.forEach(function (g) {
+    var sec = el('section', { cls: 'card' });
+    sec.id = 'g-' + g.k;
+    sec.appendChild(el('h3', { text: g.title }));
+    (g.body || []).forEach(function (t) { sec.appendChild(el('p', { cls: 'wrap', text: t })); });
+    if (g.steps) {
+      var t2 = el('table', { cls: 'dt' });
+      var hr2 = el('tr');
+      ['Step', 'Name', 'What it answers'].forEach(function (h) { hr2.appendChild(el('th', { scope: 'col', text: h })); });
+      t2.appendChild(el('thead', null, hr2));
+      var tb2 = el('tbody');
+      g.steps.forEach(function (x) {
+        tb2.appendChild(el('tr', null, [
+          el('td', { cls: 'mono num', text: x.n }),
+          el('td', { text: x.t }),
+          el('td', { text: x.d })
+        ]));
+      });
+      t2.appendChild(tb2);
+      sec.appendChild(el('div', { cls: 'tw' }, t2));
+    }
+    if (g.tip) {
+      sec.appendChild(el('div', { cls: 'notice' }, [
+        el('strong', { text: 'Worth knowing' }),
+        el('span', { text: g.tip })
+      ]));
+    }
+    host.appendChild(sec);
+  });
+}
+
 function renderCheck() {
+  renderFieldTests();
   var list = checklist();
   var cs = complianceScore();
   var gate = guardingGate();
@@ -4551,7 +5095,8 @@ var REPORT_SECTIONS = [
   { k: 'spec', label: 'Safety function specification completeness', help: 'The SISTEMA documentation fields, and which are blank.', empty: function () { return !P.sfs.length; } },
   { k: 'checklist', label: 'Safeguarding checklist', help: 'The onsite guarding record and the compliance score.' },
   { k: 'provenance', label: 'Provenance of the determinations', help: 'What is modelled, what is field verified, and what contradicts the model.' },
-  { k: 'vv', label: 'Verification and validation', help: 'Test and inspection records with verdicts.' },
+  { k: 'vv', label: 'Risk assessment verification', help: 'Verification and validation of the assessment itself, with verdicts.' },
+  { k: 'field', label: 'Field verification', help: 'Proving each installed device does what the analysis says, step by step.', empty: function () { return !(P.fieldTests || []).length; } },
   { k: 'findings', label: 'Open findings', help: 'Everything the automated checks flagged, blocking items first.' },
   { k: 'approval', label: 'Approval and signatures', help: 'The sign-off block.' }
 ];
@@ -4563,6 +5108,7 @@ var REPORT_PRESETS = [
   { k: 'ra_sf', label: 'Risk assessment and safety functions', keys: ['scope', 'assumptions', 'risk', 'sfperf', 'spec', 'devices', 'approval'] },
   { k: 'vv', label: 'Verification and validation only', keys: ['scope', 'vv', 'approval'] },
   { k: 'controls', label: 'Controls package', keys: ['scope', 'devices', 'sfperf', 'spec', 'provenance', 'vv', 'approval'] },
+  { k: 'field', label: 'Field verification only', keys: ['scope', 'field', 'checklist', 'approval'] },
   { k: 'guarding', label: 'Guarding package', keys: ['scope', 'risk', 'checklist', 'approval'] },
   { k: 'findings', label: 'Findings only', keys: ['conclusion', 'scope', 'findings'] }
 ];
@@ -5018,6 +5564,43 @@ function renderReport() {
     }());
   });
 
+  sec('field', function (H) {
+    doc.appendChild(el('h3', { text: H }));
+    doc.appendChild(el('p', { cls: 'wrap', text: 'Proving of the installed hardware, device by device. A performance level determined on paper says what the design should achieve. These records say what the machine in front of the tester actually did. Each step carries its own verdict, because a device wired single channel passes an actuation test and fails the channel tests.' }));
+    (P.fieldTests || []).forEach(function (t) {
+      var dv = deviceByUid(t.deviceUid);
+      var ts = fieldTestState(t);
+      doc.appendChild(el('h4', { text: (dv ? (dv.tag || dv.name) : 'Device removed') + '  ' + (t.title || '') }));
+      doc.appendChild(dl([
+        ['Safety function', t.sfId || 'not linked'],
+        ['Tested by', [t.testedBy, t.date].filter(Boolean).join(', ') || 'not recorded'],
+        ['Witnessed by', t.witnessedBy || 'not recorded'],
+        ['Test equipment', t.equipment || 'not recorded'],
+        ['Result', ts.label]
+      ]));
+      var ft = el('table', { cls: 'dt' });
+      var fh = el('tr');
+      ['#', 'Step', 'What proves it', 'Observed', 'Verdict'].forEach(function (h) { fh.appendChild(el('th', { scope: 'col', text: h })); });
+      ft.appendChild(el('thead', null, fh));
+      var fb = el('tbody');
+      (t.steps || []).forEach(function (stp, i) {
+        fb.appendChild(el('tr', null, [
+          el('td', { cls: 'mono num', text: String(i + 1) }),
+          el('td', { text: stp.text }),
+          el('td', { cls: 'hint', text: stp.expected }),
+          el('td', { text: stp.result || '' }),
+          el('td', null, el('span', {
+            cls: 'chip ' + (stp.verdict === 'Pass' ? 'ok' : (stp.verdict === 'Fail' ? 'bad' : 'tag')),
+            text: stp.verdict || 'Not run'
+          }))
+        ]));
+      });
+      ft.appendChild(fb);
+      doc.appendChild(el('div', { cls: 'tw' }, ft));
+      if (t.notes) { doc.appendChild(el('p', { cls: 'wrap', text: t.notes })); }
+    });
+  });
+
   sec('vv', function (H) {
     doc.appendChild(el('h3', { text: H }));
     var vt = el('table', { cls: 'dt' });
@@ -5103,8 +5686,110 @@ function renderReport() {
 
 
 /* ---------- RF Lookup tables ---------- */
+/* ---------------------------------------------------------------------
+   9. Showing a referenced table without leaving the page.
+
+   Findings and notes cite tables by name. Building the whole reference
+   set into a detached container and lifting out the one section that
+   was cited costs nothing extra and keeps a single source: the popup
+   and the reference view can never drift apart, because they are the
+   same code.
+   --------------------------------------------------------------------- */
+function tableSectionKey(title) {
+  return String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+/* Which reference section a citation is asking for. Longest match wins,
+   so "Table 5" does not swallow "Table 5, 6.1.3.2.5". */
+/* Section ids are slugs of the full heading, so a citation is matched
+   by a distinctive fragment of that slug rather than by an exact id. */
+var TABLE_REFS = [
+  { re: /table\s*k\.?\s*1/i, frag: 'table-k-1' },
+  { re: /table\s*c\.?\s*1/i, frag: 'table-c-1' },
+  { re: /table\s*f\.?\s*1/i, frag: 'table-f-1' },
+  { re: /table\s*d\.?\s*3/i, frag: 'table-d-3' },
+  { re: /annex\s*l|\bemi\b/i, frag: 'annex-l' },
+  { re: /table\s*8|6\.1\.9/i, frag: 'table-8' },
+  { re: /6\.1\.3\.2\.4/i, frag: 'category-2-conditions' },
+  { re: /6\.1\.3\.2/i, frag: 'table-5-overview' },
+  { re: /iso\s*13855/i, frag: 'positioning-of-safeguards' },
+  { re: /b11\.19|guard opening/i, frag: 'guard-opening' },
+  { re: /hierarch/i, frag: 'hierarchy-of-controls' },
+  { re: /principle/i, frag: 'safety-principles' },
+  { re: /validation record|clause\s*4\.6|^4\.[56]$/i, frag: 'validation-record' },
+  { re: /table\s*2(?!\d)/i, frag: 'table-2-documentation' },
+  { re: /table\s*1(?!\d)/i, frag: 'table-1-injury' },
+  { re: /table\s*3(?!\d)/i, frag: 'table-3-and-table-4' },
+  { re: /table\s*4(?!\d)/i, frag: 'table-4-performance' },
+  { re: /table\s*5(?!\d)/i, frag: 'table-5-minimum' },
+  { re: /6\.8/i, frag: 'clause-6-8' },
+  { re: /6\.4|6\.5|6\.6/i, frag: 'table-2-risk-level' }
+];
+function tableKeyFor(ref) {
+  if (!ref) return '';
+  for (var i = 0; i < TABLE_REFS.length; i += 1) {
+    if (TABLE_REFS[i].re.test(String(ref))) { return TABLE_REFS[i].frag; }
+  }
+  return '';
+}
+/* Every reference section carries an id, so one can be lifted out. */
+function tablesInto(host) {
+  var cur = null;
+  var wrapped = {
+    appendChild: function (node) {
+      if (node && node.tagName === 'H2' && node.className === 'sec') {
+        cur = el('section', { cls: 'tblsec' });
+        cur.id = 'tbl-' + tableSectionKey(node.textContent);
+        cur.setAttribute('data-tblname', node.textContent);
+        host.appendChild(cur);
+      }
+      (cur || host).appendChild(node);
+      return node;
+    }
+  };
+  buildTables(wrapped);
+  return host;
+}
+function showTablePopup(ref) {
+  var key = tableKeyFor(ref);
+  var box = tablesInto(el('div'));
+  var want = null;
+  if (key) {
+    var secs = Array.prototype.slice.call(box.querySelectorAll('.tblsec'));
+    want = secs.filter(function (sec) { return sec.id.indexOf(key) >= 0; })[0] || null;
+  }
+  if (!want) {
+    /* fall back to a loose name match before giving up */
+    var all = Array.prototype.slice.call(box.querySelectorAll('.tblsec'));
+    want = all.filter(function (sec) {
+      return String(sec.getAttribute('data-tblname')).toLowerCase().indexOf(String(ref).toLowerCase()) >= 0;
+    })[0];
+  }
+  if (!want) { show('tables'); say('No matching reference table for ' + ref); return; }
+  openDlg(want.getAttribute('data-tblname'), [
+    want,
+    el('p', { cls: 'hint noprint' }, [
+      el('button', {
+        cls: 'linkbtn', type: 'button', text: 'Open the full reference set',
+        on: { click: function () { closeDlg(); show('tables'); } }
+      })
+    ])
+  ], null, 'Close');
+}
+/* A citation chip that opens the table it names. */
+function refChip(ref) {
+  if (!ref) return null;
+  if (!tableKeyFor(ref)) { return el('span', { cls: 'chip tag', text: SRC + ' ' + ref }); }
+  return el('button', {
+    cls: 'chip tag refchip noprint', type: 'button', text: SRC + ' ' + ref + '  \u2197',
+    on: { click: function () { showTablePopup(ref); } }
+  });
+}
+
 function renderTables() {
   var host = clear($('tablesBody'));
+  tablesInto(host);
+}
+function buildTables(host) {
   var T = tables();
 
   host.appendChild(el('div', { cls: 'notice' + (P.tablesEdited ? '' : ' ok') }, [
@@ -5538,7 +6223,7 @@ function renderChrome() {
   var cscore = complianceScore();
   var c = {
     risk: P.risks.length, dev: P.devices.length, sf: P.sfs.length, vv: P.tests.length,
-    check: cscore ? cscore.answered : 0
+    check: (P.fieldTests || []).length
   };
   $$('[data-cnt]').forEach(function (n) { n.textContent = c[n.getAttribute('data-cnt')]; });
   $('methodNote').textContent = m.method === 'ISO 13849-1'
@@ -5564,6 +6249,7 @@ function renderView() {
   else if (VIEW === 'project') renderProject();
   else if (VIEW === 'sf') renderSf();
   else if (VIEW === 'check') renderCheck();
+  else if (VIEW === 'guide') renderGuide();
   else if (VIEW === 'vv') renderVv();
   else if (VIEW === 'report') renderReport();
   else if (VIEW === 'tables') renderTables();
@@ -7962,6 +8648,21 @@ function exportCsv() {
   });
 
   rows.push([]);
+  rows.push(['SECTION', 'Field verification']);
+  rows.push(['Device', 'Procedure', 'Safety function', 'Tested by', 'Witnessed by', 'Date', 'Equipment', 'Result',
+    'Step', 'What the tester does', 'What proves it', 'Observed', 'Verdict']);
+  (P.fieldTests || []).forEach(function (t) {
+    var dv = deviceByUid(t.deviceUid);
+    var ts = fieldTestState(t);
+    var head = [dv ? (dv.tag || dv.name) : 'DEVICE REMOVED', t.title || '', t.sfId || '',
+      t.testedBy || '', t.witnessedBy || '', t.date || '', t.equipment || '', ts.label];
+    if (!(t.steps || []).length) { rows.push(head.concat(['', '', '', '', 'no steps'])); return; }
+    t.steps.forEach(function (stp, i) {
+      rows.push(head.concat([String(i + 1), stp.text, stp.expected, stp.result || '', stp.verdict || 'Not run']));
+    });
+  });
+
+  rows.push([]);
   rows.push(['SECTION', 'Safeguarding checklist']);
   (function () {
     var cs = complianceScore();
@@ -8144,6 +8845,26 @@ function loadExample() {
   });
 
   generateBaseline();
+
+  /* Field procedures, with the first one worked through so the shape of
+     a completed record is visible rather than only the empty one. */
+  generateFieldTests();
+  P.fieldTests.forEach(function (t) {
+    t.testedBy = 'Example assessor';
+    t.witnessedBy = 'Example witness';
+    t.date = new Date().toISOString().slice(0, 10);
+    t.equipment = 'Calibrated multimeter, stopwatch, ANSI safety scale.';
+  });
+  if (P.fieldTests[0]) {
+    P.fieldTests[0].steps.forEach(function (stp, i) {
+      stp.verdict = 'Pass';
+      stp.result = i === 0
+        ? 'Gate opened in automatic, drives at standstill in 186 ms measured.'
+        : 'Function activated as expected, restart refused until reset.';
+    });
+  }
+  sf1.drawingRef = 'Sheet E-204 rev C, safety circuit for the perimeter gate.';
+
   fillMetaInputs();
   saveLocal();
   show('risk');
@@ -8336,6 +9057,13 @@ function boot() {
     P.guardOpenings.push(newGuardOpening());
     commit('Guard opening added');
   });
+
+  $('btnGenField').addEventListener('click', function () {
+    var n = generateFieldTests();
+    if (!n) { say('Every device already has a procedure'); return; }
+    commit(n + ' baseline procedure' + (n === 1 ? '' : 's') + ' generated');
+  });
+  $('btnAddField').addEventListener('click', function () { fieldTestForm(null); });
 
   $('btnCheckReset').addEventListener('click', function () {
     confirmDelete('every answer in the safeguarding checklist', function () {

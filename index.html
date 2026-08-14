@@ -104,6 +104,27 @@ nav.steps{padding:8px}
 .devtbl th:nth-child(12),.devtbl td:nth-child(12){width:104px}
 .bulkbar{display:flex;align-items:center;gap:10px;padding:6px 0 10px}
 .bulkcount{font-weight:600;font-size:12.5px}
+/* ---------- dialogs and the import picker ---------- */
+dialog .dt select,dialog .dt input[type=text],dialog .dt input[type=number]{min-width:0;width:100%}
+.rolesel{min-width:92px;width:100%;font:inherit}
+.importbar{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin:12px 0 6px}
+.importsearch{flex:1 1 320px;margin:0}
+.importscroll{max-height:46vh;overflow:auto}
+.importtbl{table-layout:fixed;width:100%}
+.importtbl th,.importtbl td{vertical-align:top;word-break:break-word}
+.importtbl th:nth-child(1),.importtbl td:nth-child(1){width:28px}
+.importtbl th:nth-child(3),.importtbl td:nth-child(3){width:62px}
+.importtbl th:nth-child(4),.importtbl td:nth-child(4){width:104px}
+.importtbl th:nth-child(5),.importtbl td:nth-child(5){width:44px}
+.importtbl th:nth-child(6),.importtbl td:nth-child(6){width:70px}
+.importtbl th:nth-child(7),.importtbl td:nth-child(7){width:52px}
+.importtbl th:nth-child(8),.importtbl td:nth-child(8){width:78px}
+.importtbl th:nth-child(9),.importtbl td:nth-child(9){width:44px}
+.impname{font-weight:600}
+/* long values in any dialog table wrap rather than forcing a sideways scroll */
+dialog .dt{width:100%}
+dialog .dt td,dialog .dt th{word-break:break-word}
+@media (max-width:820px){.importtbl{table-layout:auto}}
 .subcard{border:1px solid var(--rule-2);border-radius:6px;padding:10px 12px;margin:10px 0 0;background:var(--panel-2)}
 .cardhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
 .refchip{cursor:pointer;border:1px solid var(--rule);text-decoration:none}
@@ -261,7 +282,7 @@ table.dt.risk .chip{white-space:normal;display:inline-block;max-width:100%;line-
 .notice ul{margin:6px 0 0;padding-left:18px}
 
 /* ---------- Dialog ---------- */
-dialog{border:1.5px solid var(--ink);background:var(--panel);color:var(--ink);padding:0;max-width:min(880px,94vw);width:100%}
+dialog{border:1.5px solid var(--ink);background:var(--panel);color:var(--ink);padding:0;max-width:min(1120px,96vw);width:100%}
 dialog::backdrop{background:rgba(10,14,18,.55)}
 .dlg-h{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1.5px solid var(--ink);background:var(--panel-2)}
 .dlg-h h2{margin:0;font:600 13px/1.2 var(--sans);letter-spacing:.06em;text-transform:uppercase}
@@ -4022,9 +4043,37 @@ function roleGuess(rec) {
   return 'Logic';
 }
 
+/* A publisher's "name" field is not always a name. Rockwell, for one,
+   carries the licence notice for the whole library in it, repeated on
+   every device. Anything long, multi-line or carrying a URL is prose
+   rather than a label, so it is kept as a note and the part number
+   becomes the name. */
+function looksLikeLabel(v) {
+  var t = String(v || '').trim();
+  if (!t) return false;
+  if (t.length > 60) return false;
+  if (/https?:\/\/|www\./i.test(t)) return false;
+  if (/\n/.test(t)) return false;
+  if (/terms and conditions|legal notice|copyright|all rights reserved|licen[cs]e/i.test(t)) return false;
+  /* a label is not a sentence */
+  if (t.split(/\s+/).length > 9) return false;
+  return true;
+}
+function importedName(rec) {
+  if (looksLikeLabel(rec.name)) return String(rec.name).trim();
+  if (looksLikeLabel(rec.partNumber)) return String(rec.partNumber).trim();
+  if (looksLikeLabel(rec.useCase)) return String(rec.useCase).trim();
+  if (String(rec.partNumber || '').trim()) return String(rec.partNumber).trim();
+  return 'Imported device';
+}
+
 function recordToDevice(rec) {
   var dv = newDevice();
-  dv.name = rec.name || rec.partNumber || 'Imported device';
+  dv.name = importedName(rec);
+  /* whatever was rejected as a name is still worth keeping */
+  if (rec.name && String(rec.name).trim() !== dv.name && !looksLikeLabel(rec.name)) {
+    dv.notes = String(rec.name).trim();
+  }
   if (rec.useCase && rec.useCase !== rec.name) dv.useCase = rec.useCase;
   dv.manufacturer = rec.manufacturer || '';
   dv.partNumber = rec.partNumber || '';
@@ -6527,46 +6576,141 @@ function vdmaProblem(msg) {
   ], function () { return true; }, 'Close');
 }
 
+/* ---------------------------------------------------------------------
+   The import picker.
+
+   A manufacturer library runs to hundreds of parts and you want three of
+   them, so the default is nothing selected and the work is finding what
+   you came for. Search, select what is showing, and a running count.
+   The list is rendered in pages, because putting five hundred rows with
+   a select control in each into a dialog makes it crawl.
+   --------------------------------------------------------------------- */
+var IMPORT_PAGE = 60;
+
 function vdmaPreview(devices, fileName) {
-  var picked = devices.map(function () { return true; });
+  var picked = devices.map(function () { return false; });
+  var query = '';
+  var shown = 0;
+
   var body = [];
   body.push(el('div', { cls: 'notice' }, [
     el('strong', { text: devices.length + ' device' + (devices.length === 1 ? '' : 's') + ' read from ' + fileName }),
-    el('span', { text: 'This reader matches field names loosely, because publishers structure the format differently. Check the values against the datasheet before you rely on them, and set the role and tag afterwards. Roles below are a guess from the device name.' })
+    el('span', { text: 'This reader matches field names loosely, because publishers structure the format differently. Check the values against the datasheet before you rely on them, and set the role and tag afterwards. Roles below are a guess from the device name, and nothing is selected until you choose it.' })
   ]));
-  var tw = el('div', { cls: 'tw', style: { maxHeight: '40vh', overflow: 'auto' } });
-  var t = el('table', { cls: 'dt' });
-  var hr = el('tr');
-  ['', 'Device', 'Type', 'Role', 'Cat', 'MTTFd', 'DC', 'PFHd', 'PL'].forEach(function (h) { hr.appendChild(el('th', { scope: 'col', text: h })); });
-  t.appendChild(el('thead', null, hr));
-  var tb = el('tbody');
-  devices.forEach(function (dv, i) {
-    var chk = el('input', { type: 'checkbox', checked: true });
-    chk.addEventListener('change', function () { picked[i] = chk.checked; });
-    var roleSel = el('select', { cls: 'mono' });
-    DEVICE_ROLES.forEach(function (r) { roleSel.appendChild(el('option', { value: r, text: r, selected: dv.role === r })); });
-    roleSel.addEventListener('change', function () { dv.role = roleSel.value; });
-    var sum = deviceSummary(dv);
-    tb.appendChild(el('tr', null, [
-      el('td', null, chk),
-      el('td', null, [el('div', { text: dv.name }), el('div', { cls: 'hint', text: [dv.manufacturer, dv.partNumber, dv.useCase].filter(Boolean).join(' / ') })]),
-      el('td', { cls: 'num', text: dv.deviceType ? 'Type ' + dv.deviceType : '--' }),
-      el('td', null, roleSel),
-      el('td', { cls: 'num', text: dv.cat || '--' }),
-      el('td', { cls: 'num', text: sum.mttfdYears === null ? '--' : (Math.round(sum.mttfdYears * 10) / 10) + ' y' }),
-      el('td', { cls: 'num', text: dv.dcPct === '' ? '--' : dv.dcPct + '%' }),
-      el('td', { cls: 'num', text: dv.pfhd === '' ? '--' : Number(dv.pfhd).toExponential(2) }),
-      el('td', null, plChip(sum.pl.pl))
-    ]));
+
+  var search = el('input', { cls: 'inp' });
+  search.type = 'search';
+  search.placeholder = 'Search by name, part number or manufacturer';
+  search.setAttribute('aria-label', 'Search the imported devices');
+
+  var countLine = el('span', { cls: 'hint' });
+  var listHost = el('div');
+  var moreHost = el('div', { cls: 'rowacts' });
+
+  function matches(dv) {
+    if (!query) return true;
+    var hay = [dv.name, dv.partNumber, dv.manufacturer, dv.useCase, dv.notes].filter(Boolean).join(' ').toLowerCase();
+    return query.split(/\s+/).every(function (w) { return hay.indexOf(w) >= 0; });
+  }
+  function visibleIndexes() {
+    var out = [];
+    devices.forEach(function (dv, i) { if (matches(dv)) out.push(i); });
+    return out;
+  }
+
+  function draw() {
+    var vis = visibleIndexes();
+    var slice = vis.slice(0, shown);
+    var chosen = picked.filter(Boolean).length;
+
+    countLine.textContent = vis.length + ' of ' + devices.length + ' shown'
+      + (slice.length < vis.length ? ', ' + slice.length + ' listed' : '')
+      + '. ' + chosen + ' selected for import.';
+
+    var t = el('table', { cls: 'dt importtbl' });
+    var hr = el('tr');
+    ['', 'Device', 'Type', 'Role', 'Cat', 'MTTFd', 'DC', 'PFHd', 'PL'].forEach(function (h) {
+      hr.appendChild(el('th', { scope: 'col', text: h }));
+    });
+    t.appendChild(el('thead', null, hr));
+    var tb = el('tbody');
+
+    slice.forEach(function (i) {
+      var dv = devices[i];
+      var chk = el('input');
+      chk.type = 'checkbox';
+      chk.checked = picked[i];
+      chk.setAttribute('aria-label', 'Import ' + (dv.name || 'device'));
+      chk.addEventListener('change', function () { picked[i] = chk.checked; draw(); });
+
+      var roleSel = el('select', { cls: 'rolesel' });
+      DEVICE_ROLES.forEach(function (r) {
+        var o = el('option', { value: r, text: r });
+        if (dv.role === r) { o.selected = true; }
+        roleSel.appendChild(o);
+      });
+      roleSel.setAttribute('aria-label', 'Role for ' + (dv.name || 'device'));
+      roleSel.addEventListener('change', function () { dv.role = roleSel.value; });
+
+      var sum = deviceSummary(dv);
+      tb.appendChild(el('tr', null, [
+        el('td', null, chk),
+        el('td', null, [
+          el('div', { cls: 'impname', text: dv.name }),
+          el('div', { cls: 'hint', text: [dv.manufacturer, dv.partNumber, dv.useCase].filter(Boolean).join(' / ') })
+        ]),
+        el('td', { cls: 'num', text: dv.deviceType ? 'Type ' + dv.deviceType : '--' }),
+        el('td', null, roleSel),
+        el('td', { cls: 'num', text: dv.cat || '--' }),
+        el('td', { cls: 'num', text: sum.mttfdYears === null ? '--' : (Math.round(sum.mttfdYears * 10) / 10) + ' y' }),
+        el('td', { cls: 'num', text: dv.dcPct === '' ? '--' : dv.dcPct + '%' }),
+        el('td', { cls: 'num', text: dv.pfhd === '' ? '--' : Number(dv.pfhd).toExponential(2) }),
+        el('td', null, plChip(sum.pl.pl))
+      ]));
+    });
+    t.appendChild(tb);
+    put(listHost, [el('div', { cls: 'tw importscroll' }, [t])]);
+
+    put(moreHost, slice.length < vis.length ? [
+      el('button', {
+        cls: 'btn ghost sm', type: 'button',
+        text: 'Show ' + Math.min(IMPORT_PAGE, vis.length - slice.length) + ' more of ' + (vis.length - slice.length) + ' remaining',
+        on: { click: function () { shown += IMPORT_PAGE; draw(); } }
+      })
+    ] : []);
+  }
+
+  function setAllVisible(v) {
+    visibleIndexes().forEach(function (i) { picked[i] = v; });
+    draw();
+  }
+
+  search.addEventListener('input', function () {
+    query = search.value.trim().toLowerCase();
+    shown = IMPORT_PAGE;
+    draw();
   });
-  t.appendChild(tb);
-  tw.appendChild(t);
-  body.push(tw);
+
+  body.push(el('div', { cls: 'importbar' }, [
+    el('label', { cls: 'f importsearch' }, [fLabel('Search', 'Narrows the list. The buttons beside it act on what is showing, so search first and then select.'), search]),
+    el('div', { cls: 'rowacts' }, [
+      el('button', { cls: 'btn ghost sm', type: 'button', text: 'Select all showing', on: { click: function () { setAllVisible(true); } } }),
+      el('button', { cls: 'btn ghost sm', type: 'button', text: 'Deselect all showing', on: { click: function () { setAllVisible(false); } } }),
+      el('button', { cls: 'btn ghost sm', type: 'button', text: 'Clear every selection', on: { click: function () { picked = devices.map(function () { return false; }); draw(); } } })
+    ])
+  ]));
+  body.push(countLine);
+  body.push(listHost);
+  body.push(moreHost);
+
+  shown = IMPORT_PAGE;
+  draw();
 
   openDlg('Import from VDMA 66413', body, function () {
     var n = 0;
     devices.forEach(function (dv, i) { if (picked[i]) { P.devices.push(dv); n += 1; } });
-    commit(n ? n + ' device' + (n === 1 ? '' : 's') + ' imported' : 'Nothing selected');
+    if (!n) { say('Nothing is selected, so nothing was imported'); return false; }
+    commit(n + ' device' + (n === 1 ? '' : 's') + ' imported');
     return true;
   }, 'Import selected');
 }
@@ -7725,9 +7869,35 @@ function deviceForm(existing, seed) {
 function sfDeviceForm(sf) {
   var picks = (sf.devices || []).map(function (l) { return { uid: l.uid, role: l.role }; });
   var host = el('div');
+  var query = '';
   function has(u) { return picks.some(function (p) { return p.uid === u; }); }
+  /* With an imported library the list runs to hundreds, so it needs
+     narrowing before it can be worked with. A device already assigned
+     always stays visible: hiding a current selection behind a search
+     is how one gets dropped by accident. */
+  function visible(dv) {
+    if (has(dv.uid)) return true;
+    if (!query) return true;
+    var hay = [dv.tag, dv.name, dv.partNumber, dv.manufacturer, dv.useCase].filter(Boolean).join(' ').toLowerCase();
+    return query.split(/\s+/).every(function (w) { return hay.indexOf(w) >= 0; });
+  }
   function draw() {
     var kids = [];
+    var search = el('input', { cls: 'inp' });
+    search.type = 'search';
+    search.value = query;
+    search.placeholder = 'Search the device library by tag, name or part number';
+    search.setAttribute('aria-label', 'Search the device library');
+    search.addEventListener('input', function () {
+      query = search.value.trim().toLowerCase();
+      draw();
+      var again = host.querySelector('input[type=search]');
+      if (again && again.focus) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+    });
+    kids.push(el('div', { cls: 'importbar' }, [
+      el('label', { cls: 'f importsearch' }, [fLabel('Search', 'Narrows the list below. Devices already assigned to this function stay visible whatever you search for.'), search]),
+      el('span', { cls: 'hint', text: picks.length + ' assigned, ' + P.devices.filter(visible).length + ' of ' + P.devices.length + ' shown' })
+    ]));
     if (!P.devices.length) {
       kids.push(el('div', { cls: 'notice bad' }, [
         el('strong', { text: 'The device library is empty' }),
@@ -7752,6 +7922,7 @@ function sfDeviceForm(sf) {
         var pick = picks.filter(function (p) { return p.uid === dv.uid; })[0];
         var inThisRole = pick ? (pick.role || dv.role) === role : dv.role === role;
         if (!inThisRole) return;
+        if (!visible(dv)) return;
         any = true;
         var sum = deviceSummary(dv);
         var chk = el('input', { type: 'checkbox', checked: !!pick });
@@ -7767,7 +7938,11 @@ function sfDeviceForm(sf) {
           dv.cat ? el('span', { cls: 'chip tag', text: 'Cat ' + dv.cat }) : null
         ]));
       });
-      if (!any) { group.appendChild(el('p', { cls: 'hint', text: 'No device in the library is set to this position.' })); }
+      if (!any) {
+        group.appendChild(el('p', { cls: 'hint', text: query
+          ? 'Nothing in this position matches the search.'
+          : 'No device in the library is set to this position.' }));
+      }
       kids.push(group);
     });
     kids.push(el('button', {

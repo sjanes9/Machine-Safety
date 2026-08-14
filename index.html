@@ -12,13 +12,13 @@
   --ink:#14181d; --ink-2:#3d474f; --ink-3:#6b7780;
   --paper:#eceee9; --panel:#ffffff; --panel-2:#f6f7f4;
   --rule:#c4cbd1; --rule-2:#dde1e5;
-  --accent:#8a6d00; --accent-bg:#f5e9b8; --accent-line:#e0b400;
+  --accent:#6f5700; --accent-bg:#f8efcb; --accent-line:#c79f00;
   --focus:#0b5cad;
   --ok:#1d6b45; --ok-bg:#dff0e6;
   --warn:#8a5a00; --warn-bg:#fbeccd;
   --bad:#9c1f1f; --bad-bg:#f8dede;
   --r0:#1d6b45; --r0b:#dcefe4;
-  --r1:#4d7a1f; --r1b:#e6f0d6;
+  --r1:#3d6415; --r1b:#eaf3dd;
   --r2:#8a5a00; --r2b:#fbeccd;
   --r3:#a34a09; --r3b:#fbe0cd;
   --r4:#8f1414; --r4b:#f7d7d7;
@@ -92,16 +92,27 @@ nav.steps{padding:8px}
    text columns wrap and the numeric ones are held narrow. */
 .devtbl{table-layout:fixed;width:100%}
 .devtbl th,.devtbl td{word-break:break-word;vertical-align:top}
-.devtbl th:nth-child(1),.devtbl td:nth-child(1){width:26px}
-.devtbl th:nth-child(2),.devtbl td:nth-child(2){width:56px}
-.devtbl th:nth-child(3),.devtbl td:nth-child(3){width:78px}
-.devtbl th:nth-child(5),.devtbl td:nth-child(5){width:72px}
-.devtbl th:nth-child(6),.devtbl td:nth-child(6){width:64px}
-.devtbl th:nth-child(7),.devtbl td:nth-child(7){width:70px}
-.devtbl th:nth-child(8),.devtbl td:nth-child(8){width:56px}
-.devtbl th:nth-child(9),.devtbl td:nth-child(9){width:82px}
-.devtbl th:nth-child(10),.devtbl td:nth-child(10){width:52px}
-.devtbl th:nth-child(12),.devtbl td:nth-child(12){width:104px}
+/* 1 tick, 2 status, 3 tag, 4 device, 5 role, 6 cat, 7 MTTFd, 8 DC,
+   9 PFHd, 10 PL, 11 used by, 12 actions. Device and used-by take the
+   slack; nothing else is narrow enough to wrap a word per line. */
+.devtbl th:nth-child(1),.devtbl td:nth-child(1){width:28px}
+.devtbl th:nth-child(2),.devtbl td:nth-child(2){width:62px}
+.devtbl th:nth-child(3),.devtbl td:nth-child(3){width:74px}
+.devtbl th:nth-child(5),.devtbl td:nth-child(5){width:70px}
+.devtbl th:nth-child(6),.devtbl td:nth-child(6){width:74px}
+.devtbl th:nth-child(7),.devtbl td:nth-child(7){width:76px}
+.devtbl th:nth-child(8),.devtbl td:nth-child(8){width:66px}
+.devtbl th:nth-child(9),.devtbl td:nth-child(9){width:86px}
+.devtbl th:nth-child(10),.devtbl td:nth-child(10){width:112px}
+.devtbl th:nth-child(11),.devtbl td:nth-child(11){width:110px}
+.devtbl th:nth-child(12),.devtbl td:nth-child(12){width:92px}
+/* short labels under a value should break between words, never inside
+   one, so a narrow column degrades to two lines rather than to a
+   vertical stack of single letters */
+.nowrapish{overflow-wrap:normal;word-break:keep-all;hyphens:none}
+.usedby{overflow-wrap:break-word}
+.devtbl .rowacts{flex-direction:column;align-items:stretch;gap:4px}
+.devtbl .rowacts .btn{width:100%}
 .bulkbar{display:flex;align-items:center;gap:10px;padding:6px 0 10px}
 .bulkcount{font-weight:600;font-size:12.5px}
 /* ---------- dialogs and the import picker ---------- */
@@ -2825,18 +2836,22 @@ function effectiveDcPct(dv) {
 /* A device's own performance level: stated, or from PFHd, or from the
    simplified category, MTTFd class and DC class relationship. */
 function devicePl(dv) {
-  if (dv.plStated) return { pl: dv.plStated, how: 'stated by the manufacturer' };
-  if (isFaultExcluded(dv)) return { pl: '', how: 'fault excluded, PFHd taken as zero, so it sets no limit of its own' };
+  if (dv.plStated) return { pl: dv.plStated, how: 'stated by the manufacturer', howShort: 'stated' };
+  if (isFaultExcluded(dv)) return { pl: '', how: 'fault excluded, PFHd taken as zero, so it sets no limit of its own', howShort: 'fault excluded' };
   var eff = effectivePfhd(dv);
   var fromPfhd = eff.value === null ? '' : plFromPfhd(eff.value);
-  if (fromPfhd) return { pl: fromPfhd, how: eff.factors.length ? 'from PFHd with allowances applied' : 'from PFHd' };
+  if (fromPfhd) {
+    return eff.factors.length
+      ? { pl: fromPfhd, how: 'from PFHd with allowances applied', howShort: 'from PFHd, allowed' }
+      : { pl: fromPfhd, how: 'from PFHd', howShort: 'from PFHd' };
+  }
   var mc = mttfdClass(deviceMttfdYears(dv)), dcc = dcClass(effectiveDcPct(dv));
   if (dv.cat && mc && dcc && mc !== 'Below Low') {
     var r = plFromArchitecture(dv.cat, mc, dcc);
-    if (r.pl) return { pl: r.pl, how: 'from category ' + dv.cat + ', MTTFd ' + mc + ', DC ' + dcc };
-    return { pl: '', how: r.why };
+    if (r.pl) return { pl: r.pl, how: 'from category ' + dv.cat + ', MTTFd ' + mc + ', DC ' + dcc, howShort: 'from architecture' };
+    return { pl: '', how: r.why, howShort: 'not allowed' };
   }
-  return { pl: '', how: 'not enough data' };
+  return { pl: '', how: 'not enough data', howShort: 'no data' };
 }
 
 /* ---------- Device status ----------
@@ -6459,12 +6474,16 @@ function renderDevices() {
           eff.factors.length ? el('div', { cls: 'hint', text: eff.raw.toExponential(2) + ' plus allowance' }) : null
         ];
       })()),
-      el('td', null, [
-        plChip(sum.pl.pl),
-        el('div', { cls: 'hint', text: sum.pl.how })
-      ]),
-      el('td', { cls: 'num' }, users.length
-        ? el('span', { text: users.map(function (s) { return s.id; }).join(', ') })
+      el('td', { cls: 'num' }, (function () {
+        var cell = el('div', {}, [
+          plChip(sum.pl.pl),
+          el('div', { cls: 'hint nowrapish', text: sum.pl.howShort || sum.pl.how })
+        ]);
+        if (sum.pl.how && sum.pl.how !== sum.pl.howShort) { cell.title = sum.pl.how; }
+        return [cell];
+      })()),
+      el('td', null, users.length
+        ? el('span', { cls: 'usedby', text: users.map(function (s) { return s.id; }).join(', ') })
         : el('span', { cls: 'chip warn', text: 'unused' })),
       el('td', null, el('div', { cls: 'rowacts' }, [
         actBtn('Edit', function () { deviceForm(dv); }),

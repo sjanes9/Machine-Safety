@@ -505,7 +505,9 @@ table.mx select{padding:3px 5px;font-size:11.5px}
           <button class="btn" id="btnAddDev" type="button">Add device</button>
           <button class="btn ghost" id="btnCatalogue" type="button">Start from the component catalogue</button>
           <button class="btn ghost" id="btnImportVdma" type="button">Load from SISTEMA or VDMA 66413</button>
+          <button class="btn ghost" id="btnImportSistema" type="button">Import a SISTEMA report</button>
           <input type="file" id="fileVdma" accept=".xml,.slb,.ssm,text/xml,application/xml" hidden>
+          <input type="file" id="fileSistema" accept=".pdf,application/pdf" hidden>
         </div>
         <div class="grid g4" id="devStats"></div>
         <div id="devList"></div>
@@ -704,6 +706,7 @@ function blankProject() {
     reportSections: null,  // null means "every section"
     signatures: [],        // e-signed approvals
     fieldTests: [],        // per-device proving of the installed hardware
+    sistemaReports: [],    // imported SISTEMA reports, kept whole
     tables: null,          // null means "use shipped defaults"
     tablesEdited: false
   };
@@ -777,6 +780,7 @@ function migrate(data) {
   base.guardOpenings = Array.isArray(data.guardOpenings) ? data.guardOpenings : [];
   base.signatures = Array.isArray(data.signatures) ? data.signatures : [];
   base.fieldTests = Array.isArray(data.fieldTests) ? data.fieldTests : [];
+  base.sistemaReports = Array.isArray(data.sistemaReports) ? data.sistemaReports : [];
   base.reportSections = Array.isArray(data.reportSections) ? data.reportSections : null;
   base.tablesEdited = !!data.tablesEdited;
   if (v < 4) { migrateV3(base); }
@@ -929,6 +933,7 @@ function migrateV7(base) {
   base.guardOpenings = base.guardOpenings || [];
   base.signatures = base.signatures || [];
   base.fieldTests = base.fieldTests || [];
+  base.sistemaReports = base.sistemaReports || [];
   base.fieldTests.forEach(function (ft) { ft.steps = ft.steps || []; });
   base.sfs.forEach(function (sf) { sf.ccfMeasures = sf.ccfMeasures || []; });
   if (base.meta.capCat4At100 === undefined) { base.meta.capCat4At100 = false; }
@@ -1583,10 +1588,24 @@ function categoryFit(cat, mttfdBand, dcBand) {
     out.notes.push('Category ' + req.k + ' needs MTTFD ' + req.mttfd.join(' or ').toLowerCase() + ' for each channel, not ' + String(mttfdBand).toLowerCase() + '.');
   }
   if (dcBand && req.dc.indexOf(dcBand) < 0) {
-    out.dcOk = false;
-    out.notes.push('Category ' + req.k + ' needs DCavg ' + req.dc.join(' or ').toLowerCase() + ', not ' + String(dcBand).toLowerCase() + '.');
+    /* Less diagnostic coverage than the category tabulates is a
+       deficiency. More is not: it is outside the simplified tables, so
+       the architecture route cannot read a level for it, but the
+       subsystem is not worse for it. Annex K carries no column for the
+       combination either, which is the thing worth saying. */
+    var have = DC_BANDS.map(function (x) { return x.k; }).indexOf(dcBand);
+    var most = DC_BANDS.map(function (x) { return x.k; }).indexOf(req.dc[req.dc.length - 1]);
+    if (have > most) {
+      out.dcAbove = true;
+      out.notes.push('Category ' + req.k + ' is tabulated for DCavg ' + req.dc.join(' to ').toLowerCase()
+        + ', and this subsystem reaches ' + String(dcBand).toLowerCase()
+        + '. That is not a deficiency, but it sits outside Figure 12 and Table K.1, so a performance level cannot be read from the architecture and has to come from the calculated PFHd.');
+    } else {
+      out.dcOk = false;
+      out.notes.push('Category ' + req.k + ' needs DCavg ' + req.dc.join(' or ').toLowerCase() + ', not ' + String(dcBand).toLowerCase() + '.');
+    }
   }
-  out.ok = out.mttfdOk && out.dcOk;
+  out.ok = out.mttfdOk && out.dcOk && !out.dcAbove;
   return out;
 }
 
@@ -1914,6 +1933,268 @@ function generateFieldTests() {
     made += 1;
   });
   return made;
+}
+
+/* ---------------------------------------------------------------------
+   Reading a SISTEMA report PDF.
+
+   No library, because adding one would cost about a megabyte and end the
+   property that makes this file useful on a plant floor: one file, no
+   install, no network. A SISTEMA report is unusually tractable without
+   one. It writes uncompressed content streams, standard Type1 fonts with
+   no embedded encoding table, and one positioned text operator per word,
+   so the whole job is finding the streams, pulling the strings out with
+   their coordinates, and grouping them back into lines.
+
+   This will not read an arbitrary PDF. It reads the shape SISTEMA
+   produces, and says so plainly when it meets something else. A reader
+   that quietly returns half a document is worse than one that declines.
+   --------------------------------------------------------------------- */
+
+/* PDF string escapes: \n \r \t \b \f \( \) \\ and three-digit octal. */
+function pdfUnescape(str) {
+  var out = '', i, c, n, oct, j;
+  for (i = 0; i < str.length; i += 1) {
+    c = str.charAt(i);
+    if (c !== '\\') { out += c; continue; }
+    n = str.charAt(i + 1);
+    if (n === '') break;
+    if (n === 'n') { out += '\n'; i += 1; }
+    else if (n === 'r') { out += '\r'; i += 1; }
+    else if (n === 't') { out += '\t'; i += 1; }
+    else if (n === 'b') { out += '\b'; i += 1; }
+    else if (n === 'f') { out += '\f'; i += 1; }
+    else if (n >= '0' && n <= '7') {
+      oct = ''; j = i + 1;
+      while (j < str.length && oct.length < 3 && str.charAt(j) >= '0' && str.charAt(j) <= '7') {
+        oct += str.charAt(j); j += 1;
+      }
+      out += String.fromCharCode(parseInt(oct, 8));
+      i = j - 1;
+    } else if (n === '\n') { i += 1; }
+    else { out += n; i += 1; }
+  }
+  return out;
+}
+
+/* Every uncompressed stream body, in document order. */
+function pdfStreams(raw) {
+  var out = [], i = 0, a, b, e;
+  while (true) {
+    a = raw.indexOf('stream', i);
+    if (a < 0) break;
+    b = a + 6;
+    if (raw.charAt(b) === '\r') b += 1;
+    if (raw.charAt(b) === '\n') b += 1;
+    e = raw.indexOf('endstream', b);
+    if (e < 0) break;
+    out.push(raw.slice(b, e));
+    i = e + 9;
+  }
+  return out;
+}
+
+/* Text runs with their position, from one content stream. */
+function pdfRuns(cs) {
+  var runs = [], x = 0, y = 0, m;
+  /* Td and TD set position, Tm sets the whole text matrix, Tj draws one
+     string and TJ draws an array of strings with kerning between them. */
+  var re = /(-?[\d.]+)\s+(-?[\d.]+)\s+(Td|TD)\b|(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+Tm\b|\((?:\\[\s\S]|[^\\()])*\)\s*Tj\b|\[[\s\S]*?\]\s*TJ\b/g;
+  while ((m = re.exec(cs)) !== null) {
+    var tok = m[0];
+    if (m[3]) { x = parseFloat(m[1]); y = parseFloat(m[2]); continue; }
+    if (/Tm\s*$/.test(tok)) { x = parseFloat(m[9]); y = parseFloat(m[10]); continue; }
+    if (/Tj\s*$/.test(tok)) {
+      runs.push({ x: x, y: y, t: pdfUnescape(tok.slice(tok.indexOf('(') + 1, tok.lastIndexOf(')'))) });
+      continue;
+    }
+    if (/TJ\b\s*$/.test(tok)) {
+      var inner = tok.slice(tok.indexOf('[') + 1, tok.lastIndexOf(']')), str = '', pre = /\((?:\\[\s\S]|[^\\()])*\)/g, pm;
+      while ((pm = pre.exec(inner)) !== null) { str += pdfUnescape(pm[0].slice(1, -1)); }
+      runs.push({ x: x, y: y, t: str });
+    }
+  }
+  return runs;
+}
+
+/* Group runs back into lines: same baseline, left to right. */
+function pdfPageText(cs) {
+  var runs = pdfRuns(cs);
+  if (!runs.length) return '';
+  var byLine = {}, keys = [];
+  runs.forEach(function (r) {
+    var k = String(Math.round(r.y * 2) / 2);
+    if (!byLine[k]) { byLine[k] = []; keys.push(Number(k)); }
+    byLine[k].push(r);
+  });
+  keys.sort(function (a, b) { return b - a; });
+  return keys.map(function (k) {
+    var parts = byLine[String(k)].sort(function (a, b) { return a.x - b.x; });
+    var out = '', lastX = null;
+    parts.forEach(function (pt) {
+      if (lastX !== null && pt.x - lastX > 2 && !/\s$/.test(out) && !/^\s/.test(pt.t)) { out += ' '; }
+      out += pt.t;
+      lastX = pt.x;
+    });
+    return out.replace(/\s+/g, ' ').trim();
+  }).filter(Boolean).join('\n');
+}
+
+function pdfText(raw) {
+  var pages = pdfStreams(raw)
+    .filter(function (cs) { return /\bTj|\bTJ/.test(cs); })
+    .map(pdfPageText)
+    .filter(function (t) { return t.length > 20; });
+  return { pages: pages, text: pages.join('\n') };
+}
+
+/* ---------------------------------------------------------------------
+   The SISTEMA report grammar.
+
+   Read from a real report rather than from a specification, so it is
+   matched to what SISTEMA actually prints. Every value carries where it
+   came from, and anything the reader does not recognise is left alone
+   rather than guessed at.
+   --------------------------------------------------------------------- */
+function parseSistemaReport(text) {
+  if (!/SISTEMA/i.test(text)) {
+    return { ok: false, error: 'That file does not look like a SISTEMA report. The reader expects the report SISTEMA prints, with its header on every page.' };
+  }
+  var lines = text.split('\n').map(function (l) { return l.trim(); }).filter(Boolean);
+
+  function after(label, from) {
+    for (var i = from || 0; i < lines.length; i += 1) {
+      var l = lines[i];
+      if (l.indexOf(label) === 0) {
+        var rest = l.slice(label.length).trim();
+        if (rest) return rest;
+        if (lines[i + 1]) return lines[i + 1].trim();
+      }
+    }
+    return '';
+  }
+
+  var meta = {
+    project: after('Project name:'),
+    fileDate: (text.match(/File date:\s*([^\n]+?)\s+Report date:/) || [])[1] || '',
+    reportDate: (text.match(/Report date:\s*(\S+)/) || [])[1] || '',
+    checksum: (text.match(/Checksum:\s*([0-9a-f]{8,})/i) || [])[1] || '',
+    software: (text.match(/Version of software:\s*([^\n]+)/) || [])[1] || '',
+    standard: (text.match(/Version of standard:\s*([^\n]+)/) || [])[1] || '',
+    authors: after('Authors:') || after('A u t h o r s :'),
+    managers: after('Project managers:'),
+    inspectors: after('Inspectors:') || after('I n s p e c t o r s :')
+  };
+
+  /* Summary lines: Name: <name> [<id>] then Required/Reached/PFH/Status */
+  var funcs = [], seen = {};
+  for (var i = 0; i < lines.length; i += 1) {
+    var nm = lines[i].match(/^Name:\s*(.+?)\s*\[([^\]]+)\]\s*$/);
+    if (!nm) continue;
+    var next = lines[i + 1] || '';
+    var sum = next.match(/Required:\s*PLr\s*(\S+)\s+Reached:\s*PL\s*(\S+)\s+PFH\s*\[1\/h\]:\s*(\S+)\s+Status:\s*(\S+)/);
+    if (!sum) continue;
+    if (seen[nm[2]]) continue;
+    seen[nm[2]] = 1;
+    funcs.push({
+      identifier: nm[2], name: nm[1],
+      plr: String(sum[1]).toLowerCase(), pl: String(sum[2]).toLowerCase(),
+      pfhd: Number(sum[3]), status: sum[4]
+    });
+  }
+
+  /* Subsystem blocks. Each opens with "Subsystems (n / m)" and carries a
+     name, a reference designator, a manufacturer, a part number and the
+     values SISTEMA computed for it. */
+  var subs = [];
+  for (i = 0; i < lines.length; i += 1) {
+    if (!/^Subsystems \(\d+ \/ \d+\)/.test(lines[i])) continue;
+    /* A subsystem's detail runs over several pages, and SISTEMA repeats
+       "Safety function: X" as a page header on each of them, so that is
+       not a boundary. Only the next subsystem header ends the block. */
+    var end = i + 1;
+    while (end < lines.length && !/^Subsystems \(\d+ \/ \d+\)/.test(lines[end])) { end += 1; }
+    var block = lines.slice(i, end);
+    var bt = block.join('\n');
+    function grab(re) { var m2 = bt.match(re); return m2 ? String(m2[1]).trim() : ''; }
+    var sub = {
+      name: (block[1] && block[1].indexOf('Name:') === 0) ? block[1].slice(5).trim() : '',
+      ref: grab(/Reference designator:\s*\n?([^\n]*)/),
+      manufacturer: grab(/Device Manufacturer:\s*([^\n]*)/),
+      partNumber: grab(/Part number:\s*([^\n]*)/),
+      /* SISTEMA letter-spaces some labels and puts the value on the
+         next line, so every pattern tolerates both shapes. */
+      cat: grab(/C\s*a\s*t\s*\.\s*:\s*\n?\s*([B1-4])\b/),
+      pl: (grab(/Reached PL:[^\n]*\n\s*([a-e])\b/) || grab(/Reached PL:\s*([a-e])\b/) || '').toLowerCase(),
+      pfhd: grab(/Reached PL:[^\n]*\n\s*[a-e]?\s*([\d.]+E-?\d+)/i) || grab(/PFH\s*\[1\/h\]:\s*\n?\s*([\d.]+E-?\d+)/i),
+      mttfd: grab(/MTTFD\s*\[a\]:\s*\n?\s*([\d.]+)/i),
+      dc: grab(/DCavg\s*\[%\]:\s*\n?\s*([\d.]+)/i),
+      ccf: grab(/CCF Points:\s*\n?\s*(\d+)/i),
+      determination: /Enter PL\/PFH directly/.test(bt) ? 'ENCAPSULATED' : 'ARCHITECTURE'
+    };
+    if (sub.name && !/^-/.test(sub.name)) { subs.push(sub); }
+    i = end - 1;
+  }
+  /* de-duplicate by name and reference, since a subsystem shared between
+     functions is printed once per function */
+  var uniq = [], byKey = {};
+  subs.forEach(function (x) {
+    var k = (x.ref || '') + '|' + x.name;
+    if (byKey[k]) return;
+    byKey[k] = 1;
+    uniq.push(x);
+  });
+
+  if (!funcs.length && !uniq.length) {
+    return { ok: false, error: 'The file was read but no safety functions or subsystems were recognised in it. It may be a SISTEMA report in a layout this reader does not know, or a report of an empty project.' };
+  }
+  return { ok: true, meta: meta, functions: funcs, subsystems: uniq };
+}
+
+/* Turn a parsed report into records this file understands. */
+function sistemaToRecords(res) {
+  var devices = res.subsystems.map(function (sub) {
+    var dv = newDevice();
+    dv.name = sub.name;
+    dv.tag = sub.ref || '';
+    dv.manufacturer = sub.manufacturer && !/see parent/i.test(sub.manufacturer) ? sub.manufacturer : '';
+    dv.partNumber = sub.partNumber && !/^n\/a$/i.test(sub.partNumber) ? sub.partNumber : '';
+    dv.role = roleGuess({ name: sub.name, useCase: '', role: '', deviceType: '' });
+    dv.cat = sub.cat || '';
+    dv.plStated = sub.determination === 'ENCAPSULATED' ? sub.pl : '';
+    dv.pfhd = sub.pfhd ? Number(sub.pfhd) : '';
+    dv.mttfdYears = sub.mttfd ? Number(sub.mttfd) : '';
+    dv.dcPct = sub.dc ? Number(sub.dc) : '';
+    dv.deviceType = sub.determination === 'ENCAPSULATED' ? '1' : '';
+    dv.sourceKind = 'SISTEMA';
+    dv.source = 'SISTEMA report' + (res.meta.checksum ? ', checksum ' + res.meta.checksum : '');
+    dv.libName = res.meta.project || 'SISTEMA report';
+    dv.libImported = new Date().toISOString().slice(0, 10);
+    dv.prov = 'OUTSTANDING';
+    dv.notes = 'Imported from a SISTEMA report. The report is the reference for the calculation; these values are a copy of it.';
+    return dv;
+  });
+
+  var sfs = res.functions.map(function (f) {
+    var sf = newSf();
+    sf.id = f.identifier;
+    sf.identifier = f.identifier;
+    sf.name = f.name;
+    sf.plrMethod = 'DIRECT';
+    sf.plrOverride = f.plr;
+    sf.plrGraphNote = 'Taken from the SISTEMA report'
+      + (res.meta.checksum ? ', checksum ' + res.meta.checksum : '')
+      + '. The report is the reference for this determination.';
+    sf.achievedPl = f.pl;
+    sf.prov = 'OUTSTANDING';
+    sf.importedFrom = 'SISTEMA report' + (res.meta.checksum ? ', checksum ' + res.meta.checksum : '');
+    sf.provNote = 'Imported from a SISTEMA report, so the values are modelled. Nothing here has been checked against the installed hardware.';
+    sf.notes = 'SISTEMA reports PFHd ' + (isFinite(f.pfhd) ? Number(f.pfhd).toExponential(2) : '?')
+      + ' per hour and status ' + f.status + '.';
+    return sf;
+  });
+
+  return { devices: devices, sfs: sfs };
 }
 
 var SCHEME_RIA = 'ANSI/RIA R15.306';
@@ -2394,6 +2675,7 @@ function newSf() {
     emiRoute: '', emiNote: '',
     sepDistance: '', sepDistanceBasis: '', wholeBodyAccess: '',
     images: [], drawingRef: '',
+    importedFrom: '',
     standardBasis: 'ISO 13849-1:2015', notes: '',
     /* SISTEMA 3.0.4 "Safety function > Documentation" tab, field for field */
     identifier: '', sistemaType: '',
@@ -3060,6 +3342,17 @@ var IMPORTED_SOURCES = ['MFR_LIB', 'SISTEMA'];
 function isImported(dv) {
   return !!dv && (IMPORTED_SOURCES.indexOf(dv.sourceKind) >= 0 || !!dv.libName);
 }
+/* The same reasoning for a safety function read out of a SISTEMA
+   report. The report carries the calculation, not the specification, so
+   there is no safe state or running-on time in it to import. Asking for
+   them is right; asking the moment the file lands is noise. Marking the
+   function as imported defers those until someone works on it. */
+function isImportedSf(sf) { return !!sf && !!sf.importedFrom; }
+var SF_COMPLETENESS_WORDS = new RegExp([
+  'has no ', 'no reason for leaving it blank', 'does not name the dangerous part',
+  'no SISTEMA function type', 'no simplified circuit', 'no electromagnetic immunity route',
+  'no separation distance', 'no common cause failure score', 'no basis recorded'
+].join('|'), 'i');
 /* Findings that describe missing data the manufacturer never supplied. */
 var COMPLETENESS_WORDS = new RegExp([
   'has no ', 'is missing', 'not recorded', 'is not set', 'no test rate recorded',
@@ -3301,6 +3594,7 @@ function findings() {
        the manufacturer published. Completeness findings against it are
        noise, and noise trains people to ignore the panel. */
     if (where === 'dev' && suppressForImport(deviceByUid(id), msg)) { return; }
+    if (where === 'sf' && isImportedSf(sfById(id)) && SF_COMPLETENESS_WORDS.test(String(msg))) { return; }
     out.push({ sev: sev, where: where, id: id, msg: msg, ref: ref || '', field: field || '' });
   }
 
@@ -3553,7 +3847,8 @@ function findings() {
       var fit = categoryFit(d.cat, band, dcb);
       if (!fit || fit.ok) return;
       fit.notes.forEach(function (n) {
-        add('bad', 'dev', d.uid, dlbl + ': ' + n, 'Table 5, ' + fit.req.clause);
+        add(fit.dcAbove && !/needs DCavg|needs MTTFD/.test(n) ? 'warn' : 'bad',
+          'dev', d.uid, dlbl + ': ' + n, 'Table 5, ' + fit.req.clause);
       });
     }());
 
@@ -6708,6 +7003,153 @@ function vdmaProblem(msg) {
    --------------------------------------------------------------------- */
 var IMPORT_PAGE = 60;
 
+/* ---------------------------------------------------------------------
+   Importing a SISTEMA report.
+   --------------------------------------------------------------------- */
+function importSistemaReport(file) {
+  if (!file) return;
+  var fr = new FileReader();
+  fr.onerror = function () { say('The file could not be read'); };
+  fr.onload = function (ev) {
+    var raw = '', bytes = new Uint8Array(ev.target.result), i;
+    /* latin1, so byte values survive into the string search intact */
+    for (i = 0; i < bytes.length; i += 1) { raw += String.fromCharCode(bytes[i]); }
+    var extracted;
+    try { extracted = pdfText(raw); }
+    catch (err) { console.warn(err); sistemaProblem('That PDF could not be read.'); return; }
+    if (!extracted.pages.length) {
+      sistemaProblem('No text could be taken out of that PDF. This reader handles the uncompressed layout SISTEMA writes. A PDF that has been re-saved, scanned or compressed by another tool needs a different approach: export the report from SISTEMA again and import that file.');
+      return;
+    }
+    var res = parseSistemaReport(extracted.text);
+    if (!res.ok) { sistemaProblem(res.error); return; }
+    res.fileName = file.name;
+    res.text = extracted.text;
+    res.pageCount = extracted.pages.length;
+    sistemaPreview(res);
+  };
+  fr.readAsArrayBuffer(file);
+}
+function sistemaProblem(msg) {
+  openDlg('The report could not be read', [
+    el('div', { cls: 'notice bad' }, [el('strong', { text: 'Nothing was imported' }), el('span', { text: msg })]),
+    el('p', { cls: 'hint', text: 'Nothing leaves this browser. The file is read here and nowhere else.' })
+  ], null, 'Close');
+}
+
+function sistemaPreview(res) {
+  var body = [];
+  var takeSfs = true, takeDevs = true, keepReport = true;
+
+  body.push(el('div', { cls: 'notice' }, [
+    el('strong', { text: res.functions.length + ' safety function' + (res.functions.length === 1 ? '' : 's') + ' and ' + res.subsystems.length + ' subsystem' + (res.subsystems.length === 1 ? '' : 's') + ' read from ' + res.fileName }),
+    el('span', { text: 'The report is the reference for the calculation. What comes in here is a copy of it, marked as modelled and not field verified, so nothing imported can pass itself off as proven hardware.' })
+  ]));
+
+  body.push(dl([
+    ['Project', res.meta.project || 'not stated'],
+    ['SISTEMA version', res.meta.software || 'not stated'],
+    ['Standard', res.meta.standard || 'not stated'],
+    ['Report date', res.meta.reportDate || 'not stated'],
+    ['Checksum', res.meta.checksum || 'not stated'],
+    ['Authors', res.meta.authors || 'not stated'],
+    ['Pages read', String(res.pageCount)]
+  ]));
+
+  if (res.functions.length) {
+    var ft = el('table', { cls: 'dt' });
+    var fh = el('tr');
+    ['Identifier', 'Safety function', 'Required', 'Reached', 'PFHd', 'Status'].forEach(function (h) { fh.appendChild(el('th', { scope: 'col', text: h })); });
+    ft.appendChild(el('thead', null, fh));
+    var fb = el('tbody');
+    res.functions.forEach(function (f) {
+      fb.appendChild(el('tr', null, [
+        el('td', { cls: 'mono', text: f.identifier }),
+        el('td', { text: f.name }),
+        el('td', { cls: 'num' }, plChip(f.plr)),
+        el('td', { cls: 'num' }, plChip(f.pl)),
+        el('td', { cls: 'mono num', text: isFinite(f.pfhd) ? Number(f.pfhd).toExponential(2) : '--' }),
+        el('td', null, el('span', { cls: 'chip ' + (/green/i.test(f.status) ? 'ok' : 'warn'), text: f.status }))
+      ]));
+    });
+    ft.appendChild(fb);
+    body.push(el('h3', { text: 'Safety functions' }));
+    body.push(el('div', { cls: 'tw' }, ft));
+  }
+
+  if (res.subsystems.length) {
+    var st = el('table', { cls: 'dt' });
+    var sh = el('tr');
+    ['Reference', 'Subsystem', 'Manufacturer', 'Part number', 'Cat', 'PL', 'PFHd', 'MTTFd', 'DCavg', 'CCF'].forEach(function (h) { sh.appendChild(el('th', { scope: 'col', text: h })); });
+    st.appendChild(el('thead', null, sh));
+    var sb = el('tbody');
+    res.subsystems.forEach(function (x) {
+      sb.appendChild(el('tr', null, [
+        el('td', { cls: 'mono', text: x.ref || '--' }),
+        el('td', { text: x.name }),
+        el('td', { text: x.manufacturer || '--' }),
+        el('td', { cls: 'mono', text: x.partNumber || '--' }),
+        el('td', { cls: 'num', text: x.cat || '--' }),
+        el('td', { cls: 'num' }, plChip(x.pl)),
+        el('td', { cls: 'mono num', text: x.pfhd || '--' }),
+        el('td', { cls: 'num', text: x.mttfd || '--' }),
+        el('td', { cls: 'num', text: x.dc ? x.dc + '%' : '--' }),
+        el('td', { cls: 'num', text: x.ccf || '--' })
+      ]));
+    });
+    st.appendChild(sb);
+    body.push(el('h3', { text: 'Subsystems, which come in as devices' }));
+    body.push(el('div', { cls: 'tw' }, st));
+  }
+
+  function chk(label, on, help, onChange) {
+    var c = el('input');
+    c.type = 'checkbox';
+    c.checked = on;
+    c.addEventListener('change', function () { onChange(c.checked); });
+    return el('label', { cls: 'pickrow' }, [c, el('div', {}, [
+      el('div', { cls: 'pickname', text: label }),
+      el('div', { cls: 'hint', text: help })
+    ])]);
+  }
+  body.push(fset('What to bring in', [
+    chk('The safety functions', true, 'Created with their identifier, required and achieved performance level taken directly from the report.', function (v) { takeSfs = v; }),
+    chk('The subsystems, as devices', true, 'Each subsystem becomes a device with its category, performance level and values. Devices are not linked to functions automatically, because the report does not say unambiguously which subsystem serves which function in a form this reader can trust.', function (v) { takeDevs = v; }),
+    chk('Keep the report itself', true, 'Stores the extracted text with the project, so the source of every imported value stays with the file.', function (v) { keepReport = v; })
+  ]));
+
+  var existing = res.functions.filter(function (f) { return sfById(f.identifier); });
+  if (existing.length) {
+    body.push(el('div', { cls: 'notice bad' }, [
+      el('strong', { text: existing.length + ' of these identifiers already exist' }),
+      el('span', { text: existing.map(function (f) { return f.identifier; }).join(', ') + '. Those will be skipped rather than overwritten, so nothing already recorded is lost.' })
+    ]));
+  }
+
+  openDlg('Import from a SISTEMA report', body, function () {
+    var made = sistemaToRecords(res);
+    var nD = 0, nS = 0;
+    if (takeDevs) { made.devices.forEach(function (d) { P.devices.push(d); nD += 1; }); }
+    if (takeSfs) {
+      made.sfs.forEach(function (sf) {
+        if (sfById(sf.id)) return;
+        P.sfs.push(sf); nS += 1;
+      });
+    }
+    if (keepReport) {
+      P.sistemaReports.push({
+        uid: uid(), fileName: res.fileName, importedAt: new Date().toISOString(),
+        project: res.meta.project, checksum: res.meta.checksum,
+        software: res.meta.software, standard: res.meta.standard,
+        reportDate: res.meta.reportDate, authors: res.meta.authors,
+        pageCount: res.pageCount, text: res.text
+      });
+    }
+    commit(nS + ' safety function' + (nS === 1 ? '' : 's') + ' and ' + nD + ' device' + (nD === 1 ? '' : 's') + ' imported from the SISTEMA report');
+    return true;
+  }, 'Import');
+}
+
 function vdmaPreview(devices, fileName) {
   var picked = devices.map(function () { return false; });
   var query = '';
@@ -9536,6 +9978,11 @@ function boot() {
   });
   $('btnAddDev').addEventListener('click', function () { deviceForm(null); });
   $('btnCatalogue').addEventListener('click', function () { catalogueForm(); });
+  $('btnImportSistema').addEventListener('click', function () { $('fileSistema').click(); });
+  $('fileSistema').addEventListener('change', function (ev) {
+    importSistemaReport(ev.target.files && ev.target.files[0]);
+    ev.target.value = '';
+  });
   $('btnImportVdma').addEventListener('click', function () { $('fileVdma').click(); });
   $('fileVdma').addEventListener('change', function (ev) {
     importVdma(ev.target.files && ev.target.files[0]);

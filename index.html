@@ -115,6 +115,24 @@ nav.steps{padding:8px}
 .devtbl .rowacts .btn{width:100%}
 .bulkbar{display:flex;align-items:center;gap:10px;padding:6px 0 10px}
 .bulkcount{font-weight:600;font-size:12.5px}
+/* ---------- ISO 13849-1 Annex A risk graph ---------- */
+.rgwrap{display:grid;grid-template-columns:minmax(240px,300px) 1fr;gap:18px;align-items:start}
+.rgsvg{background:var(--panel-2);border:1px solid var(--rule-2);border-radius:6px;padding:8px}
+.riskgraph{display:block;width:100%;height:auto}
+.riskgraph .rg-off{stroke:var(--rule);stroke-width:1.4;fill:none}
+.riskgraph .rg-on{stroke:var(--bad);stroke-width:2.4;fill:none}
+.riskgraph .rg-box{fill:var(--panel);stroke:var(--rule);stroke-width:1.2}
+.riskgraph .rg-box.on{fill:var(--focus);stroke:var(--focus)}
+.riskgraph .rg-tick{stroke:var(--paper);stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.riskgraph .rg-lab{font:400 10px var(--sans);fill:var(--ink-3)}
+.riskgraph .rg-lab.on{fill:var(--ink);font-weight:700}
+.riskgraph .rg-leaf{font:400 15px var(--sans);fill:var(--ink-3)}
+.riskgraph .rg-leaf.on{fill:var(--bad);font-weight:700}
+.rggroup{margin:0 0 10px;padding:8px 10px}
+.rggroup legend{font:600 11px var(--sans);letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2)}
+.rgrow{display:grid;grid-template-columns:auto 30px 1fr;gap:8px;align-items:baseline;padding:3px 0;font-size:12.5px}
+.rgcode{font-family:var(--mono);font-weight:700}
+@media (max-width:760px){.rgwrap{grid-template-columns:1fr}}
 /* ---------- dialogs and the import picker ---------- */
 dialog .dt select,dialog .dt input[type=text],dialog .dt input[type=number]{min-width:0;width:100%}
 .rolesel{min-width:92px;width:100%;font:inherit}
@@ -427,6 +445,26 @@ table.mx select{padding:3px 5px;font-size:11.5px}
         <h2 class="sec">Method</h2>
         <div class="card">
           <label class="f" style="max-width:420px"><span>Risk estimation method</span>
+            <label class="f"><span>Required performance level for the machine</span>
+              <select id="p_machineplr" data-meta="machinePlr">
+                <option value="">not yet established</option>
+                <option value="a">PL a</option>
+                <option value="b">PL b</option>
+                <option value="c">PL c</option>
+                <option value="d">PL d</option>
+                <option value="e">PL e</option>
+              </select></label>
+            <label class="f"><span>Required structure category</span>
+              <select id="p_machinecat" data-meta="machineCat">
+                <option value="">not yet established</option>
+                <option value="B">Category B</option>
+                <option value="1">Category 1</option>
+                <option value="2">Category 2</option>
+                <option value="3">Category 3</option>
+                <option value="4">Category 4</option>
+              </select></label>
+            <label class="f"><span>Where that requirement comes from</span>
+              <textarea id="p_machineplrbasis" data-meta="machinePlrBasis" rows="2"></textarea></label>
             <label class="f"><span>Performance level route</span>
               <select id="p_plroute" data-meta="plRoute">
                 <option value="K1">Annex K, numerical, the precise route</option>
@@ -653,6 +691,7 @@ function blankProject() {
       title: '', client: '', machine: '', location: '', rev: 'A', revDate: '',
       lead: '', reviewer: '', team: '', scope: '', assumptions: '',
       robotMake: '', robotDom: '', narrative: '', images: [],
+      machinePlr: '', machinePlrBasis: '', machineCat: '',
       method: 'ANSI/RIA R15.306',
       standards: 'ANSI/RIA R15.06-2012 industrial robots and robot systems, safety requirements\nANSI/RIA R15.306-2016 task based risk assessment methodology\nANSI/RIA R15.406-2014 safeguarding\nANSI B11.0-2015 safety of machinery\nANSI/ISO 12100:2012 risk assessment and risk reduction\nISO 13849-1:2023 and ISO 13849-2:2012 safety related parts of control systems\nANSI B11.19-2019 performance requirements for safeguarding\nNFPA 79 electrical standard for industrial machinery\nIEC 60204-1 safety of machinery, electrical equipment of machines'
     },
@@ -2349,6 +2388,7 @@ function newSf() {
     behaviourOnPowerLoss: 'De-energise to safe state', behaviourOnRestore: 'No automatic restart',
     muting: 'None', priority: 'Overrides all other control functions',
     plrOverride: '', achievedPl: '',
+    plrMethod: 'RISK', isoS: 'S2', isoF: 'F2', isoP: 'P2', plrGraphNote: '',
     devices: [],                 /* [{uid, role}] references into P.devices */
     ccf: '', ccfMeasures: [], demandRate: '',
     emiRoute: '', emiNote: '',
@@ -3095,7 +3135,40 @@ function riskById(id) { for (var i = 0; i < P.risks.length; i += 1) { if (P.risk
 function risksForSf(id) { return P.risks.filter(function (r) { return (r.sfIds || []).indexOf(id) >= 0; }); }
 function testsForSf(id) { return P.tests.filter(function (t) { return t.sfId === id; }); }
 
+/* ---------------------------------------------------------------------
+   Where a function's required performance level comes from.
+
+   SISTEMA offers two routes on its PLr tab: enter the value directly, or
+   determine it from the ISO 13849-1 Annex A risk graph. This file adds a
+   third, which is the one it uses by default: take it from the risk rows
+   the function serves, through Table 5 of ANSI/RIA R15.306.
+
+   All three are legitimate and they answer to different customers. The
+   risk rows route keeps the assessment and the design in step. The
+   direct route is for a customer standard that simply states the level.
+   The graph is what a reviewer familiar with SISTEMA expects to see.
+   --------------------------------------------------------------------- */
+var PLR_METHODS = [
+  { k: 'RISK', label: 'From the linked risk rows', help: 'The highest performance level any linked risk row requires, through Table 5. Keeps the assessment and the design in step, and changes when the assessment does.' },
+  { k: 'DIRECT', label: 'Entered directly', help: 'For a customer standard or a type-C standard that states the level outright. Record which document in the note.' },
+  { k: 'GRAPH', label: 'From the ISO 13849-1 Annex A risk graph', help: 'Severity, frequency of exposure and possibility of avoidance, read through the risk graph. The route a reviewer familiar with SISTEMA expects.' }
+];
+function sfPlrMethod(sf) { return sf.plrMethod || (sf.plrOverride ? 'DIRECT' : 'RISK'); }
+function sfGraphPlr(sf) { return isoPLr(sf.isoS || 'S2', sf.isoF || 'F2', sf.isoP || 'P2'); }
+/* The level the linked risk rows demand, whichever route is in use. */
+function sfPlrFromRisks(sf) {
+  var best = '';
+  risksForSf(sf.id).forEach(function (r) {
+    var p = requiredPl(r);
+    if (PL_RANK[p] > PL_RANK[best]) best = p;
+  });
+  return best;
+}
+
 function sfRequiredPl(sf) {
+  var m = sfPlrMethod(sf);
+  if (m === 'GRAPH') return sfGraphPlr(sf);
+  if (m === 'DIRECT' && sf.plrOverride) return sf.plrOverride;
   if (sf.plrOverride) return sf.plrOverride;
   var best = '';
   risksForSf(sf.id).forEach(function (r) {
@@ -3572,16 +3645,16 @@ function findings() {
     sfRequiredGaps(sf).forEach(function (g) {
       var slbl2 = sf.id || '(unnumbered function)';
       if (g.state === 'missing') {
-        add('bad', 'sf', sf.id, slbl2 + ' has no ' + g.f.label.toLowerCase() + ' recorded, and no reason for leaving it blank. ' + g.f.why, 'SISTEMA documentation tab', g.f.k);
+        add('bad', 'sf', sf.id, slbl2 + ' has no ' + g.f.label.toLowerCase() + ' recorded, and no reason for leaving it blank. ' + g.f.why, 'SISTEMA documentation', g.f.k);
       } else {
-        add('warn', 'sf', sf.id, slbl2 + ' leaves ' + g.f.label.toLowerCase() + ' blank with a recorded reason: ' + g.note, 'SISTEMA documentation tab');
+        add('warn', 'sf', sf.id, slbl2 + ' leaves ' + g.f.label.toLowerCase() + ' blank with a recorded reason: ' + g.note, 'SISTEMA documentation');
       }
     });
     if (!String(sf.dangerousPart || '').trim()) {
       add('warn', 'sf', sf.id, (sf.id || '(unnumbered function)') + ' does not name the dangerous part of the machine. Where one function covers more than one dangerous part, it should be split, one function per part.', 'Cookbook 6 section 2.1', 'dangerousPart');
     }
     if (!sf.sistemaType) {
-      add('warn', 'sf', sf.id, (sf.id || '(unnumbered function)') + ' has no SISTEMA function type set, so the record will not line up with a SISTEMA project.', 'SISTEMA documentation tab', 'sistemaType');
+      add('warn', 'sf', sf.id, (sf.id || '(unnumbered function)') + ' has no SISTEMA function type set, so the record will not line up with a SISTEMA project.', 'SISTEMA documentation', 'sistemaType');
     }
 
     (function () {
@@ -3635,6 +3708,32 @@ function findings() {
       if (need.some(function (x) { return x.k === 'INTERVALS'; }) && !String(sf.demandRate || '').trim() && !String(sf.demandRateNa || '').trim()) { missing.push('checking intervals'); }
       if (missing.length) {
         add('warn', 'sf', sf.id, lbl + ' reaches category ' + cat + ', which obliges the file to document ' + missing.join(', ') + '. ISO 13849-2 Table 2 lists what each category requires.', 'Table 2');
+      }
+    }());
+
+    /* The machine-wide requirement is a floor. */
+    (function () {
+      var mp = P.meta.machinePlr, here = sfRequiredPl(sf);
+      if (mp && here && PL_RANK[here] < PL_RANK[mp]) {
+        add('bad', 'sf', sf.id, lbl + ' requires PL ' + here + ', below the PL ' + mp + ' recorded in scope as required across this machine. A function may need more than the machine-wide figure, never less.', 'Table 5', 'plrMethod');
+      }
+      var mc = P.meta.machineCat, hc = sfRequiredCat(sf);
+      if (mc && hc && CAT_RANK[hc] < CAT_RANK[mc]) {
+        add('warn', 'sf', sf.id, lbl + ' requires category ' + hc + ', below the category ' + mc + ' recorded in scope for this machine.', 'Table 5');
+      }
+      var meth = sfPlrMethod(sf);
+      if (meth !== 'RISK' && !String(sf.plrGraphNote || '').trim()) {
+        add('bad', 'sf', sf.id, lbl + ' sets its required performance level ' + (meth === 'GRAPH' ? 'from the risk graph' : 'directly') + ' with no basis recorded. State which document sets it, or why the factors were scored as they were.', '', 'plrGraphNote');
+      }
+      if (meth === 'DIRECT' && !sf.plrOverride) {
+        add('bad', 'sf', sf.id, lbl + ' is set to take its required performance level directly but no level is entered.', '', 'plrOverride');
+      }
+      if (meth === 'GRAPH') {
+        var viaRisk = sfPlrFromRisks(sf);
+        var viaGraph = sfGraphPlr(sf);
+        if (viaRisk && viaRisk !== viaGraph) {
+          add('warn', 'sf', sf.id, lbl + ' reads PL ' + viaGraph + ' on the risk graph, while the linked risk rows require PL ' + viaRisk + ' through Table 5. Both are recorded; say in the basis which governs.', 'Table 5');
+        }
       }
     }());
 
@@ -5364,6 +5463,9 @@ function renderReport() {
     doc.appendChild(dl([
       ['Company', m.client], ['Location', m.location], ['Robot or cell identification', m.machine],
       ['Machine manufacturer and model', m.robotMake], ['Date of manufacture', m.robotDom],
+      ['Required performance level for the machine', m.machinePlr ? 'PL ' + m.machinePlr : 'not established'],
+      ['Required structure category', m.machineCat ? 'Category ' + m.machineCat : 'not established'],
+      ['Basis for that requirement', m.machinePlrBasis || 'not recorded'],
       ['Revision', (m.rev || '') + (m.revDate ? '  dated ' + m.revDate : '')],
       ['Performed by', m.lead], ['Approved by', m.reviewer],
       ['Method', m.method === 'ISO 13849-1' ? 'ISO 13849-1:2015 Annex A risk graph' : SRC]
@@ -6781,6 +6883,11 @@ function confirmDelete(what, onYes, verb) {
    --------------------------------------------------------------------- */
 var FIELD_HELP = {
   /* controls built by hand elsewhere in the forms */
+  machinePlr: 'The performance level the machine as a whole is required to reach, where a customer standard or a type-C standard sets one. Individual safety functions can require more than this, never less.',
+  machineCat: 'The structure category required across the machine, where one is specified. A function may need more but not less.',
+  machinePlrBasis: 'Which document sets the requirement, and its clause or revision. This is the field an auditor reads when a function is designed to a level the risk assessment on its own would not demand.',
+  plrMethod: 'Which route establishes the required performance level for this function. All three are legitimate and answer to different customers.',
+  plrGraphNote: 'Why the severity, frequency and avoidance were scored as they were. The graph shows the answer; this says how it was reached.',
   drawingRef: 'Sheet number and revision of the schematic this simplified drawing came from, so the picture can be traced back to the controlling document.',
   wellTriedKind: 'Which row of ISO 13849-2 Table D.3 this component matches. Selecting one shows the conditions it carries and whether a fault exclusion is possible for it at all.',
   sepDistance: 'The distance between the safeguard and the hazard zone, as calculated or as taken from a type-C standard. Where more than one hazard zone is served, record the largest of the distances.',
@@ -6997,6 +7104,98 @@ function focusField(key) {
     window.setTimeout(function () { box.classList.remove('fieldflash'); }, 2600);
   }, 60);
   return true;
+}
+
+/* ---------------------------------------------------------------------
+   The ISO 13849-1 Annex A risk graph, drawn.
+
+   Eight leaves, one per combination, and the chosen path lit through
+   them. A tree read left to right says what a list of three dropdowns
+   cannot: that the same severity leads somewhere different depending on
+   what follows, and how close the current answer sits to the next level
+   up. That last part is what a reviewer is actually looking for.
+   --------------------------------------------------------------------- */
+var ISO_LEAVES = [
+  { s: 'S1', f: 'F1', p: 'P1', pl: 'a' },
+  { s: 'S1', f: 'F1', p: 'P2', pl: 'b' },
+  { s: 'S1', f: 'F2', p: 'P1', pl: 'b' },
+  { s: 'S1', f: 'F2', p: 'P2', pl: 'c' },
+  { s: 'S2', f: 'F1', p: 'P1', pl: 'c' },
+  { s: 'S2', f: 'F1', p: 'P2', pl: 'd' },
+  { s: 'S2', f: 'F2', p: 'P1', pl: 'd' },
+  { s: 'S2', f: 'F2', p: 'P2', pl: 'e' }
+];
+function svgEl(tag, attrs) {
+  var n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  Object.keys(attrs || {}).forEach(function (k) { n.setAttribute(k, attrs[k]); });
+  return n;
+}
+/* sel is {s,f,p}; returns an <svg> element. */
+function riskGraphSvg(sel) {
+  var W = 300, H = 268, svg = svgEl('svg', {
+    viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img',
+    'aria-label': 'ISO 13849-1 Annex A risk graph with the selected path highlighted'
+  });
+  svg.setAttribute('class', 'riskgraph');
+
+  var xStart = 14, xS = 52, xF = 116, xP = 186, xLeaf = 236;
+  var top = 22, gap = 30;
+  function leafY(i) { return top + i * gap; }
+  function line(x1, y1, x2, y2, on) {
+    svg.appendChild(svgEl('path', {
+      d: 'M' + x1 + ' ' + y1 + ' L' + x2 + ' ' + y2,
+      class: on ? 'rg-on' : 'rg-off'
+    }));
+  }
+  function label(x, y, text, on, anchor) {
+    var t = svgEl('text', { x: x, y: y + 4, class: on ? 'rg-lab on' : 'rg-lab' });
+    if (anchor) { t.setAttribute('text-anchor', anchor); }
+    t.textContent = text;
+    svg.appendChild(t);
+  }
+  function box(x, y, on) {
+    svg.appendChild(svgEl('rect', { x: x - 6, y: y - 6, width: 12, height: 12, rx: 2, class: on ? 'rg-box on' : 'rg-box' }));
+    if (on) {
+      svg.appendChild(svgEl('path', { d: 'M' + (x - 3) + ' ' + y + ' l2.5 2.5 L' + (x + 3.5) + ' ' + (y - 3.5), class: 'rg-tick' }));
+    }
+  }
+
+  /* trunk */
+  var trunkY = leafY(3.5);
+  line(xStart, trunkY, xS, trunkY, true);
+
+  ['S1', 'S2'].forEach(function (sv, si) {
+    var sOn = sel.s === sv;
+    var sY = leafY(si * 4 + 1.5);
+    line(xS, trunkY, xS, sY, sOn);
+    line(xS, sY, xF, sY, sOn);
+    box(xS, sY, sOn);
+    label(xS + 10, sY, sv, sOn);
+
+    ['F1', 'F2'].forEach(function (fv, fi) {
+      var fOn = sOn && sel.f === fv;
+      var fY = leafY(si * 4 + fi * 2 + 0.5);
+      line(xF, sY, xF, fY, fOn);
+      line(xF, fY, xP, fY, fOn);
+      box(xF, fY, fOn);
+      label(xF + 10, fY, fv, fOn);
+
+      ['P1', 'P2'].forEach(function (pv, pi) {
+        var idx = si * 4 + fi * 2 + pi;
+        var pOn = fOn && sel.p === pv;
+        var pY = leafY(idx);
+        line(xP, fY, xP, pY, pOn);
+        line(xP, pY, xLeaf, pY, pOn);
+        box(xP, pY, pOn);
+        label(xP + 10, pY, pv, pOn);
+        var leaf = ISO_LEAVES[idx];
+        var t = svgEl('text', { x: xLeaf + 22, y: pY + 6, class: pOn ? 'rg-leaf on' : 'rg-leaf', 'text-anchor': 'middle' });
+        t.textContent = leaf.pl;
+        svg.appendChild(t);
+      });
+    });
+  });
+  return svg;
 }
 
 function fWrap(label, key, node, help) {
@@ -8077,9 +8276,9 @@ function sfForm(existing) {
     }[k] || '';
   }
   drawRequired();
-  body.push(fset('SISTEMA documentation tab, required with justification', [reqHost]));
+  body.push(fset('Required, with a justification where blank', [reqHost]));
 
-  body.push(fset('SISTEMA documentation tab, free text', [
+  body.push(fset('Triggering event and reaction', [
     fArea(bag, 'triggeringEvent', 'Triggering event', work, { ph: 'E-stop press de-energises the safety logic solver, which de-energises the safety outputs wired to the servo drive STO.' }),
     fArea(bag, 'reactionPowerFail', 'Reaction and behaviour on power failure', work, {
       ph: 'All systems de-energise to zero hazardous energy states.',
@@ -8279,12 +8478,114 @@ function sfForm(existing) {
         { k: '', label: 'take it from the devices' },
         { k: 'a', label: 'PLa' }, { k: 'b', label: 'PLb' }, { k: 'c', label: 'PLc' }, { k: 'd', label: 'PLd' }, { k: 'e', label: 'PLe' }
       ], { mono: true, help: 'Use this to record a SISTEMA result directly' }),
-      fSel(bag, 'plrOverride', 'Required PL override', work, [
-        { k: '', label: 'take the worst case from the linked risk rows' },
-        { k: 'a', label: 'PLa' }, { k: 'b', label: 'PLb' }, { k: 'c', label: 'PLc' }, { k: 'd', label: 'PLd' }, { k: 'e', label: 'PLe' }
-      ], { mono: true })
+      el('span', { cls: 'hint', text: 'The required performance level is set in its own section below.' })
     ])
   ]));
+
+  /* ---------------------------------------------------------------------
+     Required performance level, with the Annex A risk graph.
+     --------------------------------------------------------------------- */
+  (function () {
+    var host = el('div');
+    var mSel = el('select');
+    PLR_METHODS.forEach(function (m) {
+      var o = el('option', { value: m.k, text: m.label });
+      if (sfPlrMethod(work) === m.k) { o.selected = true; }
+      mSel.appendChild(o);
+    });
+    var dSel = el('select', { cls: 'mono' });
+    [''].concat(['a', 'b', 'c', 'd', 'e']).forEach(function (v) {
+      var o = el('option', { value: v, text: v ? 'PL ' + v : 'not set' });
+      if ((work.plrOverride || '') === v) { o.selected = true; }
+      dSel.appendChild(o);
+    });
+    var note = el('textarea', { rows: 2, value: work.plrGraphNote || '', placeholder: 'Which document sets it, or why the factors were scored as they were' });
+    var out = el('div');
+
+    function draw() {
+      work.plrMethod = mSel.value;
+      work.plrOverride = dSel.value;
+      var m = sfPlrMethod(work);
+      var kids = [el('p', { cls: 'hint', text: (PLR_METHODS.filter(function (x) { return x.k === m; })[0] || {}).help || '' })];
+
+      if (m === 'DIRECT') {
+        kids.push(fWrap('Required performance level', '', dSel, 'The level the governing document states outright.'));
+      }
+
+      if (m === 'GRAPH') {
+        var sel = { s: work.isoS || 'S2', f: work.isoF || 'F2', p: work.isoP || 'P2' };
+        var res = isoPLr(sel.s, sel.f, sel.p);
+        var pick = el('div', { cls: 'rgpick' });
+        [
+          { key: 'isoS', clause: 'A.3.1', title: 'Severity of injury (S)', opts: ISO_S },
+          { key: 'isoF', clause: 'A.3.2', title: 'Frequency and duration of exposure (F)', opts: ISO_F },
+          { key: 'isoP', clause: 'A.3.3', title: 'Possibility of avoiding the hazard (P)', opts: ISO_P }
+        ].forEach(function (grp) {
+          var fs2 = el('fieldset', { cls: 'rggroup' }, [el('legend', { text: grp.title + '  [' + grp.clause + ']' })]);
+          grp.opts.slice().reverse().forEach(function (o) {
+            var r = el('input');
+            r.type = 'radio';
+            r.name = 'rg-' + grp.key + '-' + (work.uid || 'new');
+            r.value = o.k;
+            r.checked = (work[grp.key] || (grp.key === 'isoS' ? 'S2' : grp.key === 'isoF' ? 'F2' : 'P2')) === o.k;
+            r.addEventListener('change', function () { if (r.checked) { work[grp.key] = o.k; draw(); } });
+            fs2.appendChild(el('label', { cls: 'rgrow' }, [
+              r,
+              el('span', { cls: 'rgcode', text: o.k }),
+              el('span', { text: String(o.label).replace(/^ISO\s+\S+\s+/, '') })
+            ]));
+          });
+          pick.appendChild(fs2);
+        });
+
+        kids.push(el('div', { cls: 'rgwrap' }, [
+          el('div', { cls: 'rgsvg' }, [riskGraphSvg(sel)]),
+          pick
+        ]));
+        kids.push(el('div', { cls: 'notice ok' }, [
+          el('strong', { text: 'Required performance level: PL ' + res }),
+          el('span', { text: nsTriple(SCHEME_ISO, sel.s, sel.f, sel.p) + ' reads PL ' + res + ' on the Annex A graph. The path is lit above.' })
+        ]));
+      }
+
+      if (m === 'RISK') {
+        var fromRisks = sfPlrFromRisks(work);
+        var rows = risksForSf(work.id);
+        kids.push(el('div', { cls: 'notice ' + (fromRisks ? 'ok' : '') }, [
+          el('strong', { text: fromRisks ? 'Required performance level: PL ' + fromRisks : 'No linked risk row sets a level yet' }),
+          el('span', {
+            text: rows.length
+              ? 'Taken as the highest of ' + rows.length + ' linked risk row' + (rows.length === 1 ? '' : 's') + ' through Table 5, and it moves when the assessment does.'
+              : 'Link this function to a risk row, or choose one of the other routes.'
+          })
+        ]));
+      }
+
+      /* A machine-wide requirement is a floor, never a ceiling. */
+      var mp = P.meta.machinePlr;
+      var here = sfRequiredPl(work);
+      if (mp && here && PL_RANK[here] < PL_RANK[mp]) {
+        kids.push(el('div', { cls: 'notice bad' }, [
+          el('strong', { text: 'Below the requirement set for the machine' }),
+          el('span', { text: 'Scope records PL ' + mp + ' as required across this machine. This function is at PL ' + here + '. A function may need more than the machine-wide figure, never less.' })
+        ]));
+      }
+
+      kids.push(fWrap('Basis', 'plrGraphNote', note));
+      put(out, kids);
+    }
+    mSel.addEventListener('change', draw);
+    dSel.addEventListener('change', draw);
+    note.addEventListener('input', function () { work.plrGraphNote = note.value; });
+    bag.push(function () {
+      work.plrMethod = mSel.value;
+      work.plrOverride = dSel.value;
+      work.plrGraphNote = note.value.trim();
+    });
+    draw();
+    put(host, [fWrap('How the required level is established', 'plrMethod', mSel), out]);
+    body.push(fset('Required performance level', [host]));
+  }());
   body.push(fset('Notes', [fArea(bag, 'notes', 'Notes and open items', work)]));
 
   openDlg(isNew ? 'Add safety function' : 'Edit ' + (sf.id || 'function'), body, function () {
@@ -8757,6 +9058,7 @@ function exportCsv() {
     'Separation distance', 'Basis for the separation distance', 'Whole body access',
     'Equivalent SIL',
     'Demand rate', 'Demand rate blank reason',
+    'PLr route', 'PLr graph S', 'PLr graph F', 'PLr graph P', 'PLr basis',
     'Required PLr', 'Required category',
     'Achieved PL', 'Meets PLr', 'Meets category',
     'Provenance', 'Provenance note', 'Observed by', 'Date observed', 'Unverified in the chain',
@@ -8786,6 +9088,9 @@ function exportCsv() {
       sf.sepDistance || '', sf.sepDistanceBasis || '', sf.wholeBodyAccess || '',
       ach ? silFor(ach) : '',
       sf.demandRate || '', sf.demandRateNa || '',
+      (PLR_METHODS.filter(function (x) { return x.k === sfPlrMethod(sf); })[0] || {}).label || '',
+      sfPlrMethod(sf) === 'GRAPH' ? sf.isoS : '', sfPlrMethod(sf) === 'GRAPH' ? sf.isoF : '', sfPlrMethod(sf) === 'GRAPH' ? sf.isoP : '',
+      sf.plrGraphNote || '',
       req ? 'PL' + req : '', reqCat || '', ach ? 'PL' + ach : '',
       req ? (plMeets(ach, req) ? 'yes' : 'NO') : 'n/a',
       (reqCat && reqCat !== '-') ? (catMeets(sf.achievedCat, reqCat) ? 'yes' : 'NO') : 'n/a',

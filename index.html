@@ -528,7 +528,9 @@ table.mx select{padding:3px 5px;font-size:11.5px}
         <div class="btnbar noprint">
           <button class="btn" id="btnGenField" type="button">Generate baseline procedures</button>
           <button class="btn ghost" id="btnAddField" type="button">Add a procedure</button>
+          <button class="btn ghost" id="btnMuteField" type="button" aria-pressed="false">Mute these findings</button>
         </div>
+        <div id="fieldMuteNote"></div>
         <div id="fieldList"></div>
 
         <h2 class="sec">Safeguarding checklist</h2>
@@ -704,6 +706,7 @@ function blankProject() {
     checklist: null,       // null means "use shipped question set"
     guardOpenings: [],     // ANSI B11.19 reach measurements
     reportSections: null,  // null means "every section"
+    muteField: false,      // field verification findings set aside for now
     signatures: [],        // e-signed approvals
     fieldTests: [],        // per-device proving of the installed hardware
     sistemaReports: [],    // imported SISTEMA reports, kept whole
@@ -782,6 +785,7 @@ function migrate(data) {
   base.fieldTests = Array.isArray(data.fieldTests) ? data.fieldTests : [];
   base.sistemaReports = Array.isArray(data.sistemaReports) ? data.sistemaReports : [];
   base.reportSections = Array.isArray(data.reportSections) ? data.reportSections : null;
+  base.muteField = !!data.muteField;
   base.tablesEdited = !!data.tablesEdited;
   if (v < 4) { migrateV3(base); }
   if (v < 5) { migrateV4(base); }
@@ -2103,6 +2107,88 @@ function parseSistemaReport(text) {
     });
   }
 
+  /* Detail pages: one per function, keyed by its printed name. Values
+     run from the end of a label to the start of the next label. */
+  var DETAIL_LABELS = [
+    'Identifier of the Safety function:', 'Safety function type:', 'Triggering event:',
+    'Reaction and', 'Behaviour on power failure:', 'Safe state:', 'Operation mode:',
+    'Interfaces:', 'Demand rate:', 'Running-on time:', 'Priority:',
+    'Documentation:', 'Document:', 'Electromagnetic immunity', 'Route for fulfilment',
+    'of EMI measures:', 'PLr', 'Subsystems'
+  ];
+  /* SISTEMA letter-spaces some labels, so compare on letters alone. */
+  function squash(v) { return String(v).replace(/\s+/g, '').toLowerCase(); }
+  var SQUASHED = DETAIL_LABELS.map(squash);
+  function isLabelLine(l) {
+    var q = squash(l);
+    for (var k = 0; k < SQUASHED.length; k += 1) {
+      if (q.indexOf(SQUASHED[k]) === 0) return SQUASHED[k];
+    }
+    return '';
+  }
+  var details = {};
+  for (i = 0; i < lines.length; i += 1) {
+    var head = lines[i].match(/^Safety function:\s*(.+)$/);
+    if (!head) continue;
+    var fname = head[1].trim();
+    var d = details[fname] || (details[fname] = {});
+    var j = i + 1;
+    while (j < lines.length && !/^Safety function:/.test(lines[j]) && !/^Subsystems \(/.test(lines[j])) {
+      var lab = isLabelLine(lines[j]);
+      if (lab) {
+        /* anything after the label on the same line is part of the value */
+        var inline = lines[j].slice(lines[j].length - (lines[j].length - lab.length)).trim();
+        var raw = lines[j];
+        var val = [];
+        /* "Reaction and All systems de-energize..." carries its value inline */
+        var m3 = raw.match(/^(Reaction and)\s+(.+)$/);
+        /* SISTEMA splits two labels across lines and puts the value
+           inline after the first half, with no colon to key off. */
+        var m4 = raw.match(/^(Route for fulfilment)\s+(.+)$/i);
+        if (m3) { val.push(m3[2].trim()); }
+        else if (m4) { val.push(m4[2].trim()); }
+        else {
+          var idx = raw.toLowerCase().indexOf(':');
+          if (idx >= 0 && raw.slice(idx + 1).trim()) { val.push(raw.slice(idx + 1).trim()); }
+        }
+        var k2 = j + 1;
+        while (k2 < lines.length && !isLabelLine(lines[k2]) && !/^Safety function:/.test(lines[k2])
+               && !/^Subsystems \(/.test(lines[k2]) && !/^SISTEMA a free of charge/.test(lines[k2])
+               && !/^Project name:/.test(lines[k2]) && !/^File date:/.test(lines[k2])) {
+          val.push(lines[k2].trim());
+          k2 += 1;
+        }
+        var text2 = val.join(' ').replace(/\s+/g, ' ').trim();
+        if (text2) {
+          if (lab === squash('Triggering event:')) { d.triggeringEvent = d.triggeringEvent || text2; }
+          else if (lab === squash('Reaction and')) { d.reaction = d.reaction || text2; }
+          else if (lab === squash('Behaviour on power failure:')) { d.powerFailure = d.powerFailure || text2; }
+          else if (lab === squash('Safe state:')) { d.safeState = d.safeState || text2; }
+          else if (lab === squash('Operation mode:')) { d.modes = d.modes || text2; }
+          else if (lab === squash('Interfaces:')) { d.interfaces = d.interfaces || text2; }
+          else if (lab === squash('Demand rate:')) { d.demandRate = d.demandRate || text2; }
+          else if (lab === squash('Running-on time:')) { d.runningOnTime = d.runningOnTime || text2; }
+          else if (lab === squash('Priority:')) { d.priority = d.priority || text2; }
+          else if (lab === squash('Safety function type:')) { d.sistemaType = d.sistemaType || text2; }
+          else if (lab === squash('of EMI measures:') || lab === squash('Route for fulfilment')) {
+            /* Only a route token counts. The subsystem pages carry a
+               sentence saying the route was documented on the function,
+               and that is prose, not a value. */
+            /* The whole value has to be the token. SISTEMA letter-spaces
+               nearby labels, so a lone D lifted out of a longer string is
+               far more likely to be part of "D o c u m e n t" than a
+               route. Take it only when it stands alone. */
+            var rt = text2.trim().match(/^([ABCD])$|^(n\/a)$/i);
+            if (rt) { d.emiRoute = d.emiRoute || (rt[1] ? rt[1].toUpperCase() : 'n/a'); }
+          }
+        }
+        j = k2;
+        continue;
+      }
+      j += 1;
+    }
+  }
+
   /* Subsystem blocks. Each opens with "Subsystems (n / m)" and carries a
      name, a reference designator, a manufacturer, a part number and the
      values SISTEMA computed for it. */
@@ -2143,6 +2229,11 @@ function parseSistemaReport(text) {
     if (byKey[k]) return;
     byKey[k] = 1;
     uniq.push(x);
+  });
+
+  funcs.forEach(function (f) {
+    var d2 = details[f.name];
+    if (d2) { Object.keys(d2).forEach(function (k) { f[k] = d2[k]; }); }
   });
 
   if (!funcs.length && !uniq.length) {
@@ -2186,6 +2277,30 @@ function sistemaToRecords(res) {
       + (res.meta.checksum ? ', checksum ' + res.meta.checksum : '')
       + '. The report is the reference for this determination.';
     sf.achievedPl = f.pl;
+    /* Whatever the report actually carried. Blank stays blank rather
+       than being invented, and the reader never overwrites with '-'. */
+    function take(v) {
+      var t = String(v || '').trim();
+      if (!t || t === '-' || /^n\/a$/i.test(t)) return '';
+      return t;
+    }
+    sf.sistemaType = take(f.sistemaType);
+    sf.triggeringEvent = take(f.triggeringEvent);
+    sf.reaction = take(f.reaction);
+    sf.reactionPowerFail = [take(f.reaction), take(f.powerFailure)].filter(Boolean).join(' ');
+    sf.safeState = take(f.safeState);
+    sf.modes = take(f.modes);
+    sf.interfaces = take(f.interfaces);
+    sf.demandRate = take(f.demandRate);
+    sf.runningOnTime = take(f.runningOnTime);
+    sf.priority = take(f.priority);
+    /* "n/a" is a real answer for the EMI route, so it is read from the
+       raw value rather than through take(), which treats it as blank. */
+    if (String(f.emiRoute || '').trim()) {
+      var er = String(f.emiRoute).trim();
+      sf.emiRoute = /^[ABCD]$/.test(er) ? er : (/^n\/a$/i.test(er) ? 'n/a' : '');
+      sf.emiNote = sf.emiRoute ? 'Recorded in the SISTEMA report as route ' + er + '.' : '';
+    }
     sf.prov = 'OUTSTANDING';
     sf.importedFrom = 'SISTEMA report' + (res.meta.checksum ? ', checksum ' + res.meta.checksum : '');
     sf.provNote = 'Imported from a SISTEMA report, so the values are modelled. Nothing here has been checked against the installed hardware.';
@@ -3595,6 +3710,11 @@ function findings() {
        noise, and noise trains people to ignore the panel. */
     if (where === 'dev' && suppressForImport(deviceByUid(id), msg)) { return; }
     if (where === 'sf' && isImportedSf(sfById(id)) && SF_COMPLETENESS_WORDS.test(String(msg))) { return; }
+    /* Field verification cannot start until the hardware is installed,
+       so on a file that is still in design these findings are noise
+       rather than news. Muting sets them aside; it never hides them
+       from the report, which says plainly that they were muted. */
+    if (P.muteField && ref === 'field verification') { return; }
     out.push({ sev: sev, where: where, id: id, msg: msg, ref: ref || '', field: field || '' });
   }
 
@@ -3630,8 +3750,8 @@ function findings() {
       add('bad', 'risk', r.id, lbl + ' scores worse after risk reduction than before it. Check the residual entries.', '6.6');
     }
     var e0 = e0Claim(r);
-    if (e0.claimed && !e0.ok) { add('bad', 'risk', r.id, lbl + ': ' + e0.note, 'Table 1, E0'); }
-    else if (e0.claimed && e0.soft) { add('warn', 'risk', r.id, lbl + ': ' + e0.note, 'Table 1, E0'); }
+    if (e0.claimed && !e0.ok) { add('bad', 'risk', r.id, lbl + ': ' + e0.note, 'Table 1, E0', 'resE'); }
+    else if (e0.claimed && e0.soft) { add('warn', 'risk', r.id, lbl + ': ' + e0.note, 'Table 1, E0', 'resE'); }
 
     /* Clause 6.4.3. Safety-rated features that could be implemented are
        excluded from the initial assessment, because the assessment is
@@ -3865,7 +3985,7 @@ function findings() {
         + ' from Table K.1 at an MTTFD of ' + yrs + ' years, where the PFH is '
         + Number(cmp.precise.pfh).toExponential(2) + ' per hour.'
         + (cmp.optimistic ? ' The simplified reading is the optimistic one, so it overstates what this subsystem achieves.' : '')
-        + ' Annex K is the precise route and is what SISTEMA computes.', 'Table K.1');
+        + ' Annex K is the precise route and is what SISTEMA computes.', 'Table K.1', 'dcPct');
     }());
 
     /* Clause 6.1.9 preconditions */
@@ -3907,7 +4027,7 @@ function findings() {
     var reqCat = sfRequiredCat(sf);
     if (!req) { add('warn', 'sf', sf.id, lbl + ' has no required performance level, because no risk row references it.', '6.5.3'); }
     else if (!ach) { add('bad', 'sf', sf.id, lbl + ' has no achieved performance level.', '6.7 step 3'); }
-    else if (!plMeets(ach, req)) { add('bad', 'sf', sf.id, lbl + ' achieves PL ' + ach + ' but Table 5 requires PL ' + req + ' for the linked risk level.', 'Table 5'); }
+    else if (!plMeets(ach, req)) { add('bad', 'sf', sf.id, lbl + ' achieves PL ' + ach + ' but Table 5 requires PL ' + req + ' for the linked risk level.', 'Table 5', 'plrMethod'); }
     var build = sfBuild(sf);
     if (!build.hasDevices) {
       add('bad', 'sf', sf.id, lbl + ' has no devices assigned, so nothing supports its performance claim.');
@@ -3954,17 +4074,20 @@ function findings() {
 
     (function () {
       var sc = ccfScore(sf.ccfMeasures);
+      /* Measures are the auditable record, so where any are selected the
+         score follows them and the typed field is kept in step rather
+         than argued with. A typed number only stands alone on a file
+         that predates the measure list. */
+      if (sc.total && String(sf.ccf) !== String(sc.total)) { sf.ccf = String(sc.total); }
       var typed = Number(sf.ccf);
       if (!sf.ccf && !sc.total) {
-        add('warn', 'sf', sf.id, lbl + ' has no common cause failure score. Every category 2, 3 and 4 subsystem needs one.', 'Table F.1');
+        add('warn', 'sf', sf.id, lbl + ' has no common cause failure score. Every category 2, 3 and 4 subsystem needs one.', 'Table F.1', 'ccfMeasures');
       } else if (sc.total && sc.total < CCF_THRESHOLD) {
-        add('bad', 'sf', sf.id, lbl + ' scores ' + sc.total + ' against Table F.1, ' + sc.shortfall + ' short of the 65 points required. Additional measures are needed before the simplified procedure can assume a beta factor of 2 per cent.', 'Table F.1');
+        add('bad', 'sf', sf.id, lbl + ' scores ' + sc.total + ' against Table F.1, ' + sc.shortfall + ' short of the 65 points required. Additional measures are needed before the simplified procedure can assume a beta factor of 2 per cent.', 'Table F.1', 'ccfMeasures');
       } else if (!sc.total && isFinite(typed) && typed > 0) {
-        add('warn', 'sf', sf.id, lbl + ' carries a common cause failure score of ' + typed + ' with no measures recorded against Table F.1. A bare number cannot be audited.', 'Table F.1');
+        add('warn', 'sf', sf.id, lbl + ' carries a common cause failure score of ' + typed + ' with no measures recorded against Table F.1. A bare number cannot be audited.', 'Table F.1', 'ccfMeasures');
       }
-      if (sc.total && isFinite(typed) && typed !== sc.total) {
-        add('warn', 'sf', sf.id, lbl + ' has a typed common cause score of ' + typed + ' but the selected measures total ' + sc.total + '.', 'Table F.1');
-      }
+
     }());
 
     if (!(sf.images || []).length && !String(sf.drawingRef || '').trim()) {
@@ -3983,10 +4106,10 @@ function findings() {
         add('bad', 'sf', sf.id, lbl + ' states a separation distance with no basis recorded. State which standard it came from, the approach considered, and the response time it assumed.', 'ISO 13855', 'sepDistanceBasis');
       }
       if (hasDist && !hasRunOn && !String(sf.runningOnTimeNa || '').trim()) {
-        add('warn', 'sf', sf.id, lbl + ' states a separation distance but no running-on time, so the response time the distance assumed cannot be checked against this machine.', 'ISO 13855');
+        add('warn', 'sf', sf.id, lbl + ' states a separation distance but no running-on time, so the response time the distance assumed cannot be checked against this machine.', 'ISO 13855', 'runningOnTime');
       }
       if (sf.wholeBodyAccess === 'Yes' && !/reset|restart|presence|detection|scan|mat/i.test([sf.muting, sf.reset, sf.description, sf.notes].filter(Boolean).join(' '))) {
-        add('warn', 'sf', sf.id, lbl + ' allows whole body access, which requires additional protective measures against unexpected reset or restart with a person inside the safeguarded space. Nothing on this function records one.', 'ISO 13855');
+        add('warn', 'sf', sf.id, lbl + ' allows whole body access, which requires additional protective measures against unexpected reset or restart with a person inside the safeguarded space. Nothing on this function records one.', 'ISO 13855', 'wholeBodyAccess');
       }
     }());
 
@@ -4002,7 +4125,7 @@ function findings() {
       if (need.some(function (x) { return x.k === 'MTTFD'; }) && bld2.worstCat && !(sf.devices || []).some(function (l) { var dv = deviceByUid(l.uid); return dv && deviceMttfdYears(dv); })) { missing.push('MTTFD of each channel'); }
       if (need.some(function (x) { return x.k === 'INTERVALS'; }) && !String(sf.demandRate || '').trim() && !String(sf.demandRateNa || '').trim()) { missing.push('checking intervals'); }
       if (missing.length) {
-        add('warn', 'sf', sf.id, lbl + ' reaches category ' + cat + ', which obliges the file to document ' + missing.join(', ') + '. ISO 13849-2 Table 2 lists what each category requires.', 'Table 2');
+        add('warn', 'sf', sf.id, lbl + ' reaches category ' + cat + ', which obliges the file to document ' + missing.join(', ') + '. ISO 13849-2 Table 2 lists what each category requires.', 'Table 2', 'ccfMeasures');
       }
     }());
 
@@ -4038,9 +4161,9 @@ function findings() {
       if (!sf.emiRoute || sf.emiRoute === '-') {
         add('warn', 'sf', sf.id, lbl + ' has no electromagnetic immunity route selected. At least one Annex L route should be chosen and fully applied.', 'Annex L', 'emiRoute');
       } else if (sf.emiRoute === 'B' && reqPl && 'cde'.indexOf(reqPl) >= 0) {
-        add('bad', 'sf', sf.id, lbl + ' uses Annex L route B, which covers required PL a and b, but this function requires PL ' + reqPl + '.', 'Annex L');
+        add('bad', 'sf', sf.id, lbl + ' uses Annex L route B, which covers required PL a and b, but this function requires PL ' + reqPl + '.', 'Annex L', 'emiRoute');
       } else if (sf.emiRoute === 'C' && reqPl === 'e' && sfAchievedCat(sf) !== '4') {
-        add('bad', 'sf', sf.id, lbl + ' uses Annex L route C at required PL e, which is only available where the requirements of category 4 are also met. The chain reaches category ' + (sfAchievedCat(sf) || 'unknown') + '.', 'Annex L');
+        add('bad', 'sf', sf.id, lbl + ' uses Annex L route C at required PL e, which is only available where the requirements of category 4 are also met. The chain reaches category ' + (sfAchievedCat(sf) || 'unknown') + '.', 'Annex L', 'emiRoute');
       }
       if (sf.emiRoute && sf.emiRoute !== '-' && sf.emiRoute !== 'n/a' && !String(sf.emiNote || '').trim()) {
         add('warn', 'sf', sf.id, lbl + ' selects an electromagnetic immunity route with no evidence recorded. The route should be documented with proof of compliance.', 'Annex L', 'emiNote');
@@ -4795,6 +4918,18 @@ function kvRow(k, v, mono) {
    ===================================================================== */
 function renderFieldTests() {
   var list = P.fieldTests || [];
+
+  var mb = $('btnMuteField');
+  if (mb) {
+    mb.textContent = P.muteField ? 'Unmute these findings' : 'Mute these findings';
+    mb.setAttribute('aria-pressed', P.muteField ? 'true' : 'false');
+  }
+  put($('fieldMuteNote'), P.muteField ? [
+    el('div', { cls: 'notice warn' }, [
+      el('strong', { text: 'Field verification findings are muted' }),
+      el('span', { text: 'Useful while the machine is still being built, since none of this can be done until the hardware is installed. They are set aside from the findings panel only. They still appear in the report, marked as muted, because a reader is entitled to know they were set aside rather than answered.' })
+    ])
+  ] : []);
   var proved = P.devices.filter(function (d) { return fieldStateForDevice(d.uid).k === 'pass'; }).length;
   var failed = P.devices.filter(function (d) { return fieldStateForDevice(d.uid).k === 'fail'; }).length;
   var untested = P.devices.filter(function (d) { return fieldStateForDevice(d.uid).k === 'none'; }).length;
@@ -6084,6 +6219,17 @@ function renderReport() {
 
   sec('findings', function (H) {
     doc.appendChild(el('h3', { text: H }));
+    if (P.muteField) {
+      var muted = P.muteField;
+      P.muteField = false;
+      var hidden = findings().filter(function (x) { return x.ref === 'field verification'; });
+      P.muteField = muted;
+      doc.appendChild(el('div', { cls: 'notice warn' }, [
+        el('strong', { text: 'Field verification findings were muted on this file' }),
+        el('span', { text: hidden.length + ' finding' + (hidden.length === 1 ? '' : 's') + ' about proving the installed hardware were set aside rather than answered, and are listed below for completeness.' }),
+        el('ul', {}, hidden.slice(0, 40).map(function (x) { return el('li', { text: x.msg }); }))
+      ]));
+    }
     doc.appendChild(el('p', { cls: 'hint', text: 'Clause references are to ' + SRC + ' unless stated otherwise.' }));
     if (!f.length) { doc.appendChild(el('p', { text: 'None.' })); }
     else {
@@ -6168,7 +6314,8 @@ var TABLE_REFS = [
   { re: /table\s*c\.?\s*1/i, frag: 'table-c-1' },
   { re: /table\s*f\.?\s*1/i, frag: 'table-f-1' },
   { re: /table\s*d\.?\s*3/i, frag: 'table-d-3' },
-  { re: /annex\s*l|\bemi\b/i, frag: 'annex-l' },
+  { re: /table\s*l\.?\s*1|annex\s*l|\bemi\b/i, frag: 'annex-l' },
+  { re: /table\s*e\.?\s*1/i, frag: 'annex-l' },
   { re: /table\s*8|6\.1\.9/i, frag: 'table-8' },
   { re: /6\.1\.3\.2\.4/i, frag: 'category-2-conditions' },
   { re: /6\.1\.3\.2/i, frag: 'table-5-overview' },
@@ -7645,10 +7792,33 @@ function fWrap(label, key, node, help) {
   registerField(key, node);
   return el('label', { cls: 'f' }, [fLabel(label, h, node), node]);
 }
+/* Any table a help text names, so the reader can see it rather than go
+   looking. Longest citation first, so "Table K.1" is not read as
+   "Table K". */
+var CITE_RE = /\b(Table\s+[A-Z]?\.?\s?\d+(?:\.\d+)?|Annex\s+[A-Z]\b|ISO\s+13855|ANSI\s+B11\.19|B11\.19)\b/g;
+function citationsIn(text) {
+  var out = [], seen = {}, m;
+  CITE_RE.lastIndex = 0;
+  while ((m = CITE_RE.exec(String(text || ''))) !== null) {
+    var cite = m[1].replace(/\s+/g, ' ').trim();
+    if (seen[cite] || !tableKeyFor(cite)) continue;
+    seen[cite] = 1;
+    out.push(cite);
+  }
+  return out.slice(0, 2);
+}
 function fLabel(text, help, linkTo) {
   var h = helpNode(help);
   if (h && linkTo) { describeBy(linkTo, h); }
-  return el('span', { cls: 'flab' }, h ? [el('span', { text: text }), h] : [el('span', { text: text })]);
+  var kids = [el('span', { text: text })];
+  if (h) { kids.push(h); }
+  citationsIn(help).forEach(function (cite) {
+    kids.push(el('button', {
+      cls: 'chip tag refchip noprint', type: 'button', text: cite + '  \u2197',
+      on: { click: function (ev) { ev.preventDefault(); showTablePopup(cite); } }
+    }));
+  });
+  return el('span', { cls: 'flab' }, kids);
 }
 
 /* field builders: each returns a node and registers a getter on `bag` */
@@ -8780,6 +8950,7 @@ function sfForm(existing) {
     }
     draw();
     bag.push(function () { work.ccf = String(ccfScore(work.ccfMeasures).total); });
+    registerField('ccfMeasures', host);
     body.push(fset('Common cause failure, ISO 13849-1:2023 Table F.1', [host]));
   }());
 
@@ -10004,6 +10175,12 @@ function boot() {
     commit('Guard opening added');
   });
 
+  $('btnMuteField').addEventListener('click', function () {
+    P.muteField = !P.muteField;
+    commit(P.muteField
+      ? 'Field verification findings muted. They stay in the report.'
+      : 'Field verification findings unmuted');
+  });
   $('btnGenField').addEventListener('click', function () {
     var n = generateFieldTests();
     if (!n) { say('Every device already has a procedure'); return; }

@@ -26,6 +26,7 @@
      because a panel that inverts with the theme has to be legible in
      both and the inverse of "ink" is not always a usable background. */
   --tip-bg:#1b2026; --tip-ink:#f2f5f8; --tip-line:#39424b; --tip-dim:#c2ccd4;
+  --field:#7a5d00;
   --mono:ui-monospace,"SFMono-Regular","Cascadia Mono","Roboto Mono",Menlo,Consolas,monospace;
   --sans:"Helvetica Neue",Inter,"Segoe UI",Roboto,Arial,sans-serif;
   --sp:4px;
@@ -47,6 +48,7 @@
   /* In dark mode the tooltip goes lighter than the page, not darker,
      so it reads as a raised surface instead of a hole. */
   --tip-bg:#eef2f6; --tip-ink:#14181c; --tip-line:#b6c0c9; --tip-dim:#3d464e;
+  --field:#e8b93a;
 }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
@@ -115,6 +117,9 @@ nav.steps{padding:8px}
 .devtbl .rowacts .btn{width:100%}
 .bulkbar{display:flex;align-items:center;gap:10px;padding:6px 0 10px}
 .bulkcount{font-weight:600;font-size:12.5px}
+/* Field verification findings read as their own class: answered at a
+   different time, by a different person, standing at the machine. */
+.fieldfind{color:var(--field)}
 /* ---------- ISO 13849-1 Annex A risk graph ---------- */
 .rgwrap{display:grid;grid-template-columns:minmax(240px,300px) 1fr;gap:18px;align-items:start}
 .rgsvg{background:var(--panel-2);border:1px solid var(--rule-2);border-radius:6px;padding:8px}
@@ -1037,7 +1042,7 @@ function loadLocal() {
    copyright Robotic Industries Association and is not reproduced here.
    ===================================================================== */
 
-var SRC = 'RIA ANSI/RIA R15.306-2016';
+var SRC = 'ANSI/RIA R15.306-2016';
 
 var SEV = [
   { k: 'S3', label: 'S3 Serious', help: 'Normally non reversible. The person is not likely to return to the same job after recovery. Fatality, amputation of a limb, long term disability, chronic illness.' },
@@ -3453,6 +3458,17 @@ function deviceStatus(dv) { return worstLevel(deviceIssues(dv)); }
    apply: whether it is used by a function, whether the field
    observation matches, whether a fault exclusion is legitimate.
    --------------------------------------------------------------------- */
+/* Field verification findings are recognised by what they are about.
+   The provenance ones read "field verification is outstanding" and are
+   raised from a different block, but they say the same thing: nobody has
+   looked at the hardware yet. Muting one and not the other would be
+   arbitrary from where the reader sits. */
+function isFieldFinding(f) {
+  if (!f) return false;
+  if (f.ref === 'field verification') return true;
+  return /field verification is outstanding|failed field verification|no field procedure|field verified/i.test(String(f.msg || ''));
+}
+
 var IMPORTED_SOURCES = ['MFR_LIB', 'SISTEMA'];
 function isImported(dv) {
   return !!dv && (IMPORTED_SOURCES.indexOf(dv.sourceKind) >= 0 || !!dv.libName);
@@ -3714,7 +3730,7 @@ function findings() {
        so on a file that is still in design these findings are noise
        rather than news. Muting sets them aside; it never hides them
        from the report, which says plainly that they were muted. */
-    if (P.muteField && ref === 'field verification') { return; }
+    if (P.muteField && isFieldFinding({ ref: ref, msg: msg })) { return; }
     out.push({ sev: sev, where: where, id: id, msg: msg, ref: ref || '', field: field || '' });
   }
 
@@ -4785,13 +4801,22 @@ function findingsBox(scope) {
     return el('div', { cls: 'notice ok' }, [el('strong', { text: 'No open findings' }), el('span', { text: 'Every check in this section passes against the data entered so far.' })]);
   }
   var bad = list.filter(function (f) { return f.sev === 'bad'; });
+  var fieldCount = list.filter(isFieldFinding).length;
   var box = el('div', { cls: 'notice' + (bad.length ? ' bad' : '') });
-  box.appendChild(el('strong', { text: list.length + ' finding' + (list.length === 1 ? '' : 's') + (bad.length ? ' (' + bad.length + ' blocking)' : '') }));
+  box.appendChild(el('strong', {
+    text: list.length + ' finding' + (list.length === 1 ? '' : 's')
+      + (bad.length ? ' (' + bad.length + ' blocking' + (fieldCount ? ', ' + fieldCount + ' field' : '') + ')'
+        : (fieldCount ? ' (' + fieldCount + ' field)' : ''))
+  }));
   var ul = el('ul');
   list.slice(0, 40).forEach(function (f) {
     var t = findingTarget(f);
+    var isField = isFieldFinding(f);
     var kids = [
-      el('span', { text: (f.sev === 'bad' ? 'Blocking: ' : 'Review: ') + f.msg + ' ' }),
+      el('span', {
+        cls: isField ? 'fieldfind' : '',
+        text: (f.sev === 'bad' ? 'Blocking: ' : (isField ? 'Field: ' : 'Review: ')) + f.msg + ' '
+      }),
       f.ref ? refChip(f.ref) : null
     ];
     if (t) {
@@ -6386,9 +6411,10 @@ function showTablePopup(ref) {
 /* A citation chip that opens the table it names. */
 function refChip(ref) {
   if (!ref) return null;
-  if (!tableKeyFor(ref)) { return el('span', { cls: 'chip tag', text: SRC + ' ' + ref }); }
+  var label = /^[0-9]+(\.[0-9]+)*$/.test(String(ref).trim()) ? SRC + ' ' + ref : String(ref);
+  if (!tableKeyFor(ref)) { return el('span', { cls: 'chip tag', text: label }); }
   return el('button', {
-    cls: 'chip tag refchip noprint', type: 'button', text: SRC + ' ' + ref + '  \u2197',
+    cls: 'chip tag refchip noprint', type: 'button', text: label + '  \u2197',
     on: { click: function () { showTablePopup(ref); } }
   });
 }

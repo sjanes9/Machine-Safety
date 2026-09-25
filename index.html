@@ -161,6 +161,7 @@ dialog .dt td,dialog .dt th{word-break:break-word}
 @media (max-width:820px){.importtbl{table-layout:auto}}
 .subcard{border:1px solid var(--rule-2);border-radius:6px;padding:10px 12px;margin:10px 0 0;background:var(--panel-2)}
 .cardhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.subhead{margin:14px 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
 .refchip{cursor:pointer;border:1px solid var(--rule);text-decoration:none}
 .refchip:hover,.refchip:focus-visible{background:var(--accent);border-color:var(--accent);color:var(--paper);outline:none}
 .tblsec{display:block;margin:0 0 8px}
@@ -385,12 +386,13 @@ table.mx select{padding:3px 5px;font-size:11.5px}
     </div>
     <nav class="steps" id="nav" aria-label="Safety file sections">
       <button class="step" data-view="project" type="button"><span class="num">00</span> Scope</button>
-      <button class="step" data-view="risk" type="button"><span class="num">01</span> Risk assessment <span class="cnt" data-cnt="risk">0</span></button>
-      <button class="step" data-view="dev" type="button"><span class="num">02</span> Safety devices <span class="cnt" data-cnt="dev">0</span></button>
-      <button class="step" data-view="sf" type="button"><span class="num">03</span> Safety functions <span class="cnt" data-cnt="sf">0</span></button>
-      <button class="step" data-view="vv" type="button"><span class="num">04</span> Risk assessment verification <span class="cnt" data-cnt="vv">0</span></button>
-      <button class="step" data-view="check" type="button"><span class="num">05</span> Field verification <span class="cnt" data-cnt="check">0</span></button>
-      <button class="step" data-view="report" type="button"><span class="num">06</span> Report</button>
+      <button class="step" data-view="hz" type="button"><span class="num">01</span> Safety report <span class="cnt" data-cnt="hz">0</span></button>
+      <button class="step" data-view="risk" type="button"><span class="num">02</span> Risk assessment <span class="cnt" data-cnt="risk">0</span></button>
+      <button class="step" data-view="dev" type="button"><span class="num">03</span> Safety devices <span class="cnt" data-cnt="dev">0</span></button>
+      <button class="step" data-view="sf" type="button"><span class="num">04</span> Safety functions <span class="cnt" data-cnt="sf">0</span></button>
+      <button class="step" data-view="vv" type="button"><span class="num">05</span> Risk assessment verification <span class="cnt" data-cnt="vv">0</span></button>
+      <button class="step" data-view="check" type="button"><span class="num">06</span> Field verification <span class="cnt" data-cnt="check">0</span></button>
+      <button class="step" data-view="report" type="button"><span class="num">07</span> Compliance report</button>
       <button class="step" data-view="tables" type="button"><span class="num">RF</span> Lookup tables</button>
       <button class="step" data-view="guide" type="button"><span class="num">?</span> How to use this</button>
     </nav>
@@ -489,7 +491,34 @@ table.mx select{padding:3px 5px;font-size:11.5px}
         </div>
       </section>
 
-      <!-- ============ 01 RISK ============ -->
+      <!-- ============ 01 SAFETY REPORT ============ -->
+      <section class="view" id="v-hz" aria-labelledby="h-hz">
+        <h2 class="sec" id="h-hz">Safety report: what the walkdown found</h2>
+        <p class="lede">One entry per hazard observed on the machine, with the photographs that show it and a note of what should be done. This is the record of what was seen, written standing at the equipment. Scoring it comes next: a row in the risk assessment can be raised from any entry here, and one observation may raise several rows or none.</p>
+        <div class="btnbar noprint">
+          <button class="btn" id="btnAddHz" type="button">Add an observation</button>
+        </div>
+        <div class="grid g4" id="hzStats"></div>
+        <div id="hzGaps"></div>
+        <div id="hzList"></div>
+
+        <h2 class="sec">Safeguarding checklist</h2>
+        <p class="lede">The other half of the walkdown: an observation of the installed guarding rather than an analysis of it. Four of these are access prevention questions, marked below, and they decide whether exposure can be scored as prevented anywhere on this file. Answering them here, before the risk assessment, is the order they are actually needed in. A control system that reaches its required performance level does not prevent access on its own.</p>
+        <div class="btnbar noprint">
+          <button class="btn ghost" id="btnCheckReset" type="button">Reset to the shipped question set</button>
+        </div>
+        <div class="grid g4" id="checkStats"></div>
+        <div id="checkGate"></div>
+        <div id="checkList"></div>
+        <h2 class="sec">Guard opening measurements</h2>
+        <p class="lede">Reach distances to ANSI B11.19. Given the width of an opening, the table gives how far the hazard has to sit behind it. Recording a measurement here is stronger than answering the reach question by eye, and a failed measurement blocks exposure prevented on its own.</p>
+        <div class="btnbar noprint">
+          <button class="btn ghost sm" id="btnAddOpening" type="button">Add a measurement</button>
+        </div>
+        <div id="openingList"></div>
+      </section>
+
+      <!-- ============ 02 RISK ============ -->
       <section class="view" id="v-risk" aria-labelledby="h-risk">
         <h2 class="sec" id="h-risk">Task based risk assessment</h2>
         <p class="lede">One row per task and hazard pair. Score the initial risk as if no risk reduction measure existed, choose the measures in hierarchy order, then re-score the row. Acceptable risk is low or negligible.</p>
@@ -524,10 +553,10 @@ table.mx select{padding:3px 5px;font-size:11.5px}
         <div id="guideBody"></div>
       </section>
 
-      <!-- ============ 3b SAFEGUARDING CHECKLIST ============ -->
+      <!-- ============ 06 FIELD VERIFICATION ============ -->
       <section class="view" id="v-check" aria-labelledby="h-check">
         <h2 class="sec" id="h-check">Field verification</h2>
-        <p class="lede">The final step, and a different question from the one before it. Step 4 asks whether the analysis is right. This asks whether the hardware bolted to the machine does what the analysis says it does. It is done device by device, on the installed equipment, with the machine in front of you.</p>
+        <p class="lede">The last step, and a different question from the one before it. The verification step asks whether the analysis is right. This asks whether the hardware bolted to the machine does what the analysis says it does. It is done device by device, on the installed equipment, with the machine in front of you. The guarding observations that used to sit here have moved to the safety report, which is where the walkdown belongs.</p>
         <p class="lede">An emergency stop is not proved by pressing it. It is proved by pressing it, then by removing channel A, then by removing channel B, because a device wired single channel passes the first step and fails the other two. Each step carries its own verdict for that reason.</p>
         <div class="grid g4" id="fieldStats"></div>
         <div class="btnbar noprint">
@@ -537,21 +566,6 @@ table.mx select{padding:3px 5px;font-size:11.5px}
         </div>
         <div id="fieldMuteNote"></div>
         <div id="fieldList"></div>
-
-        <h2 class="sec">Safeguarding checklist</h2>
-        <p class="lede">Part of the same step: an observation of installed guarding, not an analysis. Four of these are access prevention questions, marked below, and they decide whether exposure can be scored as prevented anywhere on this file. A control system that reaches its required performance level does not prevent access on its own.</p>
-        <div class="btnbar noprint">
-          <button class="btn ghost" id="btnCheckReset" type="button">Reset to the shipped question set</button>
-        </div>
-        <div class="grid g4" id="checkStats"></div>
-        <div id="checkGate"></div>
-        <h2 class="sec">Guard opening measurements</h2>
-        <p class="lede">Reach distances to ANSI B11.19. Given the width of an opening, the table gives how far the hazard has to sit behind it. Recording a measurement here is stronger than answering the reach question by eye, and a failed measurement blocks exposure prevented on its own.</p>
-        <div class="btnbar noprint">
-          <button class="btn ghost sm" id="btnAddOpening" type="button">Add a measurement</button>
-        </div>
-        <div id="openingList"></div>
-        <div id="checkList"></div>
       </section>
 
       <!-- ============ 03 SAFETY FUNCTIONS ============ -->
@@ -689,9 +703,9 @@ function debounce(fn, ms) {
 }
 
 /* ---------- 20.2 Schema and state ---------- */
-var SCHEMA = 9;
-var STORE_KEY = 'safetyFile.v9';
-var LEGACY_KEYS = ['safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
+var SCHEMA = 10;
+var STORE_KEY = 'safetyFile.v10';
+var LEGACY_KEYS = ['safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
 
 function blankProject() {
   return {
@@ -705,6 +719,7 @@ function blankProject() {
       standards: 'ANSI/RIA R15.06-2012 industrial robots and robot systems, safety requirements\nANSI/RIA R15.306-2016 task based risk assessment methodology\nANSI/RIA R15.406-2014 safeguarding\nANSI B11.0-2015 safety of machinery\nANSI/ISO 12100:2012 risk assessment and risk reduction\nISO 13849-1:2023 and ISO 13849-2:2012 safety related parts of control systems\nANSI B11.19-2019 performance requirements for safeguarding\nNFPA 79 electrical standard for industrial machinery\nIEC 60204-1 safety of machinery, electrical equipment of machines'
     },
     risks: [],
+    hazards: [],           // what the walkdown found: photos, notes, actions
     devices: [],
     sfs: [],
     tests: [],
@@ -780,6 +795,7 @@ function migrate(data) {
   var base = blankProject();
   base.meta = Object.assign(base.meta, data.meta || {});
   base.risks = Array.isArray(data.risks) ? data.risks : [];
+  base.hazards = Array.isArray(data.hazards) ? data.hazards : [];
   base.devices = Array.isArray(data.devices) ? data.devices : [];
   base.sfs = Array.isArray(data.sfs) ? data.sfs : [];
   base.tests = Array.isArray(data.tests) ? data.tests : [];
@@ -798,6 +814,7 @@ function migrate(data) {
   if (v < 7) { migrateV6(base); }
   if (v < 8) { migrateV7(base); }
   if (v < 9) { migrateV8(base); }
+  if (v < 10) { migrateV9(base); }
   normalise(base);
   return base;
 }
@@ -936,6 +953,19 @@ function migrateV8(base) {
   return base;
 }
 
+/* v9 had nowhere to put what a walkdown actually produces: a photograph
+   of the thing that is wrong, and a sentence about it. Notes were being
+   pushed into risk rows, which is the wrong shape, because one
+   observation often raises several task and hazard pairs and sometimes
+   none at all. v10 records the observation in its own right and lets a
+   risk row be raised from it. Nothing is migrated into it: an existing
+   file has no walkdown record to recover, and inventing one would put
+   words in the assessor's mouth. */
+function migrateV9(base) {
+  base.hazards = base.hazards || [];
+  return base;
+}
+
 function migrateV7(base) {
   base.checklist = base.checklist || null;
   base.guardOpenings = base.guardOpenings || [];
@@ -1007,6 +1037,15 @@ function normalise(base) {
     sf.devices = sf.devices || [];
     Object.keys(sfBlank).forEach(function (k) {
       if (sf[k] === undefined && k !== 'uid') { sf[k] = sfBlank[k]; }
+    });
+  });
+  base.hazards = base.hazards || [];
+  var hzBlank = newHazard();
+  base.hazards.forEach(function (h) {
+    h.images = h.images || [];
+    h.riskUids = h.riskUids || [];
+    Object.keys(hzBlank).forEach(function (k) {
+      if (h[k] === undefined && k !== 'uid') { h[k] = hzBlank[k]; }
     });
   });
   base.checklist = base.checklist || null;
@@ -2781,6 +2820,51 @@ function newRisk() {
     isoS: 'S2', isoF: 'F2', isoP: 'P2'
   };
 }
+/* =====================================================================
+   Safety report: what the walkdown found
+   ---------------------------------------------------------------------
+   An observation, not an assessment. It records what was seen, where,
+   with photographs, and what should be done about it. Scoring happens
+   afterwards in the risk assessment, and one observation can raise
+   several rows there or none at all, so the two are linked rather than
+   merged.
+   ===================================================================== */
+var HAZARD_STATUS = ['Open', 'In progress', 'Closed', 'Accepted as is', 'Not a finding'];
+var HAZARD_PRIORITY = ['Immediate', 'High', 'Medium', 'Low'];
+
+function newHazard() {
+  return {
+    uid: uid('h'), id: '',
+    title: '', area: '', phase: 'Normal production', hazardType: 'Mechanical',
+    observed: '',            /* what was seen */
+    existing: '',            /* the safeguarding in place at the time */
+    consequence: '',         /* the harm it could cause */
+    recommendation: '',      /* what should be done */
+    priority: 'Medium', status: 'Open', owner: '', due: '',
+    observedBy: '', observedDate: '',
+    images: [], notes: '',
+    riskUids: []             /* risk rows raised from this observation */
+  };
+}
+function hazardByUid(u) {
+  for (var i = 0; i < (P.hazards || []).length; i += 1) { if (P.hazards[i].uid === u) return P.hazards[i]; }
+  return null;
+}
+function hazardLabel(h) {
+  return (h.id ? h.id + '  ' : '') + (h.title || 'Untitled observation');
+}
+/* Rows still present in the risk assessment. A deleted row leaves the
+   link behind rather than silently rewriting the observation. */
+function hazardRisks(h) {
+  return (h.riskUids || []).map(function (u) {
+    for (var i = 0; i < P.risks.length; i += 1) { if (P.risks[i].uid === u) return P.risks[i]; }
+    return null;
+  }).filter(Boolean);
+}
+function hazardOpen(h) {
+  return h.status === 'Open' || h.status === 'In progress';
+}
+
 function newSf() {
   return {
     uid: uid('s'), id: '', name: '', type: 'Protective stop, guard interlock', description: '',
@@ -3899,6 +3983,41 @@ function findings() {
     });
   }());
 
+  /* ---------- 1c. the walkdown record ---------- */
+  (P.hazards || []).forEach(function (h) {
+    var lbl = hazardLabel(h);
+    if (!h.id) {
+      add('warn', 'hz', h.uid, lbl + ' has no reference. An observation without a number cannot be referred to from a risk row, a report or a corrective action.', '');
+    }
+    if (!String(h.observed || '').trim()) {
+      add('warn', 'hz', h.uid, lbl + ' records no description of what was observed. The title alone is not a record.', '', 'observed');
+    }
+    if (hazardOpen(h) && !String(h.recommendation || '').trim()) {
+      add('warn', 'hz', h.uid, lbl + ' is still open with no recommendation recorded.', '', 'recommendation');
+    }
+    if (hazardOpen(h) && h.priority === 'Immediate' && !h.owner) {
+      add('bad', 'hz', h.uid, lbl + ' is marked immediate and has nobody named against the action.', '', 'owner');
+    }
+    if (h.status === 'Accepted as is' && !String(h.notes || '').trim()) {
+      add('warn', 'hz', h.uid, lbl + ' is accepted as is with no note giving the reason. Accepting a hazard is a decision, and a decision needs its basis written down.', '', 'notes');
+    }
+    if (!hazardRisks(h).length && h.status !== 'Not a finding') {
+      add('warn', 'hz', h.uid, lbl + ' has no risk assessment row raised from it, so it has never been scored. Raise a row, or record it as not a finding.', '6.7 step 1');
+    }
+  });
+  (function () {
+    /* A photograph is what lets someone check an observation months
+       later. Worth saying once: on a walkdown of any size, one finding
+       per unphotographed hazard buries everything else in the panel. */
+    var noPic = (P.hazards || []).filter(function (h) { return !(h.images || []).length; });
+    if (!noPic.length) return;
+    if (noPic.length === 1) {
+      add('warn', 'hz', noPic[0].uid, hazardLabel(noPic[0]) + ' has no photograph. A photograph is what lets someone check the observation months later without going back to the machine.', '');
+    } else {
+      add('warn', 'hz', '', noPic.length + ' observations have no photograph: ' + noPic.map(function (h) { return h.id || h.title || 'unreferenced'; }).join(', ') + '. A photograph is what lets someone check an observation months later without going back to the machine.', '');
+    }
+  }());
+
   /* ---------- 2b. the checklist itself ---------- */
   (function () {
     var cs = complianceScore();
@@ -4285,6 +4404,7 @@ function imageBytes() {
   var n = 0;
   function count(list) { (list || []).forEach(function (i) { n += (i.data || '').length; }); }
   count(P.meta.images);
+  (P.hazards || []).forEach(function (h) { count(h.images); });
   P.risks.forEach(function (r) { count(r.images); });
   P.devices.forEach(function (dv) { count(dv.images); });
   P.sfs.forEach(function (sf) { count(sf.images); });
@@ -4764,7 +4884,11 @@ function findingTarget(f) {
     var ft = f.id ? fieldTestById(f.id) : null;
     return { view: 'check', open: ft ? function () { fieldTestForm(ft); } : null, label: ft ? ('open ' + (ft.title || 'the procedure')) : 'go to field verification' };
   }
-  if (w === 'check') { return { view: 'check', open: null, label: 'go to field verification' }; }
+  if (w === 'hz') {
+    var h = f.id ? hazardByUid(f.id) : null;
+    return { view: 'hz', open: h ? function () { hazardForm(h); } : null, label: h ? ('open ' + hazardLabel(h)) : 'go to the safety report' };
+  }
+  if (w === 'check') { return { view: 'hz', open: null, label: 'go to the safeguarding checklist' }; }
   if (w === 'meta' || w === 'project') { return { view: 'project', open: null, label: 'go to scope' }; }
   return null;
 }
@@ -5166,13 +5290,23 @@ var GUIDE = [
     k: 'order', title: 'The order to work in',
     steps: [
       { n: '00', t: 'Scope', d: 'Identify the machine, the revision, who is doing the work, and what is inside and outside the assessment. The exclusions matter more than the inclusions: name the adjacent equipment you did not assess.' },
-      { n: '01', t: 'Risk assessment', d: 'One row per task and hazard pair. Score the initial risk with no protective measure in place, list the measures, then score the residual. The level is computed for you and is never left blank.' },
-      { n: '02', t: 'Safety devices', d: 'Every interlock, relay, contactor and drive that makes up a safety circuit, with its safety values and where those values came from. Import a manufacturer library in VDMA 66413 XML if you have one.' },
-      { n: '03', t: 'Safety functions', d: 'Chain the devices into functions: input, logic, output. The app works out the achieved performance level and structure category and checks them against what the risk rows require.' },
-      { n: '04', t: 'Risk assessment verification', d: 'Does the analysis hold? Verification of the scoring, the specification and the performance claims. This is desk work.' },
-      { n: '05', t: 'Field verification', d: 'Does the hardware do what the analysis says? Device by device, on the machine, with the guarding checklist and the reach measurements. This is the last step and it is done standing at the equipment.' },
-      { n: '06', t: 'Report', d: 'Choose which sections to print, sign the revision, and issue.' }
+      { n: '01', t: 'Safety report', d: 'The walkdown. One entry per hazard found, with photographs and a recommendation, plus the safeguarding checklist and the reach measurements. This is observation, not scoring, and it comes first because the checklist decides whether exposure can be scored as prevented at all.' },
+      { n: '02', t: 'Risk assessment', d: 'One row per task and hazard pair, raised from the observations or added directly. Score the initial risk with no protective measure in place, list the measures, then score the residual. The level is computed for you and is never left blank.' },
+      { n: '03', t: 'Safety devices', d: 'Every interlock, relay, contactor and drive that makes up a safety circuit, with its safety values and where those values came from. Import a manufacturer library in VDMA 66413 XML if you have one.' },
+      { n: '04', t: 'Safety functions', d: 'Chain the devices into functions: input, logic, output. The app works out the achieved performance level and structure category and checks them against what the risk rows require.' },
+      { n: '05', t: 'Risk assessment verification', d: 'Does the analysis hold? Verification of the scoring, the specification and the performance claims. This is desk work.' },
+      { n: '06', t: 'Field verification', d: 'Does the hardware do what the analysis says? Device by device, on the installed equipment, with the machine in front of you.' },
+      { n: '07', t: 'Compliance report', d: 'Choose which sections to print, sign the revision, and issue.' }
     ]
+  },
+  {
+    k: 'walkdown', title: 'The safety report, and why it is separate from the risk assessment',
+    body: [
+      'What comes off a walkdown is an observation: a photograph of a nip point with no guard over it, and a sentence about it. What goes into a risk assessment is a task and hazard pair with a score against it. They are not the same record, and forcing the first into the shape of the second loses both.',
+      'One observation often raises several rows, because the same unguarded nip point is reached during cleaning, during a jam clear and during a changeover, and those are three different exposures. Some observations raise none at all: recorded on the walk, then ruled out. The safety report keeps that record of having looked.',
+      'Raise a risk row means what it says. The hazard, the area, the phase and the photographs carry across. The scoring does not, on purpose, because a photograph does not know how often somebody stands there.'
+    ],
+    tip: 'The safeguarding checklist and the reach measurements sit in this section too. They are the same walk with a fixed question set, and their answers decide whether exposure prevented is available on any row, which is something you want settled before you start scoring rather than after.'
   },
   {
     k: 'scoring', title: 'Scoring a risk row',
@@ -5284,6 +5418,14 @@ function renderGuide() {
 
 function renderCheck() {
   renderFieldTests();
+}
+
+/* The guarding observations: the checklist, the E0 gate and the reach
+   measurements. These moved out of field verification and into the
+   safety report, because they are observations of the installed
+   guarding rather than proof that a circuit works, and because the E0
+   gate they set has to be known before any row is scored. */
+function renderGuardingRecord() {
   var list = checklist();
   var cs = complianceScore();
   var gate = guardingGate();
@@ -5443,6 +5585,186 @@ function renderCheck() {
     host.push(el('div', { cls: 'tw' }, [tbl]));
   });
   put($('checkList'), host);
+}
+
+
+/* =====================================================================
+   01  Safety report
+   ---------------------------------------------------------------------
+   The walkdown record. Each entry is one hazard as it was found, with
+   the photographs that show it and a note of what should be done. The
+   guarding checklist and the reach measurements render underneath,
+   because they are the same walk with a fixed question set.
+   ===================================================================== */
+function hazardStatusTone(h) {
+  if (h.status === 'Closed') return 'ok';
+  if (h.status === 'Not a finding') return 'tag';
+  if (h.status === 'Accepted as is') return 'warn';
+  if (h.priority === 'Immediate') return 'bad';
+  return h.status === 'In progress' ? 'warn' : 'bad';
+}
+
+function renderHazards() {
+  var list = P.hazards || [];
+  var open = list.filter(hazardOpen).length;
+  var immediate = list.filter(function (h) { return h.priority === 'Immediate' && hazardOpen(h); }).length;
+  var noPhoto = list.filter(function (h) { return !(h.images || []).length; }).length;
+  var unlinked = list.filter(function (h) { return !hazardRisks(h).length && h.status !== 'Not a finding'; }).length;
+
+  put($('hzStats'), [
+    statCard('Observations', list.length),
+    statCard('Still open', open, immediate ? immediate + ' marked immediate' : null, open ? 'alert' : 'good'),
+    statCard('Without a photograph', noPhoto, noPhoto ? 'a photograph is what makes an observation checkable later' : 'every observation is evidenced', noPhoto ? 'alert' : 'good'),
+    statCard('Not yet scored', unlinked, unlinked ? 'no risk assessment row raised from them' : 'every observation reaches the risk assessment', unlinked ? 'alert' : 'good')
+  ]);
+  put($('hzGaps'), findingsBox('hz'));
+
+  var host = clear($('hzList'));
+  if (!list.length) {
+    host.appendChild(el('div', { cls: 'card empty', text: 'No observations yet. Add one for each hazard found on the walkdown: what it is, where it is, a photograph of it, and what should be done. The risk assessment rows can be raised from these afterwards.' }));
+    return;
+  }
+
+  list.forEach(function (h) {
+    var card = el('div', { cls: 'card', 'data-rowid': h.id || h.uid });
+    var rows = hazardRisks(h);
+
+    card.appendChild(el('div', { cls: 'cardhead' }, [
+      el('div', {}, [
+        el('h3', { text: hazardLabel(h) }),
+        el('div', { cls: 'hint', text: [h.area, h.phase, h.hazardType].filter(Boolean).join('  /  ') })
+      ]),
+      el('div', { cls: 'rowacts' }, [
+        el('span', { cls: 'chip ' + hazardStatusTone(h), text: h.status }),
+        el('span', { cls: 'chip tag', text: h.priority }),
+        actBtn('Edit', function () { hazardForm(h); }),
+        actBtn('Raise a risk row', function () { riskFromHazard(h); }),
+        actBtn('Delete', function () {
+          confirmDelete(hazardLabel(h), function () {
+            P.hazards = P.hazards.filter(function (x) { return x.uid !== h.uid; });
+            commit('Observation deleted');
+          });
+        }, 'danger')
+      ])
+    ]));
+
+    var facts = [];
+    if (h.observed) facts.push(['What was observed', h.observed]);
+    if (h.existing) facts.push(['Safeguarding in place at the time', h.existing]);
+    if (h.consequence) facts.push(['Possible harm', h.consequence]);
+    if (h.recommendation) facts.push(['Recommendation', h.recommendation]);
+    if (h.owner || h.due) facts.push(['Action', [h.owner, h.due].filter(Boolean).join(', due ')]);
+    if (h.observedBy || h.observedDate) facts.push(['Observed by', [h.observedBy, h.observedDate].filter(Boolean).join(' on ')]);
+    if (h.notes) facts.push(['Notes', h.notes]);
+    if (facts.length) { card.appendChild(dl(facts)); }
+    else { card.appendChild(el('p', { cls: 'hint', text: 'Nothing written down yet. Edit the observation and say what was seen.' })); }
+
+    card.appendChild(el('h4', { cls: 'subhead', text: 'Photographs' }));
+    card.appendChild(gallery(h.images, {
+      editable: true,
+      onChange: function () { saveLocalSoon(); if (typeof updateImgUsage === 'function') updateImgUsage(); }
+    }));
+
+    var linkKids = [];
+    if (rows.length) {
+      linkKids.push(el('div', { cls: 'rowacts' }, rows.map(function (r) {
+        return el('button', {
+          cls: 'linkbtn noprint', type: 'button',
+          text: (r.id || 'row') + ': ' + (r.hazard || r.task || 'untitled row'),
+          on: { click: function () { show('risk'); riskForm(r); } }
+        });
+      })));
+    } else {
+      linkKids.push(el('p', { cls: 'hint', text: 'No risk assessment row has been raised from this observation. Raise one to score it, or set the status to not a finding if it does not need scoring.' }));
+    }
+    card.appendChild(el('div', { cls: 'noprint' }, [el('h4', { cls: 'subhead', text: 'Risk assessment rows raised from this' })].concat(linkKids)));
+
+    host.appendChild(card);
+  });
+}
+
+/* Raise a risk row from an observation, carrying across what the two
+   genuinely share. The scoring is left blank on purpose: an observation
+   is not an assessment, and pre-filling the severity would put a number
+   in the assessor's mouth. */
+function riskFromHazard(h) {
+  var r = newRisk();
+  r.id = nextId('RA-', P.risks, 3);
+  r.hazardType = h.hazardType || 'Mechanical';
+  r.phase = h.phase || 'Normal production';
+  r.hazard = h.title || '';
+  r.hazardSource = h.area || '';
+  r.harm = h.consequence || '';
+  r.task = '';
+  r.notes = h.id ? ('Raised from safety report observation ' + h.id + '.') : 'Raised from a safety report observation.';
+  r.images = (h.images || []).slice();
+  P.risks.push(r);
+  h.riskUids = (h.riskUids || []).concat([r.uid]);
+  commit(r.id + ' raised from ' + hazardLabel(h));
+  show('risk');
+  riskForm(r);
+}
+
+function hazardForm(existing) {
+  var isNew = !existing;
+  var work = existing ? JSON.parse(JSON.stringify(existing)) : newHazard();
+  if (isNew && !work.id) { work.id = nextId('HZ-', P.hazards || [], 2); }
+  var bag = [];
+  var body = [];
+
+  body.push(fset('What was found', [
+    row('g3', [
+      fText(bag, 'id', 'Reference', work, { mono: true, help: 'The number this observation is known by. It appears on the photographs in the report and on any risk row raised from it.' }),
+      fSel(bag, 'priority', 'Priority', work, HAZARD_PRIORITY.map(function (k) { return { k: k, label: k }; }), { help: 'How quickly it needs attention, as judged on the day. This is not a risk score: the scoring happens in the risk assessment.' }),
+      fSel(bag, 'status', 'Status', work, HAZARD_STATUS.map(function (k) { return { k: k, label: k }; }), { help: 'Not a finding is for something recorded on the walk and then ruled out. It keeps the record of having looked.' })
+    ]),
+    fText(bag, 'title', 'The hazard, in a line', work, { ph: 'Unguarded nip point at the infeed conveyor' }),
+    row('g3', [
+      fText(bag, 'area', 'Where on the machine', work, { ph: 'Infeed, drive end' }),
+      fSel(bag, 'phase', 'Lifecycle phase', work, ['Normal production', 'Setup', 'Changeover', 'Cleaning', 'Maintenance', 'Fault finding', 'Installation', 'Decommissioning'].map(function (k) { return { k: k, label: k }; })),
+      fSel(bag, 'hazardType', 'Hazard type', work, HAZARD_TYPES.map(function (k) { return { k: k, label: k }; }))
+    ]),
+    fArea(bag, 'observed', 'What was observed', work, { ph: 'What you saw, in the words you would use to describe it to someone standing next to you.' }),
+    fArea(bag, 'existing', 'Safeguarding in place at the time', work, { ph: 'What was already fitted, and whether it was working, defeated or missing.' }),
+    fArea(bag, 'consequence', 'Possible harm', work, { ph: 'What could happen to whom.' })
+  ]));
+
+  body.push(fset('What should be done', [
+    fArea(bag, 'recommendation', 'Recommendation', work, { ph: 'The measure recommended, in hierarchy order: eliminate, substitute, engineer, then administrate.' }),
+    row('g2', [
+      fText(bag, 'owner', 'Action owner', work),
+      fText(bag, 'due', 'Target date', work, { type: 'date' })
+    ])
+  ]));
+
+  body.push(fset('Who saw it', [
+    row('g2', [
+      fText(bag, 'observedBy', 'Observed by', work),
+      fText(bag, 'observedDate', 'Date observed', work, { type: 'date' })
+    ]),
+    fArea(bag, 'notes', 'Notes', work, { ph: 'Anything a reader would need that does not belong in the fields above.' })
+  ]));
+
+  var imgHost = el('div');
+  put(imgHost, gallery(work.images, { editable: true, onChange: function () { /* held until save */ } }));
+  body.push(fset('Photographs', [
+    el('p', { cls: 'hint', text: 'Photographs are kept inside the file itself, so nothing is lost when it moves between people. They are shrunk on the way in.' }),
+    imgHost
+  ]));
+
+  openDlg(isNew ? 'New observation' : 'Edit observation', body, function () {
+    bag.forEach(function (fn) { fn(); });
+    if (!work.title) { say('Give the observation a line describing the hazard'); return false; }
+    P.hazards = P.hazards || [];
+    if (isNew) { P.hazards.push(work); }
+    else {
+      for (var i = 0; i < P.hazards.length; i += 1) {
+        if (P.hazards[i].uid === work.uid) { P.hazards[i] = work; }
+      }
+    }
+    commit(isNew ? 'Observation added' : 'Observation updated');
+    return true;
+  });
 }
 
 function renderSf() {
@@ -5707,6 +6029,7 @@ var REPORT_SECTIONS = [
   { k: 'team', label: 'Assessment team', help: 'Who took part.', empty: function () { return !P.meta.team; } },
   { k: 'standards', label: 'Standards applied', help: 'The documents the assessment was carried out against.', empty: function () { return !P.meta.standards; } },
   { k: 'assumptions', label: 'Assumptions and limitations', help: 'The conditions the assessment holds under.', empty: function () { return !P.meta.assumptions; } },
+  { k: 'hazards', label: 'Safety report: hazards found', help: 'The walkdown record. Each observation with its photographs, the recommendation and who owns it.', empty: function () { return !(P.hazards || []).length; } },
   { k: 'risk', label: 'Risk assessment', help: 'One row per task and hazard pair, with initial score, measures and residual score.' },
   { k: 'devices', label: 'Safety device schedule', help: 'Every device with its safety values, provenance and the functions it serves.' },
   { k: 'sfperf', label: 'Safety function performance', help: 'Required against achieved performance level and structure category.' },
@@ -5722,12 +6045,13 @@ var REPORT_SECTIONS = [
 /* Named presets for the combinations people actually ask for. */
 var REPORT_PRESETS = [
   { k: 'full', label: 'Everything', keys: REPORT_SECTIONS.map(function (x) { return x.k; }) },
-  { k: 'ra', label: 'Risk assessment only', keys: ['scope', 'assumptions', 'risk', 'approval'] },
+  { k: 'walkdown', label: 'Safety report only', keys: ['conclusion', 'scope', 'assumptions', 'hazards', 'checklist', 'approval'] },
+  { k: 'ra', label: 'Risk assessment only', keys: ['scope', 'assumptions', 'hazards', 'risk', 'approval'] },
   { k: 'ra_sf', label: 'Risk assessment and safety functions', keys: ['scope', 'assumptions', 'risk', 'sfperf', 'spec', 'devices', 'approval'] },
   { k: 'vv', label: 'Verification and validation only', keys: ['scope', 'vv', 'approval'] },
   { k: 'controls', label: 'Controls package', keys: ['scope', 'devices', 'sfperf', 'spec', 'provenance', 'vv', 'approval'] },
   { k: 'field', label: 'Field verification only', keys: ['scope', 'field', 'checklist', 'approval'] },
-  { k: 'guarding', label: 'Guarding package', keys: ['scope', 'risk', 'checklist', 'approval'] },
+  { k: 'guarding', label: 'Guarding package', keys: ['scope', 'hazards', 'risk', 'checklist', 'approval'] },
   { k: 'findings', label: 'Findings only', keys: ['conclusion', 'scope', 'findings'] }
 ];
 
@@ -5942,6 +6266,62 @@ function renderReport() {
   sec('assumptions', function (H) {
     doc.appendChild(el('h3', { text: H }));
     doc.appendChild(el('p', { cls: 'wrap', text: m.assumptions }));
+  });
+
+  sec('hazards', function (H) {
+    doc.appendChild(el('h3', { text: H }));
+    var hz = P.hazards || [];
+    var openCount = hz.filter(hazardOpen).length;
+    doc.appendChild(dl([
+      ['Observations recorded', String(hz.length)],
+      ['Still open', openCount + ' of ' + hz.length],
+      ['Marked immediate', String(hz.filter(function (h) { return h.priority === 'Immediate' && hazardOpen(h); }).length)]
+    ]));
+
+    /* A summary table first, so a reader can find an observation, then
+       the entries in full with their photographs. */
+    var ht = el('table', { cls: 'dt' });
+    var hh = el('tr');
+    ['Ref', 'Hazard', 'Where', 'Phase', 'Type', 'Priority', 'Status', 'Owner', 'Due', 'Risk rows'].forEach(function (h) {
+      hh.appendChild(el('th', { scope: 'col', text: h }));
+    });
+    ht.appendChild(el('thead', null, hh));
+    var hb = el('tbody');
+    hz.forEach(function (h) {
+      hb.appendChild(el('tr', null, [
+        el('td', { cls: 'mono', text: h.id || '' }),
+        el('td', { text: h.title || '' }),
+        el('td', { text: h.area || '' }),
+        el('td', { text: h.phase || '' }),
+        el('td', { text: h.hazardType || '' }),
+        el('td', null, el('span', { cls: 'chip ' + (h.priority === 'Immediate' ? 'bad' : 'tag'), text: h.priority || '' })),
+        el('td', null, el('span', { cls: 'chip ' + hazardStatusTone(h), text: h.status || '' })),
+        el('td', { text: h.owner || '' }),
+        el('td', { text: h.due || '' }),
+        el('td', { cls: 'mono', text: hazardRisks(h).map(function (r) { return r.id || '?'; }).join(', ') })
+      ]));
+    });
+    ht.appendChild(hb);
+    doc.appendChild(el('div', { cls: 'tw' }, [ht]));
+
+    hz.forEach(function (h) {
+      doc.appendChild(el('h4', { text: hazardLabel(h) }));
+      var facts = [
+        ['Where', h.area], ['Lifecycle phase', h.phase], ['Hazard type', h.hazardType],
+        ['What was observed', h.observed],
+        ['Safeguarding in place at the time', h.existing],
+        ['Possible harm', h.consequence],
+        ['Recommendation', h.recommendation],
+        ['Priority and status', [h.priority, h.status].filter(Boolean).join(', ')],
+        ['Action owner', [h.owner, h.due ? 'due ' + h.due : ''].filter(Boolean).join(', ')],
+        ['Observed by', [h.observedBy, h.observedDate].filter(Boolean).join(' on ')],
+        ['Risk assessment rows raised', hazardRisks(h).map(function (r) { return (r.id || '?') + ' ' + (r.hazard || r.task || ''); }).join('; ')],
+        ['Notes', h.notes]
+      ].filter(function (x) { return x[1]; });
+      doc.appendChild(dl(facts));
+      if ((h.images || []).length) { doc.appendChild(gallery(h.images, { editable: false })); }
+      else { doc.appendChild(el('p', { cls: 'hint', text: 'No photograph was recorded for this observation.' })); }
+    });
   });
 
   sec('risk', function (H) {
@@ -6856,6 +7236,7 @@ function renderChrome() {
   $('tbRev').textContent = (m.rev || '--') + ' / ' + (m.revDate || '--');
   var cscore = complianceScore();
   var c = {
+    hz: (P.hazards || []).length,
     risk: P.risks.length, dev: P.devices.length, sf: P.sfs.length, vv: P.tests.length,
     check: (P.fieldTests || []).length
   };
@@ -6879,6 +7260,7 @@ function show(view) {
 function renderView() {
   renderChrome();
   if (VIEW === 'risk') renderRisk();
+  else if (VIEW === 'hz') { renderHazards(); renderGuardingRecord(); }
   else if (VIEW === 'dev') renderDevices();
   else if (VIEW === 'project') renderProject();
   else if (VIEW === 'sf') renderSf();
@@ -6899,7 +7281,9 @@ function updateImgUsage() {
   var n = imageBytes();
   var node = $('imgUsage');
   if (!node) return;
-  var total = (P.meta.images || []).length + P.risks.reduce(function (a, r) { return a + (r.images || []).length; }, 0)
+  var total = (P.meta.images || []).length
+    + (P.hazards || []).reduce(function (a, h) { return a + (h.images || []).length; }, 0)
+    + P.risks.reduce(function (a, r) { return a + (r.images || []).length; }, 0)
     + P.devices.reduce(function (a, d) { return a + (d.images || []).length; }, 0);
   node.textContent = total
     ? (total + ' photo' + (total === 1 ? '' : 's') + ' in this file, about ' + fmtBytes(n) + '.'
@@ -7570,6 +7954,12 @@ var FIELD_HELP = {
   id: 'A stable identifier for this row. Used to link safety functions and test records, so avoid renumbering once issued.',
   task: 'What the person is doing, not what the machine is doing. Clear a jam, change a size part, wipe down the magazine.',
   phase: 'The lifecycle phase the task belongs to. Most injuries happen outside normal production, which is why the phase is scored separately.',
+  observed: 'What you saw, described plainly. This is the record somebody reads when they cannot get back to the machine, so write what was there rather than what it means.',
+  existing: 'The safeguarding fitted at the time of the walk, and its condition. A guard that is present but propped open is a different observation from one that is missing.',
+  consequence: 'The harm the hazard could cause and to whom. Not a score: the scoring happens on the risk assessment row raised from this.',
+  recommendation: 'What should be done, in hierarchy order. Eliminate, then substitute, then engineer, then administrate, then protect. An administrative control offered where a guard would work invites the question why.',
+  observedBy: 'Who made the observation. A finding with nobody behind it cannot be questioned later.',
+  observedDate: 'The date of the walkdown, not the date the note was typed up.',
   hazardType: 'The kind of harm mechanism. Drives which standards apply beyond this methodology.',
   hazardSource: 'The specific part of the machine that creates the hazard. A location, not a category.',
   hazard: 'The hazardous situation itself. What is exposed to what.',
@@ -9640,6 +10030,21 @@ function parseCsv(text) {
 
 function exportCsv() {
   var rows = [];
+  rows.push(['SECTION', 'Safety report, hazards found']);
+  rows.push(['Ref', 'Hazard', 'Where', 'Phase', 'Hazard type', 'What was observed',
+    'Safeguarding in place at the time', 'Possible harm', 'Recommendation',
+    'Priority', 'Status', 'Action owner', 'Target date', 'Observed by', 'Date observed',
+    'Photographs', 'Risk rows raised', 'Notes']);
+  (P.hazards || []).forEach(function (h) {
+    rows.push([h.id, h.title, h.area, h.phase, h.hazardType, h.observed,
+      h.existing, h.consequence, h.recommendation,
+      h.priority, h.status, h.owner, h.due, h.observedBy, h.observedDate,
+      String((h.images || []).length),
+      hazardRisks(h).map(function (r) { return r.id || '?'; }).join(' '),
+      h.notes]);
+  });
+
+  rows.push([]);
   rows.push(['SECTION', 'Risk assessment']);
   rows.push(['Scoring scheme', activeScheme()]);
   rows.push(['ID', 'Task', 'Phase', 'Hazard type', 'Governing other standard', 'Hazard', 'Hazard source', 'Harm', 'Person exposed',
@@ -9969,6 +10374,42 @@ function loadExample() {
   r3.status = 'Implemented';
   P.risks.push(r3);
 
+  /* The walkdown that produced those rows. HZ-01 raised RA-001, which is
+     the usual shape: an observation photographed on the floor, scored
+     afterwards. HZ-03 is deliberately left open with no row against it,
+     so the example shows what an unscored observation looks like. */
+  var h1 = newHazard();
+  h1.id = 'HZ-01'; h1.title = 'Infeed conveyor nip point reachable from the operator side';
+  h1.area = 'Infeed conveyor, drive end'; h1.phase = 'Normal production'; h1.hazardType = 'Mechanical';
+  h1.observed = 'The drive pulley and belt are open on the operator side. A hand can reach the in-running nip while the conveyor is running.';
+  h1.existing = 'Perimeter guard with interlocked gate GS-101. The nip itself has no local guard.';
+  h1.consequence = 'Drawing-in and crushing of the hand or forearm.';
+  h1.recommendation = 'Fixed guard over the drive pulley, in addition to the perimeter interlock.';
+  h1.priority = 'High'; h1.status = 'In progress'; h1.owner = 'Maintenance planner';
+  h1.observedBy = 'Assessment team'; h1.observedDate = P.meta.revDate;
+  h1.riskUids = [r1.uid];
+
+  var h2 = newHazard();
+  h2.id = 'HZ-02'; h2.title = 'Case magazine sits above comfortable reach height';
+  h2.area = 'Case magazine'; h2.phase = 'Cleaning and sanitation'; h2.hazardType = 'Ergonomic';
+  h2.observed = 'Top of the magazine measured at 1900 mm. Sanitation staff were seen reaching overhead to wipe it down.';
+  h2.existing = 'None. Cleaning is done from floor level.';
+  h2.consequence = 'Shoulder or back strain from repeated overhead reaching.';
+  h2.recommendation = 'Lower the magazine to 1500 mm and reduce the cleaning frequency.';
+  h2.priority = 'Medium'; h2.status = 'Closed'; h2.owner = 'Plant engineering';
+  h2.observedBy = 'Assessment team'; h2.observedDate = P.meta.revDate;
+  h2.riskUids = [r2.uid];
+
+  var h3 = newHazard();
+  h3.id = 'HZ-03'; h3.title = 'Perimeter fence panel loose at the palletiser corner';
+  h3.area = 'Perimeter guard, south east corner'; h3.phase = 'Normal production'; h3.hazardType = 'Mechanical';
+  h3.observed = 'One fence panel is loose at its floor fixing and can be pushed aside by hand, leaving a gap at floor level.';
+  h3.existing = 'Perimeter guard, otherwise intact.';
+  h3.consequence = 'Access to the palletiser while it is running.';
+  h3.priority = 'Immediate'; h3.status = 'Open';
+  h3.observedBy = 'Assessment team'; h3.observedDate = P.meta.revDate;
+  P.hazards = [h1, h2, h3];
+
   /* The safeguarding checklist. Answered as a machine whose guarding does
      prevent access, so the worked example shows E0 available on RA-001 and
      both gates passing. Change one of the four access prevention answers
@@ -10167,6 +10608,7 @@ function boot() {
   });
 
   /* section actions */
+  $('btnAddHz').addEventListener('click', function () { hazardForm(null); });
   $('btnAddRisk').addEventListener('click', function () { riskForm(null); });
   $('btnDemo').addEventListener('click', function () {
     if (P.risks.length || P.sfs.length || P.tests.length) {

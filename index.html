@@ -161,6 +161,8 @@ dialog .dt td,dialog .dt th{word-break:break-word}
 @media (max-width:820px){.importtbl{table-layout:auto}}
 .subcard{border:1px solid var(--rule-2);border-radius:6px;padding:10px 12px;margin:10px 0 0;background:var(--panel-2)}
 .cardhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.notice.quiet{border-left-color:var(--rule);background:var(--panel-2)}
+.notice.quiet strong{color:var(--ink-2)}
 .subhead{margin:14px 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
 .refchip{cursor:pointer;border:1px solid var(--rule);text-decoration:none}
 .refchip:hover,.refchip:focus-visible{background:var(--accent);border-color:var(--accent);color:var(--paper);outline:none}
@@ -314,6 +316,9 @@ table.dt.risk .chip{white-space:normal;display:inline-block;max-width:100%;line-
 .notice.bad{border-left-color:var(--bad);background:var(--bad-bg)}
 .notice.ok{border-left-color:var(--ok);background:var(--ok-bg)}
 .notice strong{display:block;margin-bottom:3px;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+/* a notice may carry more than one paragraph; direct children only, so the spans inside a findings list stay inline */
+.notice>span{display:block}
+.notice>span+span{margin-top:7px}
 .notice ul{margin:6px 0 0;padding-left:18px}
 
 /* ---------- Dialog ---------- */
@@ -406,6 +411,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
       <button class="btn ghost sm" id="btnPrint" type="button">Print / PDF</button>
       <button class="btn ghost sm" id="btnTheme" type="button" aria-pressed="false">Dark theme</button>
       <button class="btn ghost sm" id="btnHints" type="button" aria-pressed="true">Hide hints</button>
+      <button class="btn ghost sm" id="btnFindings" type="button" aria-pressed="true">Hide findings</button>
       <input type="file" id="fileJson" accept=".json,application/json" hidden>
     </div>
   </div>
@@ -499,6 +505,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
           <button class="btn" id="btnAddHz" type="button">Add an observation</button>
         </div>
         <div class="grid g4" id="hzStats"></div>
+        <div id="hzExplain"></div>
         <div id="hzGaps"></div>
         <div id="hzList"></div>
 
@@ -4844,10 +4851,23 @@ function statusChip(level, n) {
   if (level === 'ok') return el('span', { cls: 'chip ok', text: 'ok' });
   return el('span', { cls: 'chip tag', text: '--' });
 }
-function statCard(k, v, sub, tone) {
+/* opts.help adds the same explanation marker the form fields carry, for
+   a number whose name cannot say the whole thing on its own.
+   opts.action adds a button that does something about it. */
+function statCard(k, v, sub, tone, opts) {
+  opts = opts || {};
+  var head = [el('span', { text: k })];
+  if (opts.help) {
+    var h = helpNode(opts.help);
+    if (h) { head.push(h); }
+  }
   return el('div', { cls: 'stat' + (tone ? ' ' + tone : '') }, [
-    el('div', { cls: 'k', text: k }), el('div', { cls: 'v', text: String(v) }),
-    sub ? el('div', { cls: 's', text: sub }) : null
+    el('div', { cls: 'k' }, head),
+    el('div', { cls: 'v', text: String(v) }),
+    sub ? el('div', { cls: 's', text: sub }) : null,
+    opts.action ? el('div', { cls: 'noprint', style: { marginTop: '7px' } }, [
+      el('button', { cls: 'btn ghost sm', type: 'button', text: opts.action.label, on: { click: opts.action.fn } })
+    ]) : null
   ]);
 }
 /* ---------------------------------------------------------------------
@@ -4919,6 +4939,15 @@ function flashRow(id) {
   window.setTimeout(function () { node.classList.remove('flash'); }, 2200);
 }
 
+/* A one line summary of what is being held back, so hiding the panel
+   never means a blocking finding disappears without trace. */
+function findingsSummary(list) {
+  var bad = list.filter(function (f) { return f.sev === 'bad'; }).length;
+  return list.length + ' finding' + (list.length === 1 ? '' : 's')
+    + (bad ? ', ' + bad + ' blocking' : '')
+    + ' in this section, hidden.';
+}
+
 function findingsBox(scope) {
   var list = findings().filter(function (f) { return !scope || f.where === scope; });
   if (!list.length) {
@@ -4926,6 +4955,24 @@ function findingsBox(scope) {
   }
   var bad = list.filter(function (f) { return f.sev === 'bad'; });
   var fieldCount = list.filter(isFieldFinding).length;
+
+  /* Hidden means collapsed to one line, not gone. The count and the
+     blocking count stay on screen, because a file can be issued from
+     this app and a blocking finding that vanished silently is how a
+     machine goes out with a gap in it. The report is never affected. */
+  if (!findingsOn()) {
+    return el('div', { cls: 'notice quiet noprint' }, [
+      el('strong', { text: findingsSummary(list) }),
+      el('span', { text: 'Findings are hidden from the working views. They still print in the report.' }),
+      el('div', { cls: 'rowacts' }, [
+        el('button', {
+          cls: 'btn ghost sm', type: 'button', text: 'Show findings',
+          on: { click: function () { setFindings(true); } }
+        })
+      ])
+    ]);
+  }
+
   var box = el('div', { cls: 'notice' + (bad.length ? ' bad' : '') });
   box.appendChild(el('strong', {
     text: list.length + ' finding' + (list.length === 1 ? '' : 's')
@@ -5345,8 +5392,10 @@ var GUIDE = [
     k: 'findings', title: 'Working through the findings',
     body: [
       'Every finding names the record it is about and offers a link to it. Following the link opens that record and, where the finding is about a particular field, scrolls to that field, rings it and puts the cursor in it.',
-      'Findings that cite a table carry a link to it. Clicking the citation opens that table over the page rather than sending you to the reference section and back.'
-    ]
+      'Findings that cite a table carry a link to it. Clicking the citation opens that table over the page rather than sending you to the reference section and back.',
+      'Hide findings in the rail quietens the panels while you are drafting. Each one collapses to a single line that still states how many findings there are and how many block, so nothing disappears without trace, and the report is not affected at all. Mute these findings on the field verification step is narrower: it sets aside the checks that cannot be answered until the hardware is installed.'
+    ],
+    tip: 'Hiding findings is a preference of yours, not a property of the file. It lives in this browser and does not travel with the saved project, so nobody opens your file and finds the checks switched off.'
   },
   {
     k: 'report', title: 'Reporting and signing',
@@ -5604,19 +5653,81 @@ function hazardStatusTone(h) {
   return h.status === 'In progress' ? 'warn' : 'bad';
 }
 
+/* The observations that have not reached the risk assessment yet. */
+function hazardsUnscored() {
+  return (P.hazards || []).filter(function (h) {
+    return !hazardRisks(h).length && h.status !== 'Not a finding';
+  });
+}
+/* "Not scored yet" is a number whose meaning is not obvious from its
+   name, and the thing to do about it is two clicks away. Say both. */
+function unscoredNotice() {
+  var open = hazardsUnscored();
+  if (!open.length) return [];
+  var box = el('div', { cls: 'notice warn', id: 'hzUnscored' }, [
+    el('strong', { text: open.length === 1 ? 'One observation has not been scored yet' : open.length + ' observations have not been scored yet' }),
+    el('span', { text: 'An observation says what you saw. It carries no risk rating: the rating is worked out on a row in the risk assessment, using severity, exposure and avoidance. Until a row exists, the hazard is written down but not assessed, and it will not appear in the risk assessment, in Table 4 or in any performance level requirement.' }),
+    el('span', { text: 'To clear one: press Raise a risk row on the observation. That copies the hazard, the area, the phase, the harm and the photographs onto a new row and takes you to it, where you enter the task and the scoring. If the observation turned out not to need scoring, set its status to Not a finding instead.' })
+  ]);
+  var ul = el('ul');
+  open.forEach(function (h) {
+    ul.appendChild(el('li', null, [
+      el('span', { text: hazardLabel(h) + '  ' }),
+      el('button', {
+        cls: 'linkbtn noprint', type: 'button', text: 'raise a risk row',
+        on: { click: function () { riskFromHazard(h); } }
+      }),
+      el('span', { text: '  or  ' }),
+      el('button', {
+        cls: 'linkbtn noprint', type: 'button', text: 'mark it not a finding',
+        on: {
+          click: function () {
+            h.status = 'Not a finding';
+            commit(hazardLabel(h) + ' recorded as not a finding');
+          }
+        }
+      })
+    ]));
+  });
+  box.appendChild(ul);
+  return [box];
+}
+/* Take the eye to the explainer rather than describing where it is. */
+function showUnscored() {
+  var n = document.getElementById('hzUnscored');
+  if (!n) return;
+  if (n.scrollIntoView) { n.scrollIntoView({ block: 'center' }); }
+  n.classList.add('flash');
+  setTimeout(function () { n.classList.remove('flash'); }, 1400);
+}
+
 function renderHazards() {
   var list = P.hazards || [];
   var open = list.filter(hazardOpen).length;
   var immediate = list.filter(function (h) { return h.priority === 'Immediate' && hazardOpen(h); }).length;
   var noPhoto = list.filter(function (h) { return !(h.images || []).length; }).length;
-  var unlinked = list.filter(function (h) { return !hazardRisks(h).length && h.status !== 'Not a finding'; }).length;
+  var unlinked = hazardsUnscored().length;
 
   put($('hzStats'), [
     statCard('Observations', list.length),
     statCard('Still open', open, immediate ? immediate + ' marked immediate' : null, open ? 'alert' : 'good'),
-    statCard('Without a photograph', noPhoto, noPhoto ? 'a photograph is what makes an observation checkable later' : 'every observation is evidenced', noPhoto ? 'alert' : 'good'),
-    statCard('Not yet scored', unlinked, unlinked ? 'no risk assessment row raised from them' : 'every observation reaches the risk assessment', unlinked ? 'alert' : 'good')
+    statCard('No photo yet', noPhoto,
+      noPhoto
+        ? (noPhoto === 1 ? '1 observation still needs a photo' : noPhoto + ' observations still need a photo')
+        : 'all of them have a photo',
+      noPhoto ? 'alert' : 'good',
+      { help: 'How many observations have no photograph attached. Open an observation, or use the photo strip on its card, and add the shot you took on the walk. A photograph is what lets somebody check the observation months later without going back to the machine.' }),
+    statCard('Not scored yet', unlinked,
+      unlinked
+        ? (unlinked === 1 ? '1 observation has no risk assessment row' : unlinked + ' observations have no risk assessment row')
+        : 'every observation has a risk row',
+      unlinked ? 'alert' : 'good',
+      {
+        help: 'An observation records what you saw. It does not carry a risk rating. The rating is worked out on a row in the risk assessment, so each observation needs at least one row raised from it. Press "Raise a risk row" on the observation, or mark it "Not a finding" if it turned out not to need scoring.',
+        action: unlinked ? { label: 'Show me which', fn: function () { showUnscored(); } } : null
+      })
   ]);
+  put($('hzExplain'), unscoredNotice());
   put($('hzGaps'), findingsBox('hz'));
 
   var host = clear($('hzList'));
@@ -7254,8 +7365,9 @@ function show(view) {
     else { b.removeAttribute('aria-current'); }
   });
   renderView();
-  /* headless environments implement this as a throw */
-  try { if (typeof window !== 'undefined' && window.scrollTo) window.scrollTo(0, 0); } catch (e) { /* no viewport */ }
+  /* changing view does start at the top: that is a new page, not a
+     re-render of the one in hand */
+  scrollToY(0);
 }
 function renderView() {
   renderChrome();
@@ -7291,9 +7403,80 @@ function updateImgUsage() {
     : '';
 }
 
+/* =====================================================================
+   Keeping your place across a re-render
+   ---------------------------------------------------------------------
+   Every edit calls commit(), which rebuilds the view. Rebuilding
+   replaces the control you just used, so the browser drops focus, and
+   while the document is briefly short it clamps the scroll position.
+   The symptom is the page jumping away from the question you are
+   answering, part way down a long checklist.
+
+   Rather than tag forty call sites, the focused control is described by
+   where it sits: the nearest ancestor carrying an id, then its position
+   among that container's controls. After the render the same position
+   is found again and given focus back, with the caret where it was, and
+   the scroll position is put back. Focus is restored without scrolling,
+   because the scroll restore is what decides where the page lands.
+   ===================================================================== */
+function pageY() {
+  try { return window.pageYOffset || document.documentElement.scrollTop || 0; }
+  catch (e) { return 0; }
+}
+/* headless environments implement scrollTo as a throw */
+function scrollToY(y) {
+  try { if (typeof window !== 'undefined' && window.scrollTo) { window.scrollTo(0, y); } }
+  catch (e) { /* no viewport */ }
+}
+var FOCUSABLE = 'input,select,textarea,button';
+function focusPath() {
+  var a = null;
+  try { a = document.activeElement; } catch (e) { return null; }
+  if (!a || !a.tagName || a === document.body) return null;
+  if (FOCUSABLE.indexOf(a.tagName.toLowerCase()) < 0) return null;
+  var host = a.closest ? a.closest('[id]') : null;
+  if (!host || !host.id) return null;
+  var all = host.querySelectorAll(FOCUSABLE);
+  var idx = Array.prototype.indexOf.call(all, a);
+  if (idx < 0) return null;
+  var path = { host: host.id, idx: idx, tag: a.tagName };
+  /* a caret position only exists on text controls; asking a select for
+     one throws in some browsers rather than returning null */
+  try {
+    if (a.selectionStart !== null && a.selectionStart !== undefined) {
+      path.selStart = a.selectionStart;
+      path.selEnd = a.selectionEnd;
+    }
+  } catch (e2) { /* not a text control */ }
+  return path;
+}
+function restoreFocus(path) {
+  if (!path) return false;
+  var host = document.getElementById(path.host);
+  if (!host) return false;
+  var all = host.querySelectorAll(FOCUSABLE);
+  var n = all[path.idx];
+  if (!n || n.tagName !== path.tag) return false;
+  try { n.focus({ preventScroll: true }); }
+  catch (e) { try { n.focus(); } catch (e2) { return false; } }
+  if (path.selStart !== undefined) {
+    try { n.setSelectionRange(path.selStart, path.selEnd); }
+    catch (e3) { /* the control does not carry a caret */ }
+  }
+  return true;
+}
+/* Re-render without moving the page or losing the control in hand. */
+function rerenderInPlace() {
+  var y = pageY();
+  var path = focusPath();
+  renderView();
+  restoreFocus(path);
+  scrollToY(y);
+}
+
 function commit(msg) {
   saveLocalSoon();
-  renderView();
+  rerenderInPlace();
   if (msg) say(msg);
 }
 /* ---------- 02 Safety devices ---------- */
@@ -10461,6 +10644,28 @@ function fillMetaInputs() {
   renderChrome();
 }
 
+/* Findings hidden is a display preference of the person working, like
+   the hints toggle, not a property of the safety file. It lives in the
+   browser rather than in the saved project so that hiding them on your
+   screen cannot travel to somebody else's copy of the file. */
+var FINDINGS_KEY = 'safetyFile.findings';
+function findingsOn() {
+  try { return localStorage.getItem(FINDINGS_KEY) !== 'off'; } catch (e) { return true; }
+}
+function applyFindings(show) {
+  var b = $('btnFindings');
+  if (b) {
+    b.textContent = show ? 'Hide findings' : 'Show findings';
+    b.setAttribute('aria-pressed', show ? 'true' : 'false');
+  }
+}
+function setFindings(show) {
+  try { localStorage.setItem(FINDINGS_KEY, show ? 'on' : 'off'); } catch (e) { /* private mode */ }
+  applyFindings(show);
+  rerenderInPlace();
+  say(show ? 'Findings shown' : 'Findings hidden from the working views. They still print in the report.');
+}
+
 var HINTS_KEY = 'safetyFile.hints';
 function applyHints(show) {
   document.body.classList.toggle('nohints', !show);
@@ -10587,12 +10792,13 @@ function boot() {
   });
   scope.addEventListener('change', function (ev) {
     var n = ev.target;
-    if (n.getAttribute && n.getAttribute('data-meta') === 'method') { P.meta.method = n.value; renderView(); saveLocalSoon(); }
+    if (n.getAttribute && n.getAttribute('data-meta') === 'method') { P.meta.method = n.value; rerenderInPlace(); saveLocalSoon(); }
   });
 
   /* toolbar */
   $('btnNew').addEventListener('click', newFileAsked);
   $('btnHints').addEventListener('click', function () { setHints(!hintsOn()); });
+  $('btnFindings').addEventListener('click', function () { setFindings(!findingsOn()); });
   $('btnSave').addEventListener('click', saveFile);
   $('btnSaveAs').addEventListener('click', saveFileAs);
   $('btnLoad').addEventListener('click', openViaPicker);
@@ -10685,6 +10891,7 @@ function boot() {
 
   fillMetaInputs();
   applyHints(hintsOn());
+  applyFindings(findingsOn());
   paintFileState();
   FILE_DIRTY = false;
   paintFileState();

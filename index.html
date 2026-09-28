@@ -164,6 +164,26 @@ dialog .dt td,dialog .dt th{word-break:break-word}
 .notice.quiet{border-left-color:var(--rule);background:var(--panel-2)}
 .notice.quiet strong{color:var(--ink-2)}
 .subhead{margin:14px 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+/* tab strip, laid out as SISTEMA lays its safety function tabs out */
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--rule);margin:0 0 14px;flex-wrap:wrap}
+.tabs button{appearance:none;border:1px solid var(--rule);border-bottom:0;background:var(--panel-2);color:var(--ink-2);
+  font:600 12px/1 var(--sans);padding:9px 14px;cursor:pointer;border-radius:3px 3px 0 0;margin-bottom:-1px}
+.tabs button:hover{color:var(--ink)}
+.tabs button[aria-selected="true"]{background:var(--panel);color:var(--ink);border-bottom:1px solid var(--panel)}
+.tabs button:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.tabs .tcnt{font:600 10px/1 var(--mono);opacity:.75;margin-left:6px}
+/* the PFH scale from the SISTEMA PL tab */
+.pfhscale{margin:10px 0 4px}
+.pfhticks{position:relative;height:13px;font-size:10px;color:var(--ink-3);margin-bottom:3px}
+.pfhticks span{position:absolute;top:0;white-space:nowrap}
+.pfhbar{display:flex;position:relative;height:26px;border:1px solid var(--rule)}
+.pfhband{display:flex;align-items:center;justify-content:center;font:700 12px/1 var(--sans);color:#14181d}
+.pfhband.on{box-shadow:inset 0 0 0 2px #14181d}
+.pfhmark{position:absolute;top:-4px;bottom:-4px;width:3px;background:var(--ink);box-shadow:0 0 0 1px var(--paper)}
+.pfhfoot{display:flex;justify-content:space-between;gap:10px;font-size:11px;color:var(--ink-3);margin-top:4px}
+.pfhfoot span:nth-child(2){font-family:var(--mono);color:var(--ink-2)}
+.sisline{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;margin:2px 0 0}
+.sisline b{font-weight:600;color:var(--ink-3);font-size:11px;letter-spacing:.06em;text-transform:uppercase;margin-right:5px}
 /* photographic mark-up */
 .markwrap{position:relative;display:block;line-height:0}
 .markwrap>img{display:block;width:100%}
@@ -559,8 +579,8 @@ table.mx select{padding:3px 5px;font-size:11.5px}
         <div class="btnbar noprint">
           <button class="btn" id="btnAddDev" type="button">Add device</button>
           <button class="btn ghost" id="btnCatalogue" type="button">Start from the component catalogue</button>
-          <button class="btn ghost" id="btnImportVdma" type="button">Load from SISTEMA or VDMA 66413</button>
-          <button class="btn ghost" id="btnImportSistema" type="button">Import a SISTEMA report</button>
+          <button class="btn ghost" id="btnImportVdma" type="button">Add devices from a VDMA 66413 library</button>
+          <button class="btn ghost" id="btnImportSistema" type="button">Import a SISTEMA report (PDF)</button>
           <input type="file" id="fileVdma" accept=".xml,.slb,.ssm,text/xml,application/xml" hidden>
           <input type="file" id="fileSistema" accept=".pdf,application/pdf" hidden>
         </div>
@@ -601,7 +621,11 @@ table.mx select{padding:3px 5px;font-size:11.5px}
       <section class="view" id="v-sf" aria-labelledby="h-sf">
         <h2 class="sec" id="h-sf">Safety functions: requirements specification</h2>
         <p class="lede">Each safety function needs a written specification before it can be validated. State what triggers it, what it does, how fast, how it is reset, and which operating modes it applies in. Table 5 sets the minimum performance level and structure category from the initial risk level of every row that relies on it.</p>
-        <div class="btnbar noprint"><button class="btn" id="btnAddSf" type="button">Add safety function</button></div>
+        <div class="btnbar noprint">
+          <button class="btn" id="btnAddSf" type="button">Add safety function</button>
+          <button class="btn ghost" id="btnImportSistemaSf" type="button">Import a SISTEMA report (PDF)</button>
+        </div>
+        <p class="hint">A function can be written by hand on the four tabs, or read straight out of a SISTEMA report: the import reads the safety functions, their subsystems and the device values, and writes them into the same fields.</p>
         <div class="grid g4" id="sfStats"></div>
         <div id="sfGaps"></div>
         <div id="sfList"></div>
@@ -2387,8 +2411,15 @@ function sistemaToRecords(res) {
       return t;
     }
     sf.sistemaType = take(f.sistemaType);
+    var mapped = appTypeForSistema(sf.sistemaType);
+    if (mapped) { sf.type = mapped; }
     sf.triggeringEvent = take(f.triggeringEvent);
     sf.reaction = take(f.reaction);
+    /* SISTEMA's triggering event and this app's initiating event are the
+       same thing under two names. Seed the one the report does not fill
+       so the card reads properly and the check below is not answered
+       twice in two boxes. */
+    if (!sf.initiator && sf.triggeringEvent) { sf.initiator = sf.triggeringEvent; }
     sf.reactionPowerFail = [take(f.reaction), take(f.powerFailure)].filter(Boolean).join(' ');
     sf.safeState = take(f.safeState);
     sf.modes = take(f.modes);
@@ -2404,6 +2435,10 @@ function sistemaToRecords(res) {
       sf.emiNote = sf.emiRoute ? 'Recorded in the SISTEMA report as route ' + er + '.' : '';
     }
     sf.prov = 'OUTSTANDING';
+    if (isFinite(f.pfhd) && Number(f.pfhd) > 0) {
+      sf.pfhdStated = Number(f.pfhd);
+      sf.pfhdStatedFrom = 'SISTEMA report' + (res.meta.checksum ? ', checksum ' + res.meta.checksum : '');
+    }
     sf.importedFrom = 'SISTEMA report' + (res.meta.checksum ? ', checksum ' + res.meta.checksum : '');
     sf.provNote = 'Imported from a SISTEMA report, so the values are modelled. Nothing here has been checked against the installed hardware.';
     sf.notes = 'SISTEMA reports PFHd ' + (isFinite(f.pfhd) ? Number(f.pfhd).toExponential(2) : '?')
@@ -2751,6 +2786,26 @@ var STOP_CATS = [
   { k: '1', label: 'Stop category 1, controlled stop then power removed' },
   { k: '2', label: 'Stop category 2, controlled stop, power retained' }
 ];
+/* SISTEMA names a function type; this app has its own list, longer and
+   worded differently. Where the two mean the same thing, an import
+   should set both rather than leaving the app's own type at its
+   default, which is how an emergency stop ends up filed as a guard
+   interlock. Anything with no clear counterpart is left alone. */
+var SISTEMA_TYPE_MAP = {
+  'Emergency stop function': 'Emergency stop',
+  'Safety-related stop function initiated by safeguard': 'Protective stop, guard interlock',
+  'Manual reset function': 'Other',
+  'Start and restart function': 'Other',
+  'Local control function': 'Mode selection',
+  'Muting function': 'Muting',
+  'Response time': 'Other',
+  'Fluctuation of power supply': 'Other'
+};
+function appTypeForSistema(t) {
+  var k = String(t || '').trim();
+  return SISTEMA_TYPE_MAP[k] || '';
+}
+
 var SF_TYPES = ['Emergency stop', 'Protective stop, guard interlock', 'Protective stop, presence sensing', 'Muting', 'Safety rated monitored speed', 'Safety rated monitored stop', 'Safety rated soft axis and space limiting', 'Safe torque off', 'Enabling device', 'Mode selection', 'Energy isolation and dissipation', 'Two hand control', 'Other'];
 
 /* Clause 6.8. Verification of the risk assessment is one activity.
@@ -3013,6 +3068,12 @@ function newSf() {
     behaviourOnPowerLoss: 'De-energise to safe state', behaviourOnRestore: 'No automatic restart',
     muting: 'None', priority: 'Overrides all other control functions',
     plrOverride: '', achievedPl: '',
+    /* the PFH the source states for the function as a whole. Kept apart
+       from the sum this app builds from the devices, because the two
+       answer different questions: one is what the tool that did the
+       calculation reported, the other is what this file can account
+       for. Where they disagree, that is worth seeing. */
+    pfhdStated: '', pfhdStatedFrom: '',
     plrMethod: 'RISK', isoS: 'S2', isoF: 'F2', isoP: 'P2', plrGraphNote: '',
     devices: [],                 /* [{uid, role}] references into P.devices */
     ccf: '', ccfMeasures: [], demandRate: '',
@@ -3777,6 +3838,142 @@ function sfBuild(sf) {
   };
 }
 
+
+/* =====================================================================
+   Subsystems, the SISTEMA view of a safety function
+   ---------------------------------------------------------------------
+   SISTEMA builds a function as subsystems, each subsystem as channels,
+   each channel as blocks. This app records devices against a position
+   in the chain, which is the same division one level flatter: the
+   devices at the input position are the input subsystem.
+
+   This assembles the per subsystem figures SISTEMA prints on its
+   Subsystems tab, so a function entered here and the same function in
+   SISTEMA can be read side by side without translation.
+   ===================================================================== */
+function subsystemRow(role, items, sf) {
+  var cat = '', worstPl = null, sumPfhd = 0, allPfhd = items.length > 0;
+  var invSum = 0, dcNum = 0, anyMttfd = false, anyDc = false, undetermined = 0;
+
+  items.forEach(function (x) {
+    if (x.dv.cat && (cat === '' || CAT_RANK[x.dv.cat] < CAT_RANK[cat])) { cat = x.dv.cat; }
+    var pl = x.sum.pl.pl;
+    if (pl) { if (worstPl === null || PL_RANK[pl] < PL_RANK[worstPl]) { worstPl = pl; } }
+    else if (!x.sum.excluded) { undetermined += 1; }
+    if (x.sum.excluded) return;
+    var eff = effectivePfhd(x.dv);
+    if (eff.value !== null) { sumPfhd += eff.value * (Number(x.dv.quantity) > 1 ? Number(x.dv.quantity) : 1); }
+    else { allPfhd = false; }
+    /* the parts count formula of clause 6.1.6: the channel MTTFD is the
+       reciprocal of the sum of the reciprocals */
+    var y = x.sum.mttfdYears;
+    if (y !== null && y > 0) {
+      anyMttfd = true;
+      invSum += 1 / y;
+      var dc = effectiveDcPct(x.dv);
+      if (dc !== '' && dc !== null) { anyDc = true; dcNum += Number(dc) / y; }
+    }
+  });
+
+  var mttfd = anyMttfd && invSum > 0 ? (1 / invSum) : null;
+  if (mttfd !== null) { mttfd = Math.min(mttfd, mttfdCap(cat)); }
+  /* DCavg of clause 6.1.7, weighted by 1 over MTTFD of each block */
+  var dcAvg = (anyDc && invSum > 0) ? (dcNum / invSum) : null;
+  var pfhd = (allPfhd && items.length && sumPfhd > 0) ? sumPfhd : null;
+  var plFromPfh = pfhd !== null ? plFromPfhd(pfhd) : '';
+  var pl = '';
+  if (!undetermined) {
+    if (plFromPfh && worstPl) { pl = PL_RANK[plFromPfh] < PL_RANK[worstPl] ? plFromPfh : worstPl; }
+    else { pl = plFromPfh || worstPl || ''; }
+  }
+  var statuses = items.map(function (x) { return x.sum.status; });
+  var status = statuses.indexOf('bad') >= 0 ? 'bad' : (statuses.indexOf('warn') >= 0 ? 'warn' : (items.length ? 'ok' : ''));
+
+  return {
+    role: role,
+    name: role + ' subsystem',
+    refs: items.map(function (x) { return x.dv.tag || x.dv.name || ''; }).filter(Boolean).join(', '),
+    items: items,
+    cat: cat,
+    pl: pl,
+    pfhd: pfhd,
+    mttfd: mttfd,
+    mttfdBand: mttfd === null ? '' : mttfdClass(mttfd),
+    dcAvg: dcAvg,
+    dcBand: dcAvg === null ? '' : dcClass(dcAvg),
+    ccf: sf && sf.ccfMeasures && sf.ccfMeasures.length ? ccfScore(sf.ccfMeasures).total : (sf && sf.ccf ? Number(sf.ccf) : null),
+    ccfApplies: ['2', '3', '4'].indexOf(cat) >= 0,
+    emiRoute: sf ? (sf.emiRoute || '') : '',
+    undetermined: undetermined,
+    status: status,
+    empty: !items.length
+  };
+}
+function sfSubsystems(sf) {
+  var b = sfBuild(sf);
+  return DEVICE_ROLES.map(function (role) {
+    return subsystemRow(role, b.byRole[role] || [], sf);
+  });
+}
+
+/* ---------------------------------------------------------------------
+   The PFH scale SISTEMA prints on its PL tab: the performance level
+   bands laid out against probability of dangerous failure per hour,
+   with a marker where this function falls.
+   --------------------------------------------------------------------- */
+var PFH_BANDS = [
+  { pl: 'a', hi: 1e-4, lo: 1e-5, colour: '#2fbf4f', sil: 'no correspondence' },
+  { pl: 'b', hi: 1e-5, lo: 3e-6, colour: '#c6e02a', sil: '1' },
+  { pl: 'c', hi: 3e-6, lo: 1e-6, colour: '#f2cb0a', sil: '1' },
+  { pl: 'd', hi: 1e-6, lo: 1e-7, colour: '#f59a11', sil: '2' },
+  { pl: 'e', hi: 1e-7, lo: 1e-8, colour: '#e0341f', sil: '3' }
+];
+/* where a PFH sits along the scale, 0 at 1E-4 and 1 at 1E-8 */
+function pfhPosition(pfhd) {
+  if (!pfhd || pfhd <= 0) return null;
+  var v = Math.min(1e-4, Math.max(1e-8, pfhd));
+  return (Math.log10(1e-4) - Math.log10(v)) / (Math.log10(1e-4) - Math.log10(1e-8));
+}
+function pfhScale(pfhd, pl) {
+  var wrap = el('div', { cls: 'pfhscale' });
+  var bar = el('div', { cls: 'pfhbar' });
+  PFH_BANDS.forEach(function (b) {
+    var span = (Math.log10(b.hi) - Math.log10(b.lo)) / 4;
+    bar.appendChild(el('div', {
+      cls: 'pfhband' + (pl === b.pl ? ' on' : ''),
+      style: { flex: String(span), background: b.colour },
+      text: b.pl
+    }));
+  });
+  var pos = pfhPosition(pfhd);
+  if (pos !== null) {
+    bar.appendChild(el('div', { cls: 'pfhmark', style: { left: (pos * 100) + '%' } }));
+  }
+  /* the bands are logarithmic, so an evenly spaced row of labels would
+     sit over the wrong boundaries. Each one is placed at the position
+     its own value falls at. */
+  var ticks = el('div', { cls: 'pfhticks' });
+  [1e-4, 1e-5, 3e-6, 1e-6, 1e-7, 1e-8].forEach(function (v, i, all) {
+    var at = pfhPosition(v) * 100;
+    ticks.appendChild(el('span', {
+      cls: 'mono',
+      style: {
+        left: at + '%',
+        transform: i === 0 ? 'none' : (i === all.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)')
+      },
+      text: (v === 3e-6 ? '3.0E-6' : v.toExponential(1).replace('e', 'E').replace('E-', 'E-'))
+    }));
+  });
+  wrap.appendChild(ticks);
+  wrap.appendChild(bar);
+  wrap.appendChild(el('div', { cls: 'pfhfoot' }, [
+    el('span', { text: 'Safeguarding against low risks' }),
+    el('span', { text: pfhd ? 'PFH ' + pfhd.toExponential(2) + ' per hour' : 'PFH not determined' }),
+    el('span', { text: 'Safeguarding against high risks' })
+  ]));
+  return wrap;
+}
+
 /* ---------- Cross references ---------- */
 function sfById(id) { for (var i = 0; i < P.sfs.length; i += 1) { if (P.sfs[i].id === id) return P.sfs[i]; } return null; }
 function riskById(id) { for (var i = 0; i < P.risks.length; i += 1) { if (P.risks[i].id === id) return P.risks[i]; } return null; }
@@ -3898,6 +4095,27 @@ function sfAchievedPl(sf) {
   return b.plFromSum || b.worstPl || '';
 }
 function sfAchievedCat(sf) { return sfBuild(sf).worstCat; }
+
+/* The PFH to print for a function: what this file can account for from
+   its devices, or failing that what the source report stated. Never
+   silently one in place of the other. */
+function sfPfhd(sf) {
+  var b = sfBuild(sf);
+  var stated = Number(sf.pfhdStated);
+  var hasStated = isFinite(stated) && stated > 0;
+  if (b.sumPfhd !== null) {
+    return {
+      value: b.sumPfhd, from: 'built from the devices in this file',
+      stated: hasStated ? stated : null,
+      /* a disagreement beyond rounding is worth raising */
+      diverges: hasStated && Math.abs(Math.log10(b.sumPfhd) - Math.log10(stated)) > 0.05
+    };
+  }
+  if (hasStated) {
+    return { value: stated, from: sf.pfhdStatedFrom || 'stated by the source report', stated: stated, diverges: false };
+  }
+  return { value: null, from: '', stated: null, diverges: false };
+}
 
 /* ---------------------------------------------------------------------
    Provenance rolls up. A safety function cannot be better verified than
@@ -4483,7 +4701,22 @@ function findings() {
         add('warn', 'sf', sf.id, lbl + ' selects an electromagnetic immunity route with no evidence recorded. The route should be documented with proof of compliance.', 'Annex L', 'emiNote');
       }
     }());
-    if (!sf.initiator || !sf.reaction) { add('warn', 'sf', sf.id, lbl + ' is missing its initiating event or its machine reaction.'); }
+    (function () {
+      var pf = sfPfhd(sf);
+      if (pf.diverges) {
+        add('warn', 'sf', sf.id, lbl + ' sums to PFH ' + pf.value.toExponential(2)
+          + ' from the devices in this file, while the source report states '
+          + pf.stated.toExponential(2) + '. One of the two is working from a different set of devices.', 'clause 6.1.13');
+      }
+    }());
+    /* triggeringEvent is SISTEMA's name for the initiating event, and
+       reactionPowerFail is its name for the machine reaction; either
+       field answers the question */
+    var hasTrigger = !!(String(sf.initiator || '').trim() || String(sf.triggeringEvent || '').trim());
+    var hasReaction = !!(String(sf.reaction || '').trim() || String(sf.reactionPowerFail || '').trim());
+    if (!hasTrigger || !hasReaction) {
+      add('warn', 'sf', sf.id, lbl + ' is missing its ' + (!hasTrigger ? 'initiating event' : 'machine reaction') + '.', '', !hasTrigger ? 'initiator' : 'reaction');
+    }
     if (!sf.respReq) { add('warn', 'sf', sf.id, lbl + ' has no required response time, so the safety distance cannot be verified.'); }
 
     var cov = vvCoverage(sf.id);
@@ -5818,7 +6051,7 @@ var GUIDE = [
       { n: '01', t: 'Safety report', d: 'The walkdown. One entry per hazard found, with photographs and a recommendation, plus the safeguarding checklist and the reach measurements. This is observation, not scoring, and it comes first because the checklist decides whether exposure can be scored as prevented at all.' },
       { n: '02', t: 'Risk assessment', d: 'One row per task and hazard pair, raised from the observations or added directly. Score the initial risk with no protective measure in place, list the measures, then score the residual. The level is computed for you and is never left blank.' },
       { n: '03', t: 'Safety devices', d: 'Every interlock, relay, contactor and drive that makes up a safety circuit, with its safety values and where those values came from. Import a manufacturer library in VDMA 66413 XML if you have one. The functional safety onsite verification sheet sits at the foot of this step, because every line of it is a statement about these devices.' },
-      { n: '04', t: 'Safety functions', d: 'Chain the devices into functions: input, logic, output. The app works out the achieved performance level and structure category and checks them against what the risk rows require.' },
+      { n: '04', t: 'Safety functions', d: 'Chain the devices into functions: input, logic, output. The form is laid out as SISTEMA lays a safety function out, on the same four tabs. Write one by hand, or import a SISTEMA report and have them written for you. The app works out the achieved performance level and structure category and checks them against what the risk rows require.' },
       { n: '05', t: 'Risk assessment verification', d: 'Does the analysis hold? Verification of the scoring, the specification and the performance claims. This is desk work.' },
       { n: '06', t: 'Field verification', d: 'Does the hardware do what the analysis says? Device by device, on the installed equipment, with the machine in front of you.' },
       { n: '07', t: 'Compliance report', d: 'Choose which sections to print, sign the revision, and issue.' }
@@ -5849,6 +6082,15 @@ var GUIDE = [
       'A device imported from a manufacturer library carries whatever the manufacturer published. The app does not nag about fields they chose to omit. It still checks the things that are your decisions rather than theirs.',
       'Where a mechanical, hydraulic or pneumatic part has no reliability data at all, and the good engineering practice method cannot be applied either, the alternative procedure in clause 6.1.9 gives a performance level from the architecture alone. It is a last resort with three preconditions, and the app asks you to state that all three hold.'
     ]
+  },
+  {
+    k: 'sistema', title: 'Working alongside SISTEMA',
+    body: [
+      'A safety function here is written on the four tabs SISTEMA gives one, with the same names in the same order. Documentation holds what the function is and what it does. PLr holds the required level, entered directly or read off the risk graph. PL holds what the chain reaches, with the PFH scale SISTEMA prints. Subsystems holds the input, logic and output positions, with the columns from SISTEMA’s own subsystem table.',
+      'SISTEMA divides a subsystem further into channels and blocks. This app stops one level higher: the devices assigned to a position are that subsystem’s blocks, and the channel figures are worked out from them by the parts count formula of clause 6.1.6 and the DCavg formula of clause 6.1.7. Everything SISTEMA prints per subsystem appears in the same columns, so the two can be read side by side without translating anything.',
+      'Import a SISTEMA report from the safety functions step or the devices step and the functions, their subsystems and the device values are read straight out of it. What comes in is marked as modelled and not field verified, so nothing imported can pass itself off as proven hardware. Where a report states a PFH for the function as a whole, that figure is kept beside the one this file builds from its devices rather than replacing it; if the two disagree, the app says so, because one of them is working from a different set of devices.'
+    ],
+    tip: 'The reader handles the report SISTEMA prints. A PDF that has been re-saved, scanned or compressed by another tool needs exporting from SISTEMA again.'
   },
   {
     k: 'photos', title: 'Marking up the photographs',
@@ -6517,6 +6759,9 @@ function renderSf() {
       sf.identifier ? el('span', { cls: 'chip tag', text: sf.identifier }) : null,
       el('div', { cls: 'rowacts noprint', style: { marginLeft: 'auto' } }, [
         actBtn('Edit', function () { sfForm(sf); }),
+        actBtn('PLr', function () { sfForm(sf, { tab: 'plr' }); }),
+        actBtn('PL', function () { sfForm(sf, { tab: 'pl' }); }),
+        actBtn('Subsystems', function () { sfForm(sf, { tab: 'sub' }); }),
         actBtn('Devices', function () { sfDeviceForm(sf); }),
         actBtn('Add test', function () { var t = newTest(); t.sfId = sf.id; testForm(t, true); }),
         actBtn('Delete', function () {
@@ -6527,6 +6772,26 @@ function renderSf() {
           });
         }, 'danger')
       ])
+    ]));
+
+    /* the line SISTEMA prints under every safety function name, in the
+       same order and with the same words, so the two read the same */
+    card.appendChild(el('div', { cls: 'sisline' }, [
+      el('span', {}, [el('b', { text: 'Required' }), el('span', { text: req ? 'PLr ' + req : 'not set' })]),
+      el('span', {}, [el('b', { text: 'Reached' }), el('span', { text: ach ? 'PL ' + ach : 'not determined' })]),
+      (function () {
+        var pf = sfPfhd(sf);
+        return el('span', {}, [
+          el('b', { text: 'PFH [1/h]' }),
+          el('span', { cls: 'mono', text: pf.value === null ? 'not determined' : pf.value.toExponential(2) }),
+          pf.value !== null && build.sumPfhd === null ? el('span', { cls: 'chip tag', text: 'from the report' }) : null,
+          pf.diverges ? el('span', { cls: 'chip warn', text: 'differs from the report' }) : null
+        ].filter(Boolean));
+      }()),
+      el('span', {}, [el('b', { text: 'Status' }), el('span', {
+        cls: 'chip ' + (meets === false ? 'bad' : (build.deviceStatus === 'bad' ? 'bad' : (build.deviceStatus === 'warn' || meets === null ? 'warn' : 'ok'))),
+        text: meets === false ? 'red' : (build.deviceStatus === 'bad' ? 'red' : (build.deviceStatus === 'warn' || meets === null ? 'amber' : 'green'))
+      })])
     ]));
 
     var g = el('div', { cls: 'grid g2' });
@@ -10070,15 +10335,85 @@ function sfDeviceForm(sf) {
   });
 }
 
+
+/* ---------------------------------------------------------------------
+   A tab strip. SISTEMA splits a safety function across four tabs and
+   people who use both tools navigate by those names, so the form here
+   carries the same four in the same order rather than one long scroll.
+   --------------------------------------------------------------------- */
+function tabStrip(defs, opts) {
+  opts = opts || {};
+  var wrap = el('div');
+  var strip = el('div', { cls: 'tabs noprint' });
+  strip.setAttribute('role', 'tablist');
+  var panels = el('div');
+  var buttons = [];
+  var current = opts.start || defs[0].k;
+
+  function show(k) {
+    current = k;
+    buttons.forEach(function (b) {
+      var on = b.getAttribute('data-tab') === k;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+    });
+    Array.prototype.forEach.call(panels.children, function (n) {
+      n.hidden = n.getAttribute('data-tab') !== k;
+    });
+    if (opts.onShow) { opts.onShow(k); }
+  }
+
+  defs.forEach(function (d) {
+    var b = el('button', { type: 'button', 'data-tab': d.k }, [
+      el('span', { text: d.label }),
+      d.count ? el('span', { cls: 'tcnt', text: String(d.count) }) : null
+    ].filter(Boolean));
+    b.setAttribute('role', 'tab');
+    b.addEventListener('click', function () { show(d.k); });
+    /* arrow keys move between tabs, as a tablist is expected to */
+    b.addEventListener('keydown', function (ev) {
+      var i = defs.map(function (x) { return x.k; }).indexOf(d.k);
+      var next = -1;
+      if (ev.key === 'ArrowRight') { next = (i + 1) % defs.length; }
+      else if (ev.key === 'ArrowLeft') { next = (i - 1 + defs.length) % defs.length; }
+      if (next >= 0) {
+        ev.preventDefault();
+        show(defs[next].k);
+        var nb = buttons[next];
+        if (nb && nb.focus) { nb.focus(); }
+      }
+    });
+    buttons.push(b);
+    strip.appendChild(b);
+
+    var panel = el('div', { 'data-tab': d.k });
+    panel.setAttribute('role', 'tabpanel');
+    (Array.isArray(d.body) ? d.body : [d.body]).forEach(function (n) { if (n) panel.appendChild(n); });
+    panels.appendChild(panel);
+  });
+
+  wrap.appendChild(strip);
+  wrap.appendChild(panels);
+  show(current);
+  wrap.__show = show;
+  return wrap;
+}
+
 /* ---------- Safety function form ---------- */
-function sfForm(existing) {
+function sfForm(existing, opts) {
   var sf = existing || newSf();
   var isNew = !existing;
   if (isNew && !sf.id) sf.id = nextId('SF-', P.sfs, 2);
   var work = JSON.parse(JSON.stringify(sf));
-  var bag = [], body = [];
+  var bag = [];
+  /* The four tabs SISTEMA divides a safety function into, filled in the
+     order the code already built them and assembled at the end. `body`
+     names the tab being written to, so each section below reads as it
+     did before it was split up. */
+  var TAB_DOC = [], TAB_PLR = [], TAB_PL = [], TAB_SUB = [];
+  var body = TAB_DOC;
 
-  body.push(el('p', { cls: 'hint', text: 'Write the function as the machine behaviour a person would recognise, for example stop the conveyor when the perimeter gate opens. The devices that carry it out are assigned separately, from the device library.' }));
+  body.push(el('p', { cls: 'hint', text: 'The four tabs below are the four SISTEMA gives a safety function, in the same order and with the same names, so a function written here and the same function in SISTEMA can be read side by side. Write the function as the machine behaviour a person would recognise, for example stop the conveyor when the perimeter gate opens. The devices that carry it out are assigned on the Subsystems tab.' }));
 
   body.push(fset('Identification', [
     row('g3', [
@@ -10232,7 +10567,7 @@ function sfForm(existing) {
     draw();
     bag.push(function () { work.ccf = String(ccfScore(work.ccfMeasures).total); });
     registerField('ccfMeasures', host);
-    body.push(fset('Common cause failure, ISO 13849-1:2023 Table F.1', [host]));
+    TAB_SUB.push(fset('Common cause failure, ISO 13849-1:2023 Table F.1', [host]));
   }());
 
   /* ---------------------------------------------------------------------
@@ -10282,7 +10617,7 @@ function sfForm(existing) {
       out,
       fWrap('Evidence', 'emiNote', note)
     ]);
-    body.push(fset('Electromagnetic immunity, ISO 13849-1:2023 Annex L', [host]));
+    TAB_PL.push(fset('Electromagnetic immunity, ISO 13849-1:2023 Annex L', [host]));
   }());
 
   /* ---------------------------------------------------------------------
@@ -10339,7 +10674,7 @@ function sfForm(existing) {
      than three paragraphs, and it is what a validator holds against
      the panel. Stored in the file like any other image.
      --------------------------------------------------------------------- */
-  body.push(fset('Simplified circuit, input to logic to output', [
+  TAB_SUB.push(fset('Simplified circuit, input to logic to output', [
     el('p', { cls: 'hint', text: 'Attach the simplified electrical drawing for this function: the sensing device, the logic that evaluates it, and the output that removes power. A photograph of a marked-up schematic is fine. This is the drawing a validator holds against the panel.' }),
     gallery(work.images, { editable: true, onChange: function () {} }),
     fText(bag, 'drawingRef', 'Drawing reference', work, { ph: 'Sheet number and revision of the controlling schematic' })
@@ -10364,7 +10699,7 @@ function sfForm(existing) {
   }
   drawBuild();
 
-  body.push(fset('Achieved performance', [
+  TAB_PL.push(fset('Achieved performance', [
     buildHost,
     row('g3', [
       fText(bag, 'ccf', 'CCF score for the function', work, { mono: true, help: '65 or above is the usual pass mark for categories 2, 3 and 4' }),
@@ -10478,11 +10813,81 @@ function sfForm(existing) {
     });
     draw();
     put(host, [fWrap('How the required level is established', 'plrMethod', mSel), out]);
-    body.push(fset('Required performance level', [host]));
+    TAB_PLR.push(fset('Required performance level', [host]));
   }());
-  body.push(fset('Notes', [fArea(bag, 'notes', 'Notes and open items', work)]));
+  TAB_DOC.push(fset('Notes', [fArea(bag, 'notes', 'Notes and open items', work)]));
 
-  openDlg(isNew ? 'Add safety function' : 'Edit ' + (sf.id || 'function'), body, function () {
+  /* ---- the Subsystems tab, as SISTEMA prints it -------------------- */
+  (function () {
+    var host = el('div');
+    function draw() {
+      var rows = sfSubsystems(work);
+      var kids = [
+        el('p', { cls: 'hint', text: 'One row per subsystem, with the figures SISTEMA prints on its Subsystems tab. SISTEMA divides a subsystem further into channels and blocks; here the devices assigned to a position are its blocks, and the channel figures are worked out from them by the parts count formula of clause 6.1.6 and the DCavg formula of clause 6.1.7.' })
+      ];
+      var t = el('table', { cls: 'dt' });
+      var hr = el('tr');
+      ['Status', 'Name', 'Reference', 'PL', 'EMI route', 'PFH [1/h]', 'CCF score', 'DCavg [%]', 'MTTFD [a]', 'Category']
+        .forEach(function (h) { hr.appendChild(el('th', { scope: 'col', text: h })); });
+      t.appendChild(el('thead', null, hr));
+      var tb = el('tbody');
+      rows.forEach(function (r) {
+        tb.appendChild(el('tr', null, [
+          el('td', null, r.empty
+            ? el('span', { cls: 'chip tag', text: 'empty' })
+            : el('span', { cls: 'chip ' + (r.status || 'tag'), text: r.status === 'ok' ? 'green' : (r.status === 'warn' ? 'amber' : (r.status === 'bad' ? 'red' : 'grey')) })),
+          el('td', null, [
+            el('div', { text: r.name }),
+            el('div', { cls: 'hint', text: r.empty ? 'no device assigned to this position' : r.items.length + ' block' + (r.items.length === 1 ? '' : 's') })
+          ]),
+          el('td', { cls: 'mono', text: r.refs || '--' }),
+          el('td', null, r.pl ? plChip(r.pl) : el('span', { cls: 'chip tag', text: r.undetermined ? 'undetermined' : '--' })),
+          el('td', { cls: 'mono', text: r.emiRoute || 'n/a' }),
+          el('td', { cls: 'num mono', text: r.pfhd === null ? '--' : r.pfhd.toExponential(2) }),
+          el('td', { cls: 'num mono', text: r.ccfApplies ? (r.ccf === null ? '--' : String(r.ccf)) : 'n/a' }),
+          el('td', { cls: 'num mono', text: r.dcAvg === null ? '--' : (Math.round(r.dcAvg) + (r.dcBand ? ' (' + r.dcBand + ')' : '')) }),
+          el('td', { cls: 'num mono', text: r.mttfd === null ? '--' : (Math.round(r.mttfd * 10) / 10) + (r.mttfdBand ? ' (' + r.mttfdBand + ')' : '') }),
+          el('td', { cls: 'num mono', text: r.cat || '--' })
+        ]));
+      });
+      t.appendChild(tb);
+      kids.push(el('div', { cls: 'tw' }, [t]));
+      kids.push(el('p', { cls: 'hint', text: 'CCF is scored once for the function and applies to every category 2, 3 and 4 subsystem, which is why the same score appears against each of them and n/a against the rest.' }));
+      put(host, kids);
+    }
+    draw();
+    TAB_SUB.unshift(fset('Subsystems', [host]));
+  }());
+
+  /* ---- the PFH scale SISTEMA draws on its PL tab -------------------- */
+  (function () {
+    var b = sfBuild(work);
+    var ach = sfAchievedPl(work);
+    var pf = sfPfhd(work);
+    var pfhd = pf.value;
+    TAB_PL.unshift(fset('Performance level from the subsystems', [
+      el('p', { cls: 'hint', text: 'The scale SISTEMA prints on its PL tab: the performance level bands against probability of a dangerous failure per hour, with a mark where this function falls.' }),
+      pfhScale(pfhd, ach),
+      el('div', { cls: 'sisline' }, [
+        el('span', {}, [el('b', { text: 'Reached PL' }), el('span', { text: ach || 'not determined' })]),
+        el('span', {}, [
+          el('b', { text: 'PFH [1/h]' }),
+          el('span', { cls: 'mono', text: pfhd === null ? 'not determined' : pfhd.toExponential(2) }),
+          pfhd === null ? null : el('span', { cls: 'chip tag', text: pf.from })
+        ].filter(Boolean)),
+        el('span', {}, [el('b', { text: 'SIL' }), el('span', { text: ach ? (silFor(ach) || 'no correspondence') : '--' })])
+      ])
+    ]));
+  }());
+
+  var tabs = tabStrip([
+    { k: 'doc', label: 'Documentation', body: TAB_DOC },
+    { k: 'plr', label: 'PLr', body: TAB_PLR },
+    { k: 'pl', label: 'PL', body: TAB_PL },
+    { k: 'sub', label: 'Subsystems', body: TAB_SUB, count: (work.devices || []).length }
+  ], { start: opts && opts.tab ? opts.tab : 'doc' });
+
+  openDlg(isNew ? 'Add safety function' : 'Edit ' + (sf.id || 'function'), [tabs], function () {
     bag.forEach(function (fn) { fn(); });
     if (!work.id) { say('A function ID is required'); return false; }
     var clash = P.sfs.some(function (x) { return x.id === work.id && x.uid !== sf.uid; });
@@ -11542,6 +11947,9 @@ function boot() {
   $('btnAddDev').addEventListener('click', function () { deviceForm(null); });
   $('btnCatalogue').addEventListener('click', function () { catalogueForm(); });
   $('btnImportSistema').addEventListener('click', function () { $('fileSistema').click(); });
+  /* the same import, reached from the safety functions step, because
+     that is where somebody holding a SISTEMA report starts */
+  $('btnImportSistemaSf').addEventListener('click', function () { $('fileSistema').click(); });
   $('fileSistema').addEventListener('change', function (ev) {
     importSistemaReport(ev.target.files && ev.target.files[0]);
     ev.target.value = '';

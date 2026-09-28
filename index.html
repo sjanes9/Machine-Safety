@@ -86,8 +86,12 @@ nav.steps{padding:8px}
 .railfile{margin:4px 0 0;font:400 10.5px/1.35 var(--mono);color:var(--ink-3);word-break:break-all}
 .railfile.linked{color:var(--ok)}
 .railfile.dirty{color:var(--warn)}
-.pickgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px 16px}
-.pickrow{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:start;padding:6px 0;border-top:1px solid var(--rule-2)}
+.pickgrid{display:grid;grid-template-columns:1fr;gap:0}
+.pickrow{display:grid;grid-template-columns:auto 26px 1fr auto;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--rule-2)}
+.picknum{font-size:11px;color:var(--ink-3);text-align:right}
+.pickrow .rowacts{opacity:.75}
+.pickrow:hover .rowacts,.pickrow:focus-within .rowacts{opacity:1}
+.pickrow .btn.sm{padding:2px 8px;line-height:1.2}
 .pickrow input{margin-top:3px}
 .pickname{font-weight:600;font-size:12.5px}
 /* The device library has to read without sideways scrolling, so the
@@ -401,18 +405,88 @@ table.mx select{padding:3px 5px;font-size:11.5px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 @media print{
-  :root{--paper:#fff;--panel:#fff;--panel-2:#fff}
-  body{background:#fff;font-size:10.5pt}
-  .rail,.noprint,.btnbar,.toast{display:none!important}
+  /* ---------------------------------------------------------------
+     The printed report.
+
+     Two rules here were doing real damage before. break-inside:avoid
+     on .doc asked the browser to keep the whole report on one page,
+     which it cannot, so it pushed the lot to a fresh page and left
+     the first one blank; the same rule on .tw did it again at every
+     long table. And .tw carries overflow-x:auto for the screen, which
+     in print clips whatever does not fit and paints a scrollbar over
+     it, so columns were silently missing from the paper. Both are
+     undone below: on paper a table lays itself out to the page width
+     and a document breaks where it needs to.
+     --------------------------------------------------------------- */
+  :root{--paper:#fff;--panel:#fff;--panel-2:#fff;--rule:#98a0a8;--rule-2:#c8ced3}
+  body{background:#fff;font:400 9.6pt/1.45 var(--sans);color:#000}
+  .rail,.noprint,.btnbar,.toast,.tabs{display:none!important}
   main{padding:0}
   .sheet{max-width:none;padding:0}
-  .card,.tw,.doc{border-color:#000;break-inside:avoid}
-  table.dt th{border-bottom:1.5px solid #000}
-  .titleblock{border-color:#000}
-  h2.sec{border-bottom-color:#000;break-after:avoid}
-  tr,.stat,.sigrow{break-inside:avoid}
+  @page{margin:14mm 13mm}
+
+  /* the document is a document, not a boxed panel on a page */
+  .doc{border:0;padding:0;background:#fff}
+
+  /* nothing is clipped on paper */
+  .tw{overflow:visible!important;border:0;background:#fff}
+
+  /* readable, and dark enough to photocopy */
+  .doc .kv{grid-template-columns:150px 1fr;font-size:9.2pt;margin-bottom:2px}
+  .doc .kv dt{color:#000;font-weight:600}
+  .doc .kv dd{color:#111;font-family:var(--mono);font-size:8.8pt}
+  .wrap,.doc p{color:#111}
+  .hint{color:#333}
+
+  /* headings: numbered, dark, and never left stranded at a page foot */
+  .doc h3{font:700 11pt/1.25 var(--sans);letter-spacing:.06em;color:#000;
+    margin:16pt 0 6pt;padding-bottom:4pt;border-bottom:1.2pt solid #000;
+    break-after:avoid;page-break-after:avoid}
+  .doc h3:first-child{margin-top:0}
+  .doc h4{font:700 10pt/1.3 var(--sans);color:#000;margin:12pt 0 4pt;
+    break-after:avoid;page-break-after:avoid}
+  h2.sec{border-bottom-color:#000;color:#000;break-after:avoid;page-break-after:avoid}
+  .subhead{color:#222}
+
+  /* tables lay themselves out to the page and repeat their heads */
+  table.dt{width:100%;table-layout:auto;font-size:8.4pt;border-collapse:collapse}
+  table.dt thead{display:table-header-group}
+  table.dt tfoot{display:table-footer-group}
+  table.dt th{border-bottom:1.2pt solid #000;color:#000;padding:4pt 5pt;
+    font-size:7.4pt;letter-spacing:.07em;background:#fff}
+  /* break-word, never anywhere: `anywhere` splits "Mechanical" into
+     "Mechan / ical" the moment a column is tight, which is how the
+     first draft of this report read */
+  table.dt td{padding:4pt 5pt;border-bottom:.5pt solid var(--rule-2);color:#111;
+    vertical-align:top;word-break:normal;overflow-wrap:break-word;hyphens:none}
+  table.dt th{word-break:normal;overflow-wrap:break-word}
+  table.dt caption{font-weight:700;color:#000;text-align:left;padding:4pt 0;font-size:9pt}
+  tr,.stat,.sigrow{break-inside:avoid;page-break-inside:avoid}
+
+  /* chips print as outlined labels so they survive greyscale */
+  .chip{border:.5pt solid currentColor;padding:1pt 4pt;font-size:7.4pt;background:transparent!important}
+
+  /* notices keep their rule but lose the tint, which prints as mud */
+  .notice{background:transparent!important;border-left-width:2.5pt;padding:6pt 9pt;
+    color:#000;break-inside:avoid;page-break-inside:avoid}
+  .notice strong{color:#000}
+  .notice span,.notice li{color:#111}
+
+  /* a record prints as one piece where it fits on a page */
+  .recblock{break-inside:avoid;page-break-inside:avoid;margin-bottom:10pt}
+
+  /* photographs: three to a row, never split across a page */
+  .doc figure,.markwrap{break-inside:avoid;page-break-inside:avoid}
+  .doc img{max-width:100%}
+  .doc figcaption{font-size:8pt;color:#111}
+
+  .titleblock{border-color:#000;break-inside:avoid;page-break-inside:avoid;margin-bottom:14pt}
+  .card{border-color:#000;break-inside:avoid;page-break-inside:avoid}
+  .pfhbar{border-color:#000}
   a{color:#000;text-decoration:none}
-  @page{margin:14mm}
+
+  /* a section that has just begun keeps at least a little company */
+  .doc h3 + *{break-before:avoid;page-break-before:avoid}
 }
 </style>
 </head>
@@ -6137,7 +6211,8 @@ var GUIDE = [
   {
     k: 'report', title: 'Reporting and signing',
     body: [
-      'The report is assembled from sections you choose. Presets cover the combinations people actually ask for: risk assessment only, controls package, field verification only. Numbering follows what is included, so a two section report numbers them 1 and 2.',
+      'The report is assembled from sections you choose, in the order you put them in. The picker lists the chosen sections first, numbered as they will print, each with arrows to move it up or down; the ones left out sit underneath with no position. Reset the order puts them back the way the app ships them. Presets cover the combinations people actually ask for: risk assessment only, controls package, field verification only. Numbering follows what is included, so a two section report numbers them 1 and 2.',
+      'The conclusion prints at the end rather than the top, after the evidence it draws on and immediately before the signatures, which is the order somebody signs in: read the findings, read the conclusion, then sign. Move it to the front if you would rather have it as a cover summary.',
       'Signing records who signed, in what role, when, against a stated declaration, and a fingerprint of the file contents. Change anything afterwards and the signature is marked as given against different contents. It is an attributability record, not a cryptographic signature, and the report says so.'
     ]
   },
@@ -6992,7 +7067,6 @@ function dl(pairs) {
    section rather than its number.
    ===================================================================== */
 var REPORT_SECTIONS = [
-  { k: 'conclusion', label: 'Conclusion', unnumbered: true, help: 'Whether the file is ready to issue, and the count of open findings.' },
   { k: 'scope', label: 'Scope', help: 'Machine identification, revision, who performed and approved it, and the boundary of the assessment.' },
   { k: 'team', label: 'Assessment team', help: 'Who took part.', empty: function () { return !P.meta.team; } },
   { k: 'standards', label: 'Standards applied', help: 'The documents the assessment was carried out against.', empty: function () { return !P.meta.standards; } },
@@ -7009,31 +7083,93 @@ var REPORT_SECTIONS = [
   { k: 'vv', label: 'Risk assessment verification', help: 'Verification and validation of the assessment itself, with verdicts.' },
   { k: 'field', label: 'Field verification', help: 'Proving each installed device does what the analysis says, step by step.', empty: function () { return !(P.fieldTests || []).length; } },
   { k: 'findings', label: 'Open findings', help: 'Everything the automated checks flagged, blocking items first.' },
+  /* At the end, because a conclusion is what a reader reaches after
+     the evidence rather than a headline before it, and immediately
+     before the signatures, because that is the order somebody signs
+     in: read the findings, read the conclusion, then sign. Movable
+     like any other section for anyone who wants it as a cover page. */
+  { k: 'conclusion', label: 'Conclusion', unnumbered: true, help: 'Whether the file is ready to issue, and the count of open findings. Printed at the end, after the evidence it draws on and before the signatures.' },
   { k: 'approval', label: 'Approval and signatures', help: 'The sign-off block.' }
 ];
 
 /* Named presets for the combinations people actually ask for. */
 var REPORT_PRESETS = [
   { k: 'full', label: 'Everything', keys: REPORT_SECTIONS.map(function (x) { return x.k; }) },
-  { k: 'walkdown', label: 'Safety report only', keys: ['conclusion', 'scope', 'legend', 'assumptions', 'hazards', 'checklist', 'approval'] },
+  { k: 'walkdown', label: 'Safety report only', keys: ['scope', 'legend', 'assumptions', 'hazards', 'checklist', 'conclusion', 'approval'] },
   { k: 'ra', label: 'Risk assessment only', keys: ['scope', 'legend', 'assumptions', 'hazards', 'risk', 'approval'] },
   { k: 'ra_sf', label: 'Risk assessment and safety functions', keys: ['scope', 'assumptions', 'risk', 'sfperf', 'spec', 'devices', 'approval'] },
   { k: 'vv', label: 'Verification and validation only', keys: ['scope', 'vv', 'approval'] },
   { k: 'controls', label: 'Controls package', keys: ['scope', 'devices', 'sfperf', 'spec', 'fschecklist', 'provenance', 'vv', 'approval'] },
   { k: 'field', label: 'Field verification only', keys: ['scope', 'legend', 'field', 'fschecklist', 'checklist', 'approval'] },
   { k: 'guarding', label: 'Guarding package', keys: ['scope', 'legend', 'hazards', 'risk', 'checklist', 'approval'] },
-  { k: 'findings', label: 'Findings only', keys: ['conclusion', 'scope', 'findings'] }
+  { k: 'findings', label: 'Findings only', keys: ['scope', 'findings', 'conclusion'] }
 ];
 
+/* Build a table from column definitions, leaving out any column that
+   is empty for every row. An empty column still reserves its header
+   width, which on a portrait page is width taken from the columns that
+   do have something in them. */
+function compactTable(cols, rows) {
+  var keep = cols.filter(function (c) {
+    if (c.always) return true;
+    return rows.some(function (r) {
+      var v = c.value(r);
+      return v !== null && v !== undefined && String(v).trim() !== '';
+    });
+  });
+  var t = el('table', { cls: 'dt' });
+  var hr = el('tr');
+  keep.forEach(function (c) { hr.appendChild(el('th', { scope: 'col', text: c.label })); });
+  t.appendChild(el('thead', null, hr));
+  var tb = el('tbody');
+  rows.forEach(function (r) {
+    tb.appendChild(el('tr', null, keep.map(function (c) {
+      return c.cell ? c.cell(r) : el('td', { cls: c.cls || '', text: String(c.value(r) === null || c.value(r) === undefined ? '' : c.value(r)) });
+    })));
+  });
+  t.appendChild(tb);
+  return { table: t, columns: keep.map(function (c) { return c.label; }) };
+}
+
+function reportSectionDef(k) {
+  for (var i = 0; i < REPORT_SECTIONS.length; i += 1) {
+    if (REPORT_SECTIONS[i].k === k) return REPORT_SECTIONS[i];
+  }
+  return null;
+}
+/* The chosen sections, in the order they are to print. The order is the
+   reader's, not this file's: it is kept exactly as it was arranged and
+   only filtered for sections that no longer exist. */
 function reportSelection() {
   if (!Array.isArray(P.reportSections)) {
     P.reportSections = REPORT_SECTIONS.map(function (x) { return x.k; });
   }
-  /* drop anything that no longer exists, keep the canonical order */
-  var want = P.reportSections;
+  var out = [], seen = {};
+  P.reportSections.forEach(function (k) {
+    if (seen[k] || !reportSectionDef(k)) return;
+    seen[k] = 1;
+    out.push(k);
+  });
+  P.reportSections = out;
+  return P.reportSections;
+}
+/* Move a section one place up or down the report. */
+function reportMove(k, delta) {
+  var sel = reportSelection().slice();
+  var i = sel.indexOf(k);
+  if (i < 0) return false;
+  var j = i + delta;
+  if (j < 0 || j >= sel.length) return false;
+  sel.splice(j, 0, sel.splice(i, 1)[0]);
+  P.reportSections = sel;
+  return true;
+}
+/* Put the order back to the one the app ships with. */
+function reportResetOrder() {
+  var sel = reportSelection();
   P.reportSections = REPORT_SECTIONS
     .map(function (x) { return x.k; })
-    .filter(function (k) { return want.indexOf(k) >= 0; });
+    .filter(function (k) { return sel.indexOf(k) >= 0; });
   return P.reportSections;
 }
 function reportHas(k) { return reportSelection().indexOf(k) >= 0; }
@@ -7066,27 +7202,87 @@ function renderReportPicker() {
     commit('Report set to ' + pr.label.toLowerCase());
   });
 
+  /* Chosen sections first, in the order they will print, each with the
+     controls to move it. Then the ones left out, which have no position
+     to move within. Ordering the list this way is the whole point: the
+     picker should read as the report reads. */
   var boxes = el('div', { cls: 'pickgrid' });
-  REPORT_SECTIONS.forEach(function (def) {
+  var chosen = sel.slice();
+  var rest = REPORT_SECTIONS
+    .map(function (x) { return x.k; })
+    .filter(function (k) { return chosen.indexOf(k) < 0; });
+
+  function pickRow(def, pos) {
+    var on = pos >= 0;
     var c = el('input');
     c.type = 'checkbox';
-    c.checked = sel.indexOf(def.k) >= 0;
+    c.checked = on;
     c.addEventListener('change', function () {
       var want = reportSelection().slice();
       var i = want.indexOf(def.k);
-      if (c.checked && i < 0) { want.push(def.k); }
-      else if (!c.checked && i >= 0) { want.splice(i, 1); }
+      if (c.checked && i < 0) {
+        /* a section switched back on returns to where this file puts
+           it, rather than always landing at the end */
+        var canon = REPORT_SECTIONS.map(function (x) { return x.k; });
+        var at = want.length;
+        for (var j = 0; j < want.length; j += 1) {
+          if (canon.indexOf(want[j]) > canon.indexOf(def.k)) { at = j; break; }
+        }
+        want.splice(at, 0, def.k);
+      } else if (!c.checked && i >= 0) { want.splice(i, 1); }
       P.reportSections = want;
       commit(def.label + (c.checked ? ' added to the report' : ' removed from the report'));
     });
-    boxes.appendChild(el('label', { cls: 'pickrow' }, [
+
+    var moves = null;
+    if (on) {
+      var up = el('button', {
+        cls: 'btn ghost sm', type: 'button', text: '\u2191',
+        'aria-label': 'Move ' + def.label + ' earlier in the report',
+        on: {
+          click: function (ev) {
+            ev.preventDefault();
+            if (reportMove(def.k, -1)) { commit(def.label + ' moved up'); }
+          }
+        }
+      });
+      var down = el('button', {
+        cls: 'btn ghost sm', type: 'button', text: '\u2193',
+        'aria-label': 'Move ' + def.label + ' later in the report',
+        on: {
+          click: function (ev) {
+            ev.preventDefault();
+            if (reportMove(def.k, 1)) { commit(def.label + ' moved down'); }
+          }
+        }
+      });
+      if (pos === 0) { up.disabled = true; }
+      if (pos === chosen.length - 1) { down.disabled = true; }
+      moves = el('div', { cls: 'rowacts noprint' }, [up, down]);
+    }
+
+    return el('label', { cls: 'pickrow' }, [
       c,
+      el('div', { cls: 'picknum mono', text: on ? String(pos + 1) : '\u2013' }),
       el('div', {}, [
         el('div', { cls: 'pickname', text: def.label }),
         el('div', { cls: 'hint', text: def.help })
-      ])
-    ]));
+      ]),
+      moves
+    ].filter(Boolean));
+  }
+
+  chosen.forEach(function (k, i) {
+    var def = reportSectionDef(k);
+    if (def) { boxes.appendChild(pickRow(def, i)); }
   });
+  if (rest.length) {
+    boxes.appendChild(el('p', { cls: 'hint', style: { gridColumn: '1 / -1', margin: '8px 0 0' }, text: 'Not in this report' }));
+    rest.forEach(function (k) {
+      var def = reportSectionDef(k);
+      if (def) { boxes.appendChild(pickRow(def, -1)); }
+    });
+  }
 
   put(host, [
     el('div', { cls: 'card' }, [
@@ -7098,6 +7294,10 @@ function renderReportPicker() {
           el('button', {
             cls: 'btn ghost sm', type: 'button', text: 'Select all',
             on: { click: function () { P.reportSections = REPORT_SECTIONS.map(function (x) { return x.k; }); commit('All sections selected'); } }
+          }),
+          el('button', {
+            cls: 'btn ghost sm', type: 'button', text: 'Reset the order',
+            on: { click: function () { reportResetOrder(); commit('Sections put back in their usual order'); } }
           }),
           el('button', {
             cls: 'btn ghost sm', type: 'button', text: 'Clear',
@@ -7180,20 +7380,12 @@ function renderReport() {
   var f = findings(), blocking = f.filter(function (x) { return x.sev === 'bad'; });
 
   reportSelection();
-  var num = 0;
-  /* Emit a section only if it is selected, numbering as we go.
-     A section with nothing to say does not consume a number, or the
-     printed report skips numbers with no explanation for the gap. */
-  function sec(k, fn) {
-    if (!reportHas(k)) return;
-    var def = null, i;
-    for (i = 0; i < REPORT_SECTIONS.length; i += 1) { if (REPORT_SECTIONS[i].k === k) { def = REPORT_SECTIONS[i]; } }
-    if (def && typeof def.empty === 'function' && def.empty()) { return; }
-    var label = '';
-    if (def && !def.unnumbered) { num += 1; label = num + '  ' + def.label; }
-    else if (def) { label = def.label; }
-    fn(label);
-  }
+  /* Each section registers how to build itself; nothing is built until
+     the end, when they are emitted in the order the report is set to.
+     Before this the order was whatever order the code happened to call
+     them in, which is why the sections could not be moved. */
+  var BUILD = {};
+  function sec(k, fn) { BUILD[k] = fn; }
 
   sec('conclusion', function (H) {
     doc.appendChild(el('h3', { text: H }));
@@ -7270,32 +7462,32 @@ function renderReport() {
 
     /* A summary table first, so a reader can find an observation, then
        the entries in full with their photographs. */
-    var ht = el('table', { cls: 'dt' });
-    var hh = el('tr');
-    ['Ref', 'Hazard', 'Where', 'Phase', 'Type', 'Priority', 'Status', 'Owner', 'Due', 'Risk rows'].forEach(function (h) {
-      hh.appendChild(el('th', { scope: 'col', text: h }));
-    });
-    ht.appendChild(el('thead', null, hh));
-    var hb = el('tbody');
-    hz.forEach(function (h) {
-      hb.appendChild(el('tr', null, [
-        el('td', { cls: 'mono', text: h.id || '' }),
-        el('td', { text: h.title || '' }),
-        el('td', { text: h.area || '' }),
-        el('td', { text: h.phase || '' }),
-        el('td', { text: h.hazardType || '' }),
-        el('td', null, el('span', { cls: 'chip ' + (h.priority === 'Immediate' ? 'bad' : 'tag'), text: h.priority || '' })),
-        el('td', null, el('span', { cls: 'chip ' + hazardStatusTone(h), text: h.status || '' })),
-        el('td', { text: h.owner || '' }),
-        el('td', { text: h.due || '' }),
-        el('td', { cls: 'mono', text: hazardRisks(h).map(function (r) { return r.id || '?'; }).join(', ') })
-      ]));
-    });
-    ht.appendChild(hb);
-    doc.appendChild(el('div', { cls: 'tw' }, [ht]));
+    var built = compactTable([
+      { label: 'Ref', always: true, value: function (h) { return h.id; }, cell: function (h) { return el('td', { cls: 'mono', text: h.id || '' }); } },
+      { label: 'Hazard', always: true, value: function (h) { return h.title; } },
+      { label: 'Where', value: function (h) { return h.area; } },
+      { label: 'Phase', value: function (h) { return h.phase; } },
+      { label: 'Type', value: function (h) { return h.hazardType; } },
+      {
+        label: 'Priority', always: true, value: function (h) { return h.priority; },
+        cell: function (h) { return el('td', null, el('span', { cls: 'chip ' + (h.priority === 'Immediate' ? 'bad' : 'tag'), text: h.priority || '' })); }
+      },
+      {
+        label: 'Status', always: true, value: function (h) { return h.status; },
+        cell: function (h) { return el('td', null, el('span', { cls: 'chip ' + hazardStatusTone(h), text: h.status || '' })); }
+      },
+      { label: 'Owner', value: function (h) { return h.owner; } },
+      { label: 'Due', value: function (h) { return h.due; } },
+      {
+        label: 'Risk rows', value: function (h) { return hazardRisks(h).map(function (r) { return r.id || '?'; }).join(', '); },
+        cell: function (h) { return el('td', { cls: 'mono', text: hazardRisks(h).map(function (r) { return r.id || '?'; }).join(', ') }); }
+      }
+    ], hz);
+    doc.appendChild(el('div', { cls: 'tw' }, [built.table]));
 
     hz.forEach(function (h) {
-      doc.appendChild(el('h4', { text: hazardLabel(h) }));
+      var block = el('section', { cls: 'recblock' });
+      block.appendChild(el('h4', { text: hazardLabel(h) }));
       var facts = [
         ['Where', h.area], ['Lifecycle phase', h.phase], ['Hazard type', h.hazardType],
         ['What was observed', h.observed],
@@ -7308,9 +7500,10 @@ function renderReport() {
         ['Risk assessment rows raised', hazardRisks(h).map(function (r) { return (r.id || '?') + ' ' + (r.hazard || r.task || ''); }).join('; ')],
         ['Notes', h.notes]
       ].filter(function (x) { return x[1]; });
-      doc.appendChild(dl(facts));
-      if ((h.images || []).length) { doc.appendChild(gallery(h.images, { editable: false })); }
-      else { doc.appendChild(el('p', { cls: 'hint', text: 'No photograph was recorded for this observation.' })); }
+      block.appendChild(dl(facts));
+      if ((h.images || []).length) { block.appendChild(gallery(h.images, { editable: false })); }
+      else { block.appendChild(el('p', { cls: 'hint', text: 'No photograph was recorded for this observation.' })); }
+      doc.appendChild(block);
     });
   });
 
@@ -7413,34 +7606,34 @@ function renderReport() {
       if (!P.sfs.length) { return; }
       doc.appendChild(el('h3', { text: H }));
       doc.appendChild(el('p', { cls: 'wrap', text: 'Six fields on the SISTEMA documentation tab are recorded here for every function: safe state, operating mode, interfaces, demand rate, running-on time and priority. Four of them are load bearing under ISO 13849-1. Operating mode decides whether the function is active at all, demand rate drives the number of operations per year for every wearing part and the required test rate for a Category 2 subsystem, running-on time drives the safety distance, and priority decides which reaction wins when two functions are demanded together. Blank is acceptable only with a recorded reason.' }));
-      var st = el('table', { cls: 'dt' });
-      var sh = el('tr');
-      ['Function', 'Type', 'Dangerous part'].concat(SF_REQUIRED.map(function (f) { return f.label; })).forEach(function (h) {
-        sh.appendChild(el('th', { scope: 'col', text: h }));
-      });
-      st.appendChild(el('thead', null, sh));
-      var sb = el('tbody');
+      /* A count first, so a reader who only wants the score has it
+         without reading nine fields per function. */
+      var blanks = gaps.filter(function (x) { return x.g.state === 'missing'; }).length;
+      doc.appendChild(dl([
+        ['Functions recorded', String(P.sfs.length)],
+        ['Fields required', String(P.sfs.length * SF_REQUIRED.length) + '  (' + SF_REQUIRED.length + ' per function)'],
+        ['Blank with no reason', String(blanks)]
+      ]));
+
+      /* Then one block per function. This was a table of nine columns,
+         six of them holding sentences, which no portrait page can lay
+         out: the words ended up broken mid-syllable one per line. A
+         function is a record, so it prints as one. */
       P.sfs.forEach(function (sf) {
-        var cells = [
-          el('td', { cls: 'num' }, [el('div', { text: sf.id }), sf.identifier ? el('div', { cls: 'hint', text: sf.identifier }) : null]),
-          el('td', { text: sf.sistemaType || 'not set' }),
-          el('td', null, sf.dangerousPart
-            ? el('span', { text: sf.dangerousPart })
-            : el('span', { cls: 'chip warn', text: 'not named' }))
+        var block = el('section', { cls: 'recblock' });
+        block.appendChild(el('h4', { text: (sf.id || 'Function') + (sf.identifier ? '  ' + sf.identifier : '') + '  ' + (sf.name || '') }));
+        var rows = [
+          ['SISTEMA function type', sf.sistemaType || 'not set'],
+          ['Dangerous part of the machine', sf.dangerousPart || 'not named']
         ];
         SF_REQUIRED.forEach(function (fdef) {
           var v = String(sf[fdef.k] || '').trim();
           var na = String(sf[fdef.na] || '').trim();
-          cells.push(el('td', null, v
-            ? el('div', { text: v })
-            : (na
-              ? el('div', null, [el('span', { cls: 'chip warn', text: 'blank' }), el('div', { cls: 'hint', text: na })])
-              : el('span', { cls: 'chip bad', text: 'blank, no reason' }))));
+          rows.push([fdef.label, v || (na ? 'blank. Reason given: ' + na : 'BLANK, no reason recorded')]);
         });
-        sb.appendChild(el('tr', null, cells));
+        block.appendChild(dl(rows));
+        doc.appendChild(block);
       });
-      st.appendChild(sb);
-      doc.appendChild(el('div', { cls: 'tw' }, st));
     }());
   });
 
@@ -7717,6 +7910,21 @@ function renderReport() {
       el('div', { cls: 'sigline', text: 'Reviewer, signature and date' }),
       el('div', { cls: 'sigline', text: 'Owner acceptance, signature and date' })
     ]));
+  });
+
+  /* Emit in the order chosen, numbering as we go. A section with
+     nothing to say does not consume a number, or the printed report
+     skips numbers with no explanation for the gap. */
+  var num = 0;
+  reportSelection().forEach(function (k) {
+    var fn = BUILD[k];
+    if (!fn) return;
+    var def = reportSectionDef(k);
+    if (def && typeof def.empty === 'function' && def.empty()) { return; }
+    var label = '';
+    if (def && !def.unnumbered) { num += 1; label = num + '  ' + def.label; }
+    else if (def) { label = def.label; }
+    fn(label);
   });
 
   if (!reportSelection().length) {

@@ -164,6 +164,20 @@ dialog .dt td,dialog .dt th{word-break:break-word}
 .notice.quiet{border-left-color:var(--rule);background:var(--panel-2)}
 .notice.quiet strong{color:var(--ink-2)}
 .subhead{margin:14px 0 6px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+/* photographic mark-up */
+.markwrap{position:relative;display:block;line-height:0}
+.markwrap>img{display:block;width:100%}
+.marklayer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.markstage{position:relative;display:inline-block;max-width:100%;line-height:0;touch-action:none;cursor:crosshair;background:#111;border:1px solid var(--rule)}
+.markstage>img{display:block;max-width:100%;max-height:56vh}
+.markghost{position:absolute;border:2px dashed;border-radius:50%;pointer-events:none}
+.swatch{display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid rgba(0,0,0,.35);margin-right:6px;vertical-align:-1px}
+.markpick{display:inline-flex;align-items:center}
+.markpick.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.subcard.sel{outline:2px solid var(--accent);outline-offset:1px}
+.marklegend{display:flex;gap:18px;flex-wrap:wrap;margin:6px 0 12px;font-size:12px}
+.marklegend span{display:inline-flex;align-items:center}
+.marklegend .ring{display:inline-block;width:18px;height:12px;border-width:2.5px;border-style:solid;border-radius:50%;margin-right:7px}
 .refchip{cursor:pointer;border:1px solid var(--rule);text-decoration:none}
 .refchip:hover,.refchip:focus-visible{background:var(--accent);border-color:var(--accent);color:var(--paper);outline:none}
 .tblsec{display:block;margin:0 0 8px}
@@ -552,6 +566,14 @@ table.mx select{padding:3px 5px;font-size:11.5px}
         </div>
         <div class="grid g4" id="devStats"></div>
         <div id="devList"></div>
+
+        <h2 class="sec">Functional safety onsite verification checklist</h2>
+        <p class="lede">A summary of the functional safety requirements that are read off the installed control system rather than computed from it: whether each part of the chain reaches the level claimed for it, whether the architecture matches the drawings, and what category and performance level the systems were observed to achieve. Reconciled against ISO 13849-1, ANSI B11.26, ANSI B11.19 and NFPA 79.</p>
+        <div class="btnbar noprint">
+          <button class="btn ghost" id="btnFsReset" type="button">Reset to the shipped question set</button>
+        </div>
+        <div class="grid g4" id="fsStats"></div>
+        <div id="fsList"></div>
       </section>
 
       <!-- ============ HOW TO GUIDE ============ -->
@@ -710,9 +732,9 @@ function debounce(fn, ms) {
 }
 
 /* ---------- 20.2 Schema and state ---------- */
-var SCHEMA = 10;
-var STORE_KEY = 'safetyFile.v10';
-var LEGACY_KEYS = ['safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
+var SCHEMA = 11;
+var STORE_KEY = 'safetyFile.v11';
+var LEGACY_KEYS = ['safetyFile.v10', 'safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
 
 function blankProject() {
   return {
@@ -731,6 +753,7 @@ function blankProject() {
     sfs: [],
     tests: [],
     checklist: null,       // null means "use shipped question set"
+    fsChecklist: null,     // functional safety onsite verification, same rule
     guardOpenings: [],     // ANSI B11.19 reach measurements
     reportSections: null,  // null means "every section"
     muteField: false,      // field verification findings set aside for now
@@ -808,6 +831,7 @@ function migrate(data) {
   base.tests = Array.isArray(data.tests) ? data.tests : [];
   base.tables = data.tables || null;
   base.checklist = Array.isArray(data.checklist) ? data.checklist : null;
+  base.fsChecklist = Array.isArray(data.fsChecklist) ? data.fsChecklist : null;
   base.guardOpenings = Array.isArray(data.guardOpenings) ? data.guardOpenings : [];
   base.signatures = Array.isArray(data.signatures) ? data.signatures : [];
   base.fieldTests = Array.isArray(data.fieldTests) ? data.fieldTests : [];
@@ -822,6 +846,7 @@ function migrate(data) {
   if (v < 8) { migrateV7(base); }
   if (v < 9) { migrateV8(base); }
   if (v < 10) { migrateV9(base); }
+  if (v < 11) { migrateV10(base); }
   normalise(base);
   return base;
 }
@@ -973,6 +998,16 @@ function migrateV9(base) {
   return base;
 }
 
+/* v10 had the guarding checklist but nothing for the functional safety
+   summary that is read off the installed control system. Left null so
+   the shipped question set is materialised on first use, the same way
+   the guarding one is: an empty answer set is not the same as a set of
+   questions answered "not applicable". */
+function migrateV10(base) {
+  if (base.fsChecklist === undefined) { base.fsChecklist = null; }
+  return base;
+}
+
 function migrateV7(base) {
   base.checklist = base.checklist || null;
   base.guardOpenings = base.guardOpenings || [];
@@ -1000,8 +1035,23 @@ function migrateV7(base) {
 }
 
 /* Fields added after a file was written should not read as undefined. */
+/* Every photograph in the file, wherever it hangs, gets a marks array. */
+function normaliseMarks(base) {
+  function fix(list) {
+    (list || []).forEach(function (img) { img.marks = img.marks || []; });
+  }
+  fix(base.meta.images);
+  [base.hazards, base.risks, base.devices, base.sfs].forEach(function (coll) {
+    (coll || []).forEach(function (o) { o.images = o.images || []; fix(o.images); });
+  });
+  return base;
+}
+
 function normalise(base) {
   base.meta.images = base.meta.images || [];
+  /* marks arrived after photographs did, so a file saved before them
+     has images with no marks array to push into */
+  normaliseMarks(base);
   base.devices = base.devices || [];
   base.devices.forEach(function (d) {
     d.images = d.images || [];
@@ -1056,6 +1106,7 @@ function normalise(base) {
     });
   });
   base.checklist = base.checklist || null;
+  base.fsChecklist = base.fsChecklist || null;
   base.schema = SCHEMA;
   return base;
 }
@@ -2462,6 +2513,88 @@ function checklist() {
   }
   return P.checklist;
 }
+
+/* =====================================================================
+   Functional safety onsite verification
+   ---------------------------------------------------------------------
+   A summary sheet of the functional safety requirements that are read
+   off the installed hardware rather than computed: whether each part of
+   the chain reaches the level claimed for it, whether the architecture
+   is what the drawings say, and what category and performance level the
+   systems were observed to achieve.
+
+   Reconciled against ISO 13849-1, ANSI B11.26, ANSI B11.19 and NFPA 79.
+   It sits with the safety devices because every line of it is a
+   statement about the devices: which ones are fitted, how they are
+   wired and how they were found on the machine.
+   ===================================================================== */
+var FS_GROUPS = [
+  { k: 'SENS', label: 'Sensors', ref: 'ISO 13849-1 clause 6' },
+  { k: 'LOGIC', label: 'Logic solver', ref: 'ISO 13849-1 clause 6' },
+  { k: 'ENERGY', label: 'Energy control devices', ref: 'ISO 13849-1 clause 6' },
+  { k: 'ARCH', label: 'Circuit architecture', ref: 'ISO 13849-1 Table 10, ANSI B11.26' },
+  { k: 'DOC', label: 'Diagrams and documents', ref: 'ISO 13849-1 clause 11, NFPA 79 clause 17' },
+  { k: 'ADD', label: 'Additional requirements', ref: 'ANSI B11.19, ANSI B11.26, NFPA 79' },
+  { k: 'EST', label: 'Functional safety estimates', ref: 'observed on the machine' }
+];
+var FS_DEFAULT = [
+  { k: 'FS_SENS', g: 'SENS', kind: 'ANS', q: 'Do all functional safety sensors, such as guard interlock switches, meet or exceed PL d?' },
+  { k: 'FS_LOGIC', g: 'LOGIC', kind: 'ANS', q: 'Do the logic solvers, safety relays or safety controllers, meet or exceed PL d?' },
+  { k: 'FS_ELEC', g: 'ENERGY', kind: 'ANS', q: 'Are all functional safety electrical power control devices, such as safety contactors and motor drives, redundant or otherwise PL d or e?' },
+  { k: 'FS_FLUID', g: 'ENERGY', kind: 'ANS', q: 'Are all functional safety fluid power devices, such as valves, redundant or otherwise PL d or e?' },
+  { k: 'FS_ESTOP_ARCH', g: 'ARCH', kind: 'ANS', q: 'Are all emergency stop circuits category 3 or PL d or e?' },
+  { k: 'FS_GUARD_ARCH', g: 'ARCH', kind: 'ANS', q: 'Are all functional safety safeguarding circuits category 3 or PL d or e?' },
+  { k: 'FS_DOC', g: 'DOC', kind: 'ANS', q: 'Are the functional safety systems, including the electrical and fluid power systems, well documented; do field observations match the diagrams provided; and do the diagrams include the detail and cross references needed to review and maintain them?' },
+  { k: 'FS_ESTOP_POS', g: 'ADD', kind: 'ANS', q: 'Is an emergency stop located at each operator control station, or within reach of where tasks are expected near hazardous motion, such as during minor servicing?' },
+  { k: 'FS_INSTALL', g: 'ADD', kind: 'ANS', q: 'Are the functional safety devices installed as the manufacturer instructs and as ANSI B11.26, ANSI B11.19 and RIA 15.06 require: not easily bypassed, not reachable from the hazard, and with no bypasses or wire jumpers observed?' },
+  { k: 'FS_RESET', g: 'ADD', kind: 'ANS', q: 'Are the reset buttons sited with a good view of the machine hazards, with no blind spots, out of reach from inside the hazard area, and judged effective?' },
+  { k: 'FS_EST_ESTOP', g: 'EST', kind: 'CATPL', q: 'Observed emergency stop system category and performance level' },
+  { k: 'FS_EST_GUARD', g: 'EST', kind: 'CATPL', q: 'Observed safeguarding system category and performance level' },
+  { k: 'FS_COMPLY', g: 'EST', kind: 'ANS', q: 'Do the functional safety systems comply with category 3, PL d per ISO 13849?' }
+];
+var FS_ANSWERS = ['', 'Yes', 'No', 'N/A'];
+var FS_CATS = ['', 'B', '1', '2', '3', '4', 'N/A'];
+var FS_PLS = ['', 'a', 'b', 'c', 'd', 'e', 'N/A'];
+
+function fsChecklist() {
+  if (!Array.isArray(P.fsChecklist) || !P.fsChecklist.length) {
+    P.fsChecklist = FS_DEFAULT.map(function (c) {
+      return { k: c.k, g: c.g, q: c.q, kind: c.kind, ans: '', cat: '', pl: '', note: '' };
+    });
+  }
+  return P.fsChecklist;
+}
+function fsItem(k) {
+  var l = fsChecklist();
+  for (var i = 0; i < l.length; i += 1) { if (l[i].k === k) return l[i]; }
+  return null;
+}
+/* Answered means a verdict was recorded, whichever shape the row is. */
+function fsAnswered(c) {
+  return c.kind === 'CATPL' ? !!(c.cat || c.pl) : !!c.ans;
+}
+function fsScore() {
+  var list = fsChecklist().filter(function (c) { return c.kind === 'ANS'; });
+  var app = list.filter(function (c) { return c.ans === 'Yes' || c.ans === 'No'; });
+  if (!app.length) return null;
+  var yes = app.filter(function (c) { return c.ans === 'Yes'; }).length;
+  return { pct: Math.round((yes / app.length) * 100), answered: app.length, total: list.length };
+}
+/* What the app worked out for itself, offered beside the observed
+   value so the two can be compared rather than one overwriting the
+   other. A divergence between them is the finding worth having. */
+function fsModelled() {
+  var out = { estopPl: '', estopCat: '', guardPl: '', guardCat: '' };
+  P.sfs.forEach(function (sf) {
+    var isEstop = /emergency stop|e-?stop/i.test((sf.type || '') + ' ' + (sf.name || ''));
+    var pl = sfAchievedPl(sf), cat = sf.achievedCat || '';
+    var key = isEstop ? 'estop' : 'guard';
+    if (pl && (!out[key + 'Pl'] || plMeets(out[key + 'Pl'], pl))) { out[key + 'Pl'] = pl; }
+    if (cat && !out[key + 'Cat']) { out[key + 'Cat'] = cat; }
+  });
+  return out;
+}
+
 /* Percent of "Yes" among the items that were answered and are applicable. */
 function complianceScore() {
   var list = checklist();
@@ -4025,6 +4158,45 @@ function findings() {
     }
   }());
 
+  /* ---------- 2a. the functional safety summary sheet ---------- */
+  (function () {
+    var list = fsChecklist();
+    var blank = list.filter(function (c) { return !fsAnswered(c); });
+    if (blank.length === list.length) {
+      add('warn', 'fs', '', 'The functional safety onsite verification checklist has not been answered. It is the record that somebody looked at the installed control system rather than only at the drawings.', 'ANSI B11.26');
+    } else if (blank.length) {
+      add('warn', 'fs', '', blank.length + ' line' + (blank.length === 1 ? '' : 's') + ' of the functional safety checklist ' + (blank.length === 1 ? 'is' : 'are') + ' unanswered.', 'ANSI B11.26');
+    }
+    list.forEach(function (c) {
+      if (c.ans === 'No' && !String(c.note || '').trim()) {
+        add('warn', 'fs', c.k, 'The functional safety checklist records "No" against "' + c.q + '" with no explanation. A failed line should say what was observed, so a corrective action can be written against it.', '');
+      }
+      if (c.ans === 'N/A' && !String(c.note || '').trim()) {
+        add('warn', 'fs', c.k, 'The functional safety checklist records "N/A" against "' + c.q + '" with no explanation. State whether it does not apply or was not available to inspect.', '');
+      }
+    });
+    var comply = fsItem('FS_COMPLY');
+    if (comply && comply.ans === 'No') {
+      add('bad', 'fs', comply.k, 'The functional safety checklist records that the systems do not comply with category 3, PL d per ISO 13849. Nothing on this file may claim a performance level the installed system was observed not to reach.', 'Table 5');
+    }
+    /* an observed value that contradicts the model is the finding this
+       sheet exists to surface */
+    var mod = fsModelled();
+    [
+      { k: 'FS_EST_ESTOP', cat: mod.estopCat, pl: mod.estopPl, what: 'emergency stop' },
+      { k: 'FS_EST_GUARD', cat: mod.guardCat, pl: mod.guardPl, what: 'safeguarding' }
+    ].forEach(function (x) {
+      var c = fsItem(x.k);
+      if (!c || !c.pl || c.pl === 'N/A' || !x.pl) return;
+      if (!plMeets(c.pl, x.pl)) {
+        add('bad', 'fs', x.k, 'The ' + x.what + ' system was observed at PL ' + c.pl + ', below the PL ' + x.pl + ' this file models for it. An observation of the installed system outranks a calculation about it, so either the model is wrong or the installation is.', 'clause 8');
+      }
+      if (c.cat && c.cat !== 'N/A' && x.cat && c.cat !== x.cat) {
+        add('warn', 'fs', x.k, 'The ' + x.what + ' system was observed at category ' + c.cat + ' while this file models category ' + x.cat + '. Resolve which is right before the file is issued.', 'clause 6.1.1');
+      }
+    });
+  }());
+
   /* ---------- 2b. the checklist itself ---------- */
   (function () {
     var cs = complianceScore();
@@ -4366,7 +4538,127 @@ var IMG_QUALITY = 0.72;
 var IMG_SOFT_LIMIT = 3.5 * 1024 * 1024;   /* warn past this total */
 
 function newImage(name, data) {
-  return { id: uid('img'), name: name || 'photo', caption: '', data: data || '' };
+  return { id: uid('img'), name: name || 'photo', caption: '', data: data || '', marks: [] };
+}
+
+/* =====================================================================
+   Photographic mark-up
+   ---------------------------------------------------------------------
+   A safety photograph is evidence, and evidence needs the reader's eye
+   pointed at the thing being reported. The convention in these reports
+   is a coloured oval: green for good practice, yellow for a caution,
+   red for something that needs correcting.
+
+   Marks are stored on the image as fractions of its width and height
+   rather than pixels, so one drawn on a laptop lands in the same place
+   on a phone, in the printed report and at any zoom. Nothing is burned
+   into the image data: the photograph stays the photograph, and a mark
+   can be moved or removed later without degrading it.
+   ===================================================================== */
+var MARK_KINDS = [
+  { k: 'good', label: 'Good practice', colour: '#0f9d58', help: 'Something done well, recorded so it is not changed by accident later.' },
+  { k: 'note', label: 'Caution or note', colour: '#e8a800', help: 'Worth the reader knowing about. Not a finding on its own.' },
+  { k: 'problem', label: 'Problem, corrective action required', colour: '#d62828', help: 'Something that has to be put right. This is what a corrective action gets written against.' }
+];
+function markKind(k) {
+  for (var i = 0; i < MARK_KINDS.length; i += 1) { if (MARK_KINDS[i].k === k) return MARK_KINDS[i]; }
+  return MARK_KINDS[2];
+}
+/* cx, cy, rx and ry are fractions of the image, 0 to 1 */
+function newMark(kind, cx, cy, rx, ry) {
+  return {
+    uid: uid('mk'), kind: kind || 'problem', label: '',
+    cx: cx, cy: cy, rx: rx, ry: ry
+  };
+}
+function imageMarks(img) { return (img && img.marks) || []; }
+/* Which kinds appear anywhere in a set of images, so the legend can
+   name only the colours the reader will actually meet. */
+function marksUsed(images) {
+  var seen = {};
+  (images || []).forEach(function (img) {
+    imageMarks(img).forEach(function (m) { seen[m.kind] = true; });
+  });
+  return MARK_KINDS.filter(function (d) { return seen[d.k]; });
+}
+/* Every photograph the file holds, wherever it lives. */
+function allImages() {
+  var out = (P.meta.images || []).slice();
+  function take(list) { (list || []).forEach(function (o) { out = out.concat(o.images || []); }); }
+  take(P.hazards); take(P.risks); take(P.devices); take(P.sfs);
+  return out;
+}
+
+/* The overlay drawn on top of an image. viewBox is a unit square and
+   the aspect ratio is not preserved, so the ovals stretch with the
+   picture and stay where they were put. */
+function markLayer(img, opts) {
+  opts = opts || {};
+  var marks = imageMarks(img);
+  var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 1000 1000');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', 'marklayer');
+  marks.forEach(function (m) {
+    var d = markKind(m.kind);
+    /* a white backing stroke, because a coloured line on a photograph
+       of a dark panel is invisible without one */
+    ['#ffffff', d.colour].forEach(function (col, i) {
+      var e = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+      e.setAttribute('cx', String(m.cx * 1000));
+      e.setAttribute('cy', String(m.cy * 1000));
+      e.setAttribute('rx', String(Math.max(m.rx, 0.005) * 1000));
+      e.setAttribute('ry', String(Math.max(m.ry, 0.005) * 1000));
+      e.setAttribute('fill', 'none');
+      e.setAttribute('stroke', col);
+      e.setAttribute('stroke-width', i === 0 ? '10' : '6');
+      e.setAttribute('vector-effect', 'non-scaling-stroke');
+      if (opts.selected === m.uid && i === 1) { e.setAttribute('stroke-dasharray', '18 12'); }
+      svg.appendChild(e);
+    });
+    if (m.label) {
+      var t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      t.setAttribute('x', String(m.cx * 1000));
+      t.setAttribute('y', String(Math.max(52, (m.cy - m.ry) * 1000 - 16)));
+      t.setAttribute('text-anchor', 'middle');
+      t.setAttribute('font-size', '64');
+      t.setAttribute('font-weight', '700');
+      t.setAttribute('paint-order', 'stroke');
+      t.setAttribute('stroke', '#ffffff');
+      t.setAttribute('stroke-width', '8');
+      t.setAttribute('fill', d.colour);
+      t.textContent = m.label;
+      svg.appendChild(t);
+    }
+  });
+  return svg;
+}
+/* The key to the colours, printed wherever marked photographs are. */
+function markLegend(images) {
+  var used = marksUsed(images);
+  if (!used.length) return null;
+  return el('div', {}, [
+    el('h4', { cls: 'subhead', text: 'Legend for photographic notes' }),
+    el('p', { cls: 'hint', text: 'In the photographs, the reader\u2019s attention is drawn with mark-ups. These are colour coded as follows.' }),
+    el('div', { cls: 'marklegend' }, used.map(function (d) {
+      return el('span', {}, [
+        el('span', { cls: 'ring', style: { borderColor: d.colour } }),
+        el('span', { text: d.label })
+      ]);
+    }))
+  ]);
+}
+
+/* An image with its marks drawn over it, as one node. */
+function markedImage(img, imgStyle) {
+  var wrap = el('div', { cls: 'markwrap' });
+  wrap.appendChild(el('img', {
+    src: img.data, alt: img.caption || img.name,
+    style: imgStyle || { width: '100%', display: 'block' }
+  }));
+  if (imageMarks(img).length) { wrap.appendChild(markLayer(img)); }
+  return wrap;
 }
 
 function canDownscale() {
@@ -4435,12 +4727,25 @@ function gallery(list, opts) {
     var grid = el('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(170px,1fr))', gap: '10px' } });
     list.forEach(function (img, idx) {
       var fig = el('figure', { style: { margin: 0, border: '1px solid var(--rule)', background: 'var(--panel)' } });
+      var marked = imageMarks(img).length;
       var pic = el('img', {
         src: img.data, alt: img.caption || img.name,
-        style: { width: '100%', height: '120px', objectFit: 'cover', display: 'block', cursor: 'zoom-in' }
+        /* a marked photograph is shown whole rather than cropped to
+           fill the tile, because a mark drawn on the part that cover
+           crops away would point at nothing */
+        style: {
+          width: '100%', height: '120px', display: 'block', cursor: 'zoom-in',
+          objectFit: marked ? 'contain' : 'cover',
+          background: marked ? '#111' : 'transparent'
+        }
       });
       pic.addEventListener('click', function () { lightbox(img); });
-      fig.appendChild(pic);
+      if (marked) {
+        var thumb = el('div', { cls: 'markwrap', style: { cursor: 'zoom-in' } }, [pic, markLayer(img)]);
+        fig.appendChild(thumb);
+      } else {
+        fig.appendChild(pic);
+      }
       if (opts.editable) {
         var cap = el('input', { value: img.caption || '', placeholder: 'Caption', style: { border: 0, borderTop: '1px solid var(--rule-2)', fontSize: '11.5px', borderRadius: 0 } });
         cap.addEventListener('input', function () { img.caption = cap.value; if (opts.onChange) opts.onChange(); });
@@ -4448,6 +4753,15 @@ function gallery(list, opts) {
         var bar = el('div', { cls: 'noprint', style: { display: 'flex', gap: '4px', padding: '5px' } }, [
           el('button', { cls: 'btn ghost sm', type: 'button', text: '\u2190', title: 'Move left', on: { click: function () { if (idx > 0) { list.splice(idx - 1, 0, list.splice(idx, 1)[0]); draw(); if (opts.onChange) opts.onChange(); } } } }),
           el('button', { cls: 'btn ghost sm', type: 'button', text: '\u2192', title: 'Move right', on: { click: function () { if (idx < list.length - 1) { list.splice(idx + 1, 0, list.splice(idx, 1)[0]); draw(); if (opts.onChange) opts.onChange(); } } } }),
+          el('button', {
+            cls: 'btn ghost sm', type: 'button',
+            text: marked ? 'Marks (' + marked + ')' : 'Mark up',
+            on: {
+              click: function () {
+                markupForm(img, function () { draw(); if (opts.onChange) opts.onChange(); });
+              }
+            }
+          }),
           el('button', { cls: 'btn ghost sm', type: 'button', text: 'Remove', style: { marginLeft: 'auto' }, on: { click: function () { list.splice(idx, 1); draw(); if (opts.onChange) opts.onChange(); } } })
         ]);
         fig.appendChild(bar);
@@ -4509,11 +4823,174 @@ function gallery(list, opts) {
   return host;
 }
 
+
+/* ---------------------------------------------------------------------
+   The mark-up editor.
+
+   Drag on the photograph to draw an oval in the colour in hand. Click
+   an existing one to select it, then relabel, recolour or remove it.
+   Everything is worked out as a fraction of the displayed image, so the
+   size of the window does not matter and the marks survive printing.
+   --------------------------------------------------------------------- */
+function markupForm(img, onDone) {
+  /* worked on a copy: cancel has to mean cancel */
+  var marks = JSON.parse(JSON.stringify(imageMarks(img)));
+  var kind = 'problem';
+  var selected = '';
+
+  var stage = el('div', { cls: 'markstage' });
+  var pic = el('img', { src: img.data, alt: img.caption || img.name });
+  stage.appendChild(pic);
+  var layer = null;
+  var listHost = el('div');
+
+  /* the painted area of the picture, which is not the element box when
+     the photograph is letterboxed inside it */
+  function box() {
+    var r = pic.getBoundingClientRect();
+    return { left: r.left, top: r.top, w: r.width || 1, h: r.height || 1 };
+  }
+  function frac(ev) {
+    var b = box();
+    return {
+      x: Math.min(1, Math.max(0, (ev.clientX - b.left) / b.w)),
+      y: Math.min(1, Math.max(0, (ev.clientY - b.top) / b.h))
+    };
+  }
+  function draw() {
+    if (layer && layer.parentNode) { layer.parentNode.removeChild(layer); }
+    layer = markLayer({ marks: marks }, { selected: selected });
+    stage.appendChild(layer);
+    drawList();
+  }
+  function drawList() {
+    var kids = [];
+    if (!marks.length) {
+      kids.push(el('p', { cls: 'hint', text: 'No marks yet. Choose a colour, then drag a ring around the thing you want the reader to look at.' }));
+    }
+    marks.forEach(function (m, i) {
+      var d = markKind(m.kind);
+      var lab = el('input', { cls: 'inp', value: m.label || '', placeholder: 'Optional short label, for example A' });
+      lab.addEventListener('input', function () { m.label = lab.value.slice(0, 18); draw(); });
+      var ksel = el('select', { cls: 'inp' });
+      MARK_KINDS.forEach(function (x) {
+        var o = el('option', { value: x.k, text: x.label });
+        if (x.k === m.kind) { o.selected = true; }
+        ksel.appendChild(o);
+      });
+      ksel.addEventListener('change', function () { m.kind = ksel.value; draw(); });
+      kids.push(el('div', { cls: 'subcard' + (selected === m.uid ? ' sel' : '') }, [
+        el('div', { cls: 'cardhead' }, [
+          el('div', {}, [
+            el('span', { cls: 'swatch', style: { background: d.colour } }),
+            el('strong', { text: 'Mark ' + (i + 1) })
+          ]),
+          el('div', { cls: 'rowacts' }, [
+            actBtn(selected === m.uid ? 'Deselect' : 'Select', function () {
+              selected = (selected === m.uid ? '' : m.uid);
+              draw();
+            }),
+            actBtn('Remove', function () {
+              marks = marks.filter(function (x) { return x.uid !== m.uid; });
+              if (selected === m.uid) { selected = ''; }
+              draw();
+            }, 'danger')
+          ])
+        ]),
+        row('g2', [ksel, lab])
+      ]));
+    });
+    put(listHost, kids);
+  }
+
+  /* drawing: press, drag out from the centre, release */
+  var start = null, ghost = null;
+  function endGhost() {
+    if (ghost && ghost.parentNode) { ghost.parentNode.removeChild(ghost); }
+    ghost = null;
+  }
+  stage.addEventListener('pointerdown', function (ev) {
+    if (ev.button !== undefined && ev.button !== 0) return;
+    ev.preventDefault();
+    start = frac(ev);
+    try { stage.setPointerCapture(ev.pointerId); } catch (e) { /* older engine */ }
+    ghost = el('div', { cls: 'markghost', style: { borderColor: markKind(kind).colour } });
+    stage.appendChild(ghost);
+  });
+  stage.addEventListener('pointermove', function (ev) {
+    if (!start || !ghost) return;
+    var now = frac(ev);
+    var b = box();
+    var rx = Math.abs(now.x - start.x), ry = Math.abs(now.y - start.y);
+    ghost.style.left = ((start.x - rx) * b.w) + 'px';
+    ghost.style.top = ((start.y - ry) * b.h) + 'px';
+    ghost.style.width = (rx * 2 * b.w) + 'px';
+    ghost.style.height = (ry * 2 * b.h) + 'px';
+  });
+  stage.addEventListener('pointerup', function (ev) {
+    if (!start) return;
+    var now = frac(ev);
+    var rx = Math.abs(now.x - start.x), ry = Math.abs(now.y - start.y);
+    endGhost();
+    var began = start;
+    start = null;
+    /* a click rather than a drag: put down a ring of a usable size
+       where they clicked, so the tool is never silent */
+    if (rx < 0.012 || ry < 0.012) { rx = 0.09; ry = 0.09; }
+    var m = newMark(kind, began.x, began.y, rx, ry);
+    marks.push(m);
+    selected = m.uid;
+    draw();
+  });
+  stage.addEventListener('pointercancel', function () { start = null; endGhost(); });
+
+  var picker = el('div', { cls: 'btnbar' }, MARK_KINDS.map(function (d) {
+    var b = el('button', {
+      cls: 'btn ghost sm markpick' + (d.k === kind ? ' on' : ''), type: 'button',
+      'data-kind': d.k
+    }, [el('span', { cls: 'swatch', style: { background: d.colour } }), el('span', { text: d.label })]);
+    b.addEventListener('click', function () {
+      kind = d.k;
+      Array.prototype.forEach.call(picker.querySelectorAll('.markpick'), function (n) {
+        n.classList.toggle('on', n.getAttribute('data-kind') === kind);
+      });
+      /* recolour whatever is selected too, which is what people expect
+         after picking a colour with something already chosen */
+      if (selected) {
+        marks.forEach(function (m) { if (m.uid === selected) { m.kind = kind; } });
+        draw();
+      }
+    });
+    return b;
+  }));
+
+  var body = [
+    el('p', { cls: 'hint', text: 'Drag a ring around what the reader should look at, or click once for a ring of a standard size. Marks sit on top of the photograph rather than in it, so the original is never altered and a mark can be changed or removed at any time.' }),
+    picker,
+    stage,
+    el('div', { cls: 'btnbar' }, [
+      el('button', {
+        cls: 'btn ghost sm', type: 'button', text: 'Remove all marks',
+        on: { click: function () { marks = []; selected = ''; draw(); } }
+      })
+    ]),
+    listHost
+  ];
+
+  draw();
+  openDlg('Mark up the photograph', body, function () {
+    img.marks = marks;
+    if (onDone) { onDone(); }
+    say(marks.length ? (marks.length + ' mark' + (marks.length === 1 ? '' : 's') + ' saved on the photograph') : 'Marks cleared');
+    return true;
+  }, 'Save marks');
+}
+
 function lightbox(img) {
   var d = $('lightbox');
   var slot = $('lightboxImg');
   clear(slot);
-  slot.appendChild(el('img', { src: img.data, alt: img.caption || img.name, style: { maxWidth: '100%', maxHeight: '72vh', display: 'block', margin: '0 auto' } }));
+  slot.appendChild(markedImage(img, { maxWidth: '100%', maxHeight: '72vh', display: 'block', margin: '0 auto' }));
   $('lightboxCap').textContent = img.caption || img.name || '';
   if (d.showModal) { d.showModal(); } else { d.setAttribute('open', ''); }
 }
@@ -4909,6 +5386,7 @@ function findingTarget(f) {
     return { view: 'hz', open: h ? function () { hazardForm(h); } : null, label: h ? ('open ' + hazardLabel(h)) : 'go to the safety report' };
   }
   if (w === 'check') { return { view: 'hz', open: null, label: 'go to the safeguarding checklist' }; }
+  if (w === 'fs') { return { view: 'dev', open: null, label: 'go to the functional safety checklist' }; }
   if (w === 'meta' || w === 'project') { return { view: 'project', open: null, label: 'go to scope' }; }
   return null;
 }
@@ -5339,7 +5817,7 @@ var GUIDE = [
       { n: '00', t: 'Scope', d: 'Identify the machine, the revision, who is doing the work, and what is inside and outside the assessment. The exclusions matter more than the inclusions: name the adjacent equipment you did not assess.' },
       { n: '01', t: 'Safety report', d: 'The walkdown. One entry per hazard found, with photographs and a recommendation, plus the safeguarding checklist and the reach measurements. This is observation, not scoring, and it comes first because the checklist decides whether exposure can be scored as prevented at all.' },
       { n: '02', t: 'Risk assessment', d: 'One row per task and hazard pair, raised from the observations or added directly. Score the initial risk with no protective measure in place, list the measures, then score the residual. The level is computed for you and is never left blank.' },
-      { n: '03', t: 'Safety devices', d: 'Every interlock, relay, contactor and drive that makes up a safety circuit, with its safety values and where those values came from. Import a manufacturer library in VDMA 66413 XML if you have one.' },
+      { n: '03', t: 'Safety devices', d: 'Every interlock, relay, contactor and drive that makes up a safety circuit, with its safety values and where those values came from. Import a manufacturer library in VDMA 66413 XML if you have one. The functional safety onsite verification sheet sits at the foot of this step, because every line of it is a statement about these devices.' },
       { n: '04', t: 'Safety functions', d: 'Chain the devices into functions: input, logic, output. The app works out the achieved performance level and structure category and checks them against what the risk rows require.' },
       { n: '05', t: 'Risk assessment verification', d: 'Does the analysis hold? Verification of the scoring, the specification and the performance claims. This is desk work.' },
       { n: '06', t: 'Field verification', d: 'Does the hardware do what the analysis says? Device by device, on the installed equipment, with the machine in front of you.' },
@@ -5370,6 +5848,23 @@ var GUIDE = [
       'Every safety value needs a source, and the app ranks them: manufacturer data first, then a recognised data collection, then a typical value from a standard. Choosing a typical value from ISO 13849-1 Table C.1 writes the source for you and drops the rank accordingly.',
       'A device imported from a manufacturer library carries whatever the manufacturer published. The app does not nag about fields they chose to omit. It still checks the things that are your decisions rather than theirs.',
       'Where a mechanical, hydraulic or pneumatic part has no reliability data at all, and the good engineering practice method cannot be applied either, the alternative procedure in clause 6.1.9 gives a performance level from the architecture alone. It is a last resort with three preconditions, and the app asks you to state that all three hold.'
+    ]
+  },
+  {
+    k: 'photos', title: 'Marking up the photographs',
+    body: [
+      'A photograph of a panel is a photograph of forty things. Press Mark up on any photograph and drag a ring around the one the reader is meant to look at. Green is good practice, worth recording so it is not undone later; yellow is a caution the reader should know about; red is something that has to be put right, and is what a corrective action gets written against.',
+      'Marks sit on top of the photograph rather than being burned into it. The image data is never altered, so a ring can be moved, recoloured or removed at any time, and the original photograph is still the original photograph if it is ever needed as evidence. Each mark is held as a fraction of the picture rather than in pixels, so one drawn on a laptop lands in the same place in the printed report.',
+      'A short label on a mark, an A or a B, lets the text underneath refer to it. The report prints a legend of the colours, and only of the colours actually used in that file.'
+    ],
+    tip: 'A marked photograph is shown whole on its card rather than cropped to fill the tile, because a ring drawn on the part that the crop removes would point at nothing.'
+  },
+  {
+    k: 'fssheet', title: 'The functional safety onsite sheet',
+    body: [
+      'A one page summary of what the installed control system was observed to be, per ISO 13849-1, ANSI B11.26, ANSI B11.19 and NFPA 79: whether the sensors, the logic and the output devices each reach the level claimed, whether the architecture matches the drawings, and what category and performance level the emergency stop and safeguarding systems were found to achieve.',
+      'The two observed lines are the point of it. Beside each one the app shows what this file models for that system, without writing it into the observed column. Where the observation comes out below the model, that is raised as blocking: an observation of the installed system outranks a calculation about it, so either the model is wrong or the installation is, and both are worth knowing before the file is issued.',
+      'A line answered No or N/A needs an explanation, for the same reason the guarding checklist does: a verdict with nothing behind it cannot be questioned later, and a corrective action has to be written against something.'
     ]
   },
   {
@@ -5878,6 +6373,103 @@ function hazardForm(existing) {
   });
 }
 
+
+/* ---------- the functional safety checklist, in the devices view ------ */
+function renderFsChecklist() {
+  var list = fsChecklist();
+  var sc = fsScore();
+  var unanswered = list.filter(function (c) { return !fsAnswered(c); }).length;
+  var noes = list.filter(function (c) { return c.ans === 'No'; }).length;
+  var comply = fsItem('FS_COMPLY');
+
+  put($('fsStats'), [
+    statCard('Functional safety score', sc ? sc.pct + ' %' : 'not scored',
+      sc ? sc.answered + ' of ' + sc.total + ' questions answered' : 'answer the questions to score'),
+    statCard('Unanswered', String(unanswered), 'of ' + list.length + ' lines', unanswered ? 'alert' : 'good'),
+    statCard('Recorded as No', String(noes), noes ? 'each needs an explanation and an action' : 'nothing recorded as failing', noes ? 'alert' : 'good'),
+    statCard('Complies with Cat. 3, PL d', comply && comply.ans ? comply.ans : 'not stated',
+      'the summary line of the sheet',
+      comply && comply.ans === 'Yes' ? 'good' : (comply && comply.ans === 'No' ? 'alert' : ''))
+  ]);
+
+  var mod = fsModelled();
+  var host = [];
+  FS_GROUPS.forEach(function (g) {
+    var items = list.filter(function (c) { return c.g === g.k; });
+    if (!items.length) return;
+    var rows = [];
+    items.forEach(function (c) {
+      var ansCell;
+      if (c.kind === 'CATPL') {
+        var cs = el('select', { cls: 'inp' });
+        FS_CATS.forEach(function (v) {
+          var o = el('option', { value: v, text: v === '' ? 'category' : (v === 'N/A' ? 'N/A' : 'Cat. ' + v) });
+          if (c.cat === v) { o.selected = true; }
+          cs.appendChild(o);
+        });
+        cs.addEventListener('change', function () { c.cat = cs.value; commit('Observation recorded'); });
+        var ps = el('select', { cls: 'inp' });
+        FS_PLS.forEach(function (v) {
+          var o = el('option', { value: v, text: v === '' ? 'level' : (v === 'N/A' ? 'N/A' : 'PL ' + v) });
+          if (c.pl === v) { o.selected = true; }
+          ps.appendChild(o);
+        });
+        ps.addEventListener('change', function () { c.pl = ps.value; commit('Observation recorded'); });
+        ansCell = el('div', { cls: 'grid g2' }, [cs, ps]);
+      } else {
+        var sel = el('select', { cls: 'inp' });
+        FS_ANSWERS.forEach(function (a) {
+          var o = el('option', { value: a, text: a || 'not answered' });
+          if (c.ans === a) { o.selected = true; }
+          sel.appendChild(o);
+        });
+        sel.addEventListener('change', function () { c.ans = sel.value; commit('Checklist updated'); });
+        ansCell = sel;
+      }
+
+      var note = el('input', { cls: 'inp' });
+      note.type = 'text';
+      note.value = c.note || '';
+      note.placeholder = c.ans === 'No' ? 'What was observed, and what is recommended' : 'Explanation';
+      note.addEventListener('input', function () { c.note = note.value; saveLocalSoon(); });
+
+      /* what the file already says, offered for comparison rather than
+         written into the observed column: the point of the sheet is
+         that somebody looked */
+      var modelled = null;
+      if (c.k === 'FS_EST_ESTOP' && (mod.estopCat || mod.estopPl)) {
+        modelled = 'The model in this file gives ' + (mod.estopCat ? 'category ' + mod.estopCat : 'no category')
+          + ', ' + (mod.estopPl ? 'PL ' + mod.estopPl : 'no performance level') + ' for the emergency stop functions.';
+      }
+      if (c.k === 'FS_EST_GUARD' && (mod.guardCat || mod.guardPl)) {
+        modelled = 'The model in this file gives ' + (mod.guardCat ? 'category ' + mod.guardCat : 'no category')
+          + ', ' + (mod.guardPl ? 'PL ' + mod.guardPl : 'no performance level') + ' for the safeguarding functions.';
+      }
+
+      rows.push(el('tr', {}, [
+        el('td', {}, [
+          el('div', { text: c.q }),
+          modelled ? el('div', { cls: 'hint', text: modelled }) : null
+        ].filter(Boolean)),
+        el('td', {}, [ansCell]),
+        el('td', {}, [note])
+      ]));
+    });
+    host.push(el('div', { cls: 'tw' }, [
+      el('table', { cls: 'dt' }, [
+        el('caption', { text: g.label + (g.ref ? ', ' + g.ref : '') }),
+        el('thead', {}, [el('tr', {}, [
+          el('th', { text: 'Question' }),
+          el('th', { text: 'Answer', style: { width: '190px' } }),
+          el('th', { text: 'Explanation', style: { width: '32%' } })
+        ])]),
+        el('tbody', {}, rows)
+      ])
+    ]));
+  });
+  put($('fsList'), host);
+}
+
 function renderSf() {
   var ok = 0, gap = 0;
   P.sfs.forEach(function (sf) {
@@ -6140,11 +6732,13 @@ var REPORT_SECTIONS = [
   { k: 'team', label: 'Assessment team', help: 'Who took part.', empty: function () { return !P.meta.team; } },
   { k: 'standards', label: 'Standards applied', help: 'The documents the assessment was carried out against.', empty: function () { return !P.meta.standards; } },
   { k: 'assumptions', label: 'Assumptions and limitations', help: 'The conditions the assessment holds under.', empty: function () { return !P.meta.assumptions; } },
+  { k: 'legend', label: 'Legend for photographic notes', help: 'The key to the coloured rings drawn on the photographs. Prints only when a photograph carries one.', empty: function () { return !marksUsed(allImages()).length; } },
   { k: 'hazards', label: 'Safety report: hazards found', help: 'The walkdown record. Each observation with its photographs, the recommendation and who owns it.', empty: function () { return !(P.hazards || []).length; } },
   { k: 'risk', label: 'Risk assessment', help: 'One row per task and hazard pair, with initial score, measures and residual score.' },
   { k: 'devices', label: 'Safety device schedule', help: 'Every device with its safety values, provenance and the functions it serves.' },
   { k: 'sfperf', label: 'Safety function performance', help: 'Required against achieved performance level and structure category.' },
   { k: 'spec', label: 'Safety function specification completeness', help: 'The SISTEMA documentation fields, and which are blank.', empty: function () { return !P.sfs.length; } },
+  { k: 'fschecklist', label: 'Functional safety onsite verification', help: 'The summary sheet read off the installed control system, with the observed category and performance level.' },
   { k: 'checklist', label: 'Safeguarding checklist', help: 'The onsite guarding record and the compliance score.' },
   { k: 'provenance', label: 'Provenance of the determinations', help: 'What is modelled, what is field verified, and what contradicts the model.' },
   { k: 'vv', label: 'Risk assessment verification', help: 'Verification and validation of the assessment itself, with verdicts.' },
@@ -6156,13 +6750,13 @@ var REPORT_SECTIONS = [
 /* Named presets for the combinations people actually ask for. */
 var REPORT_PRESETS = [
   { k: 'full', label: 'Everything', keys: REPORT_SECTIONS.map(function (x) { return x.k; }) },
-  { k: 'walkdown', label: 'Safety report only', keys: ['conclusion', 'scope', 'assumptions', 'hazards', 'checklist', 'approval'] },
-  { k: 'ra', label: 'Risk assessment only', keys: ['scope', 'assumptions', 'hazards', 'risk', 'approval'] },
+  { k: 'walkdown', label: 'Safety report only', keys: ['conclusion', 'scope', 'legend', 'assumptions', 'hazards', 'checklist', 'approval'] },
+  { k: 'ra', label: 'Risk assessment only', keys: ['scope', 'legend', 'assumptions', 'hazards', 'risk', 'approval'] },
   { k: 'ra_sf', label: 'Risk assessment and safety functions', keys: ['scope', 'assumptions', 'risk', 'sfperf', 'spec', 'devices', 'approval'] },
   { k: 'vv', label: 'Verification and validation only', keys: ['scope', 'vv', 'approval'] },
-  { k: 'controls', label: 'Controls package', keys: ['scope', 'devices', 'sfperf', 'spec', 'provenance', 'vv', 'approval'] },
-  { k: 'field', label: 'Field verification only', keys: ['scope', 'field', 'checklist', 'approval'] },
-  { k: 'guarding', label: 'Guarding package', keys: ['scope', 'hazards', 'risk', 'checklist', 'approval'] },
+  { k: 'controls', label: 'Controls package', keys: ['scope', 'devices', 'sfperf', 'spec', 'fschecklist', 'provenance', 'vv', 'approval'] },
+  { k: 'field', label: 'Field verification only', keys: ['scope', 'legend', 'field', 'fschecklist', 'checklist', 'approval'] },
+  { k: 'guarding', label: 'Guarding package', keys: ['scope', 'legend', 'hazards', 'risk', 'checklist', 'approval'] },
   { k: 'findings', label: 'Findings only', keys: ['conclusion', 'scope', 'findings'] }
 ];
 
@@ -6379,6 +6973,26 @@ function renderReport() {
     doc.appendChild(el('p', { cls: 'wrap', text: m.assumptions }));
   });
 
+  sec('legend', function (H) {
+    doc.appendChild(el('h3', { text: H }));
+    doc.appendChild(el('p', { cls: 'wrap', text: 'In the photographs, the reader\u2019s attention is drawn to particular things with coloured rings. They are colour coded as follows, and the same code is used throughout this report.' }));
+    var used = marksUsed(allImages());
+    var lt = el('table', { cls: 'dt' });
+    var lh = el('tr');
+    ['Mark', 'Meaning', 'What it asks of the reader'].forEach(function (h) { lh.appendChild(el('th', { scope: 'col', text: h })); });
+    lt.appendChild(el('thead', null, lh));
+    var lb = el('tbody');
+    used.forEach(function (d) {
+      lb.appendChild(el('tr', null, [
+        el('td', null, el('span', { style: { display: 'inline-block', width: '26px', height: '17px', border: '3px solid ' + d.colour, borderRadius: '50%' } })),
+        el('td', { text: d.label }),
+        el('td', { text: d.help })
+      ]));
+    });
+    lt.appendChild(lb);
+    doc.appendChild(el('div', { cls: 'tw' }, [lt]));
+  });
+
   sec('hazards', function (H) {
     doc.appendChild(el('h3', { text: H }));
     var hz = P.hazards || [];
@@ -6563,6 +7177,49 @@ function renderReport() {
       st.appendChild(sb);
       doc.appendChild(el('div', { cls: 'tw' }, st));
     }());
+  });
+
+  sec('fschecklist', function (H) {
+    var list = fsChecklist();
+    var sc = fsScore();
+    var comply = fsItem('FS_COMPLY');
+    var est = fsItem('FS_EST_ESTOP'), gest = fsItem('FS_EST_GUARD');
+    function catpl(c) {
+      if (!c || (!c.cat && !c.pl)) return 'not recorded';
+      if (c.cat === 'N/A' || c.pl === 'N/A') return 'N/A' + (c.note ? '. ' + c.note : '');
+      return [c.cat ? 'Cat. ' + c.cat : '', c.pl ? 'PL ' + c.pl : ''].filter(Boolean).join(', ');
+    }
+    doc.appendChild(el('h3', { text: H }));
+    doc.appendChild(el('p', { cls: 'wrap', text: 'Functional safety summary per ISO 13849, ANSI B11.26, ANSI B11.19 and NFPA 79. Every line below was read off the installed control system rather than computed from the model.' }));
+    doc.appendChild(dl([
+      ['Functional safety score', sc ? sc.pct + ' %  (' + sc.answered + ' of ' + sc.total + ' answered)' : 'not scored'],
+      ['Observed emergency stop system', catpl(est)],
+      ['Observed safeguarding system', catpl(gest)],
+      ['Complies with category 3, PL d per ISO 13849', comply && comply.ans ? comply.ans : 'not stated']
+    ]));
+    var ft = el('table', { cls: 'dt' });
+    var fh = el('tr');
+    ['Question', 'Answer', 'Explanation'].forEach(function (h) { fh.appendChild(el('th', { scope: 'col', text: h })); });
+    ft.appendChild(el('thead', null, fh));
+    var fb = el('tbody');
+    FS_GROUPS.forEach(function (g) {
+      var items = list.filter(function (x) { return x.g === g.k; });
+      if (!items.length) return;
+      fb.appendChild(el('tr', null, [el('td', { colSpan: 3 }, el('strong', { text: g.label + (g.ref ? ', ' + g.ref : '') }))]));
+      items.forEach(function (c) {
+        var val = c.kind === 'CATPL' ? catpl(c) : (c.ans || 'not answered');
+        fb.appendChild(el('tr', null, [
+          el('td', { text: c.q }),
+          el('td', { cls: 'num' }, el('span', {
+            cls: 'chip ' + (c.ans === 'Yes' ? 'ok' : (c.ans === 'No' ? 'bad' : 'tag')),
+            text: val
+          })),
+          el('td', { text: c.note || '' })
+        ]));
+      });
+    });
+    ft.appendChild(fb);
+    doc.appendChild(el('div', { cls: 'tw' }, [ft]));
   });
 
   sec('checklist', function (H) {
@@ -7373,7 +8030,7 @@ function renderView() {
   renderChrome();
   if (VIEW === 'risk') renderRisk();
   else if (VIEW === 'hz') { renderHazards(); renderGuardingRecord(); }
-  else if (VIEW === 'dev') renderDevices();
+  else if (VIEW === 'dev') { renderDevices(); renderFsChecklist(); }
   else if (VIEW === 'project') renderProject();
   else if (VIEW === 'sf') renderSf();
   else if (VIEW === 'check') renderCheck();
@@ -8022,12 +8679,24 @@ function vdmaPreview(devices, fileName) {
    ===================================================================== */
 var _dlgSave = null, _lastFocus = null;
 
+/* A form can rebuild itself part way through, when a choice inside it
+   changes what the rest of the form should say. Calling showModal on a
+   dialog that is already open throws, and the browser tears the dialog
+   down as it goes, which loses whatever was being entered. When the
+   dialog is already up, swap its contents and leave it where it is. */
 function openDlg(title, bodyNodes, onSave, okLabel) {
   var d = $('dlg');
+  var already = !!d.open;
   $('dlgTitle').textContent = title;
   $('dlgOk').textContent = okLabel || 'Save';
+  var y = already && $('dlgBody') ? $('dlgBody').scrollTop : 0;
   put($('dlgBody'), bodyNodes);
   _dlgSave = onSave;
+  if (already) {
+    /* keep the reader where they were in a long form */
+    try { $('dlgBody').scrollTop = y; } catch (e) { /* no layout */ }
+    return;
+  }
   _lastFocus = document.activeElement;
   if (d.showModal) { d.showModal(); } else { d.setAttribute('open', ''); }
   var first = d.querySelector('input,select,textarea');
@@ -8878,6 +9547,14 @@ function riskForm(existing) {
   });
 }
 /* ---------- Device form ---------- */
+/* Reopen the device form on a half finished device without turning a
+   new one into an edit of something that is not in the library yet.
+   deviceForm treats its first argument as an existing record, so a new
+   device goes back in through the seed argument instead. */
+function reopenDeviceForm(work, isNew) {
+  if (isNew) { deviceForm(null, work); } else { deviceForm(work); }
+}
+
 function deviceForm(existing, seed) {
   var dv = existing || seed || newDevice();
   var isNew = !existing;
@@ -8930,6 +9607,10 @@ function deviceForm(existing, seed) {
             cls: 'btn sm', type: 'button', text: 'Apply to this device', style: { marginTop: '8px' },
             on: {
               click: function () {
+                /* everything typed so far lives in the inputs, not in
+                   `work`, until the getters are run. Rebuilding without
+                   running them first throws the entry away. */
+                bag.forEach(function (fn) { fn(); });
                 if (c.kind === 'MTTFD') {
                   work.mttfdYears = c.value;
                   work.mttfdBasis = 'DIRECT';
@@ -8940,7 +9621,7 @@ function deviceForm(existing, seed) {
                 work.sourceKind = 'STANDARD';
                 work.source = 'ISO 13849-1:2023 Table C.1, ' + c.label + (c.std ? ', ' + c.std : '');
                 say('Applied the table value. Enter operations per year so the MTTFD can be worked out.');
-                deviceForm(work);
+                reopenDeviceForm(work, isNew);
               }
             }
           })
@@ -9057,6 +9738,7 @@ function deviceForm(existing, seed) {
             cls: 'btn sm', type: 'button', text: 'Apply to this device', style: { marginTop: '8px' },
             on: {
               click: function () {
+                bag.forEach(function (fn) { fn(); });
                 work.pfhd = row.pfh;
                 work.plStated = row.pl;
                 work.sourceKind = 'STANDARD';
@@ -9065,7 +9747,7 @@ function deviceForm(existing, seed) {
                 work.altWellTried = wt.checked;
                 work.altBasis = basis.value.trim();
                 say('Applied PL ' + row.pl + ' from Table 8. The quantifiable aspects only: systematic failure and software requirements still apply.');
-                deviceForm(work);
+                reopenDeviceForm(work, isNew);
               }
             }
           })
@@ -10418,6 +11100,17 @@ function exportCsv() {
   }());
 
   rows.push([]);
+  rows.push(['SECTION', 'Functional safety onsite verification']);
+  rows.push(['Group', 'Question', 'Answer', 'Observed category', 'Observed PL', 'Explanation']);
+  (function () {
+    var byGroup = {};
+    FS_GROUPS.forEach(function (g) { byGroup[g.k] = g.label; });
+    fsChecklist().forEach(function (c) {
+      rows.push([byGroup[c.g] || c.g, c.q, c.kind === 'CATPL' ? '' : c.ans, c.cat || '', c.pl || '', c.note || '']);
+    });
+  }());
+
+  rows.push([]);
   rows.push(['SECTION', 'Verification and validation']);
   rows.push(['ID', 'Safety function', 'Risk row', 'Activity', 'Method', 'Title', 'Requirement', 'Preconditions', 'Equipment',
     'Steps', 'Acceptance criterion', 'Actual result', 'Verdict', 'Tested by', 'Witnessed by', 'Date', 'Deviation', 'Retest of']);
@@ -10592,6 +11285,24 @@ function loadExample() {
   h3.priority = 'Immediate'; h3.status = 'Open';
   h3.observedBy = 'Assessment team'; h3.observedDate = P.meta.revDate;
   P.hazards = [h1, h2, h3];
+
+  /* The functional safety sheet, answered as the installed system was
+     found. The observed safeguarding level is left at N/A so the example
+     shows what a line that does not apply looks like. */
+  P.fsChecklist = null;
+  fsChecklist().forEach(function (c) {
+    if (c.kind === 'CATPL') { return; }
+    c.ans = 'Yes';
+  });
+  (function () {
+    var e = fsItem('FS_EST_ESTOP');
+    e.cat = '3'; e.pl = 'd';
+    var g = fsItem('FS_EST_GUARD');
+    g.cat = '3'; g.pl = 'd';
+    var f = fsItem('FS_FLUID');
+    f.ans = 'N/A';
+    f.note = 'No fluid power in the safety chain on this cell.';
+  }());
 
   /* The safeguarding checklist. Answered as a machine whose guarding does
      prevent access, so the worked example shows E0 available on RA-001 and
@@ -10815,6 +11526,13 @@ function boot() {
 
   /* section actions */
   $('btnAddHz').addEventListener('click', function () { hazardForm(null); });
+  $('btnFsReset').addEventListener('click', function () {
+    confirmDelete('every answer on the functional safety checklist', function () {
+      P.fsChecklist = null;
+      fsChecklist();
+      commit('Functional safety checklist reset');
+    }, 'Reset');
+  });
   $('btnAddRisk').addEventListener('click', function () { riskForm(null); });
   $('btnDemo').addEventListener('click', function () {
     if (P.risks.length || P.sfs.length || P.tests.length) {

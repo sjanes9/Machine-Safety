@@ -86,12 +86,18 @@ nav.steps{padding:8px}
 .railfile{margin:4px 0 0;font:400 10.5px/1.35 var(--mono);color:var(--ink-3);word-break:break-all}
 .railfile.linked{color:var(--ok)}
 .railfile.dirty{color:var(--warn)}
-.pickgrid{display:grid;grid-template-columns:1fr;gap:0}
-.pickrow{display:grid;grid-template-columns:auto 26px 1fr auto;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--rule-2)}
+.pickgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px 16px}
+.pickrow{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:start;padding:6px 0;border-top:1px solid var(--rule-2)}
+/* the report picker is an ordered list rather than a set of choices, so
+   its rows carry a position and the controls to change it. Scoped to
+   that picker: .pickrow is used elsewhere with two children, and a four
+   column grid crushed those to the width of the position column. */
+#reportPicker .pickgrid{grid-template-columns:1fr;gap:0}
+#reportPicker .pickrow{grid-template-columns:auto 26px 1fr auto;gap:10px;align-items:center;padding:7px 0}
 .picknum{font-size:11px;color:var(--ink-3);text-align:right}
-.pickrow .rowacts{opacity:.75}
-.pickrow:hover .rowacts,.pickrow:focus-within .rowacts{opacity:1}
-.pickrow .btn.sm{padding:2px 8px;line-height:1.2}
+#reportPicker .rowacts{opacity:.75}
+#reportPicker .pickrow:hover .rowacts,#reportPicker .pickrow:focus-within .rowacts{opacity:1}
+#reportPicker .btn.sm{padding:2px 8px;line-height:1.2}
 .pickrow input{margin-top:3px}
 .pickname{font-weight:600;font-size:12.5px}
 /* The device library has to read without sideways scrolling, so the
@@ -101,11 +107,18 @@ nav.steps{padding:8px}
 /* 1 tick, 2 status, 3 tag, 4 device, 5 role, 6 cat, 7 MTTFd, 8 DC,
    9 PFHd, 10 PL, 11 used by, 12 actions. Device and used-by take the
    slack; nothing else is narrow enough to wrap a word per line. */
+/* the fixed columns come to about 880px. Below that plus room for the
+   device name the wrapper has to scroll, or the name column is crushed
+   to nothing and its text runs out over the column beside it. */
+.devtbl{min-width:1060px}
 .devtbl th:nth-child(1),.devtbl td:nth-child(1){width:28px}
 .devtbl th:nth-child(2),.devtbl td:nth-child(2){width:62px}
 .devtbl th:nth-child(3),.devtbl td:nth-child(3){width:74px}
 .devtbl th:nth-child(5),.devtbl td:nth-child(5){width:70px}
-.devtbl th:nth-child(6),.devtbl td:nth-child(6){width:74px}
+/* column 6 is Cat, and it carries the provenance chip under the
+   number. At 74px a "field verified" chip ran out over the column
+   beside it. */
+.devtbl th:nth-child(6),.devtbl td:nth-child(6){width:108px}
 .devtbl th:nth-child(7),.devtbl td:nth-child(7){width:76px}
 .devtbl th:nth-child(8),.devtbl td:nth-child(8){width:66px}
 .devtbl th:nth-child(9),.devtbl td:nth-child(9){width:86px}
@@ -324,6 +337,11 @@ table.dt td{padding:7px 10px;border-bottom:1px solid var(--rule-2);vertical-alig
 table.dt tbody tr:last-child td{border-bottom:0}
 table.dt tbody tr:hover{background:var(--panel-2)}
 table.dt td.num,table.dt th.num{font-family:var(--mono);white-space:nowrap}
+/* a numeric cell holds a value that should not break, but the note
+   underneath it is prose and has to be allowed to wrap, or it runs out
+   past the column edge */
+table.dt td.num>div,table.dt td.num>p,table.dt td.num .hint{white-space:normal;font-family:var(--sans)}
+table.dt td.num>div:first-child{font-family:var(--mono)}
 table.dt.risk{table-layout:fixed;min-width:1000px}
 table.dt.risk col.c-id{width:66px}
 table.dt.risk col.c-task{width:15%}
@@ -342,6 +360,9 @@ table.dt.risk .chip{white-space:normal;display:inline-block;max-width:100%;line-
 
 /* ---------- Chips ---------- */
 .chip{display:inline-block;font:600 10px/1 var(--mono);padding:4px 6px;border-radius:2px;white-space:nowrap;border:1px solid transparent}
+/* inside a table a chip wraps at a space rather than running out over
+   the column beside it; a one word chip is unaffected */
+table.dt .chip{white-space:normal}
 .chip.tag{background:var(--panel-2);color:var(--ink-2);border-color:var(--rule-2)}
 .chip.ok{background:var(--ok-bg);color:var(--ok)}
 .chip.warn{background:var(--warn-bg);color:var(--warn)}
@@ -391,7 +412,10 @@ dialog::backdrop{background:rgba(10,14,18,.55)}
 
 /* ---------- Matrix editor ---------- */
 table.mx{border-collapse:collapse;font-size:12px;width:100%}
-table.mx th,table.mx td{border:1px solid var(--rule);padding:5px 7px;text-align:left}
+/* a reference table column that collapses puts one word on each line;
+   below this width the text stops being readable, and the wrapper
+   scrolls instead */
+table.mx th,table.mx td{border:1px solid var(--rule);padding:5px 7px;text-align:left;min-width:96px}
 table.mx th{background:var(--panel-2);font:600 9.5px/1.2 var(--sans);letter-spacing:.08em;text-transform:uppercase}
 table.mx select{padding:3px 5px;font-size:11.5px}
 
@@ -834,9 +858,9 @@ function debounce(fn, ms) {
 }
 
 /* ---------- 20.2 Schema and state ---------- */
-var SCHEMA = 12;
-var STORE_KEY = 'safetyFile.v12';
-var LEGACY_KEYS = ['safetyFile.v11', 'safetyFile.v10', 'safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
+var SCHEMA = 13;
+var STORE_KEY = 'safetyFile.v13';
+var LEGACY_KEYS = ['safetyFile.v12', 'safetyFile.v11', 'safetyFile.v10', 'safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
 
 function blankProject() {
   return {
@@ -950,6 +974,7 @@ function migrate(data) {
   if (v < 10) { migrateV9(base); }
   if (v < 11) { migrateV10(base); }
   if (v < 12) { migrateV11(base); }
+  if (v < 13) { migrateV12(base); }
   normalise(base);
   return base;
 }
@@ -1117,6 +1142,28 @@ function migrateV10(base) {
    different training and different exposure. The single value becomes a
    list holding whatever was there, so nothing is lost and nothing is
    invented. Measures also gain their own safety function links. */
+/* v12 kept a row's safety function links in a list of its own. They
+   belong to the measure that the function carries out, so they move
+   there: onto the primary measure if the row has one, otherwise the
+   first. A row with no measures has nowhere to put them, so they stay
+   where they are and are still counted and still shown. */
+function migrateV12(base) {
+  (base.risks || []).forEach(function (r) {
+    var ids = (r.sfIds || []).filter(Boolean);
+    if (!ids.length || !(r.measures || []).length) return;
+    var target = r.measures.filter(function (m) {
+      var d = measureByKey(m.k);
+      return d && d.primary;
+    })[0] || r.measures[0];
+    target.sfIds = target.sfIds || [];
+    ids.forEach(function (id) {
+      if (target.sfIds.indexOf(id) < 0) { target.sfIds.push(id); }
+    });
+    r.sfIds = [];
+  });
+  return base;
+}
+
 function migrateV11(base) {
   (base.risks || []).forEach(function (r) {
     if (typeof r.personnel === 'string') {
@@ -2903,6 +2950,14 @@ function rowSfIds(r) {
    came from rather than just that it exists. */
 function measuresNaming(r, sfId) {
   return (r.measures || []).filter(function (m) { return (m.sfIds || []).indexOf(sfId) >= 0; });
+}
+
+/* Which of a row's own links no measure accounts for. A file written
+   before measures carried their own links can hold these, and so can a
+   row whose measure was deleted. They still count, but nothing on the
+   form explains them, so the form says so. */
+function orphanSfIds(r) {
+  return (r.sfIds || []).filter(function (id) { return !measuresNaming(r, id).length; });
 }
 
 /* A row may expose more than one group of people, and usually does. */
@@ -6214,7 +6269,7 @@ var GUIDE = [
     body: [
       'A row names every group that reaches the hazard during that task, not just the most obvious one. An unguarded nip at an infeed is reached by the operator clearing a jam and by sanitation cleaning it down, and those two carry different training and different exposure. A group nobody listed is a group nobody assessed.',
       'Each measure names the safety function that carries it out, rather than the row naming a loose list at the end. "Guarding" and "the interlock that proves the guard is shut" are two different statements, and it is the second one that has to reach a performance level. Naming a function against a safeguarding measure is what brings the performance level condition into play when the row claims exposure prevented.',
-      'A function named on a measure is linked to the row automatically and shows in the row panel with the measure that named it, where it cannot be unticked: the link belongs to the measure. Tick a function directly in that panel only where it serves the row without belonging to one particular measure. New safety function for this measure raises one already linked and seeded from what you typed.'
+      'The row keeps no separate list. A function named on a measure is what the row relies on, and everything that asks which functions a row uses reads them from the measures. New safety function for this measure raises one already linked and seeded from what you typed. A file written before this moves its links onto the measure that earns them, and where a row has no measures to move them to, the link stays put and the form says so with a way to clear it.'
     ],
     tip: 'Recorded scores are written with their scheme in front of them, as RIA S3 E2 A3. The dropdowns do not repeat it on every option, because the field already says which scheme is in use.'
   },
@@ -9999,6 +10054,29 @@ function riskForm(existing) {
       kids2.push(el('p', { cls: 'hint', text: def.effect }));
       kids.push(el('div', { style: { border: '1px solid var(--rule-2)', padding: '8px 10px', marginBottom: '8px' } }, kids2));
     });
+    /* links a measure does not account for, so they are visible and
+       removable rather than sitting invisibly in the data */
+    (function () {
+      var orphans = orphanSfIds(work);
+      if (!orphans.length) return;
+      kids.push(el('div', { cls: 'notice warn' }, [
+        el('strong', { text: 'Linked to this row but not to a measure' }),
+        el('span', { text: orphans.join(', ') + (orphans.length === 1 ? ' is' : ' are') + ' linked to this row without any measure above naming it. That still counts, but it does not say what the function actually does here. Tick it on the measure it carries out, then clear it below.' }),
+        el('div', { cls: 'rowacts' }, [
+          el('button', {
+            cls: 'btn ghost sm', type: 'button', text: 'Clear the row level links',
+            on: {
+              click: function () {
+                work.sfIds = [];
+                drawMeasures();
+                say('Row level links cleared');
+              }
+            }
+          })
+        ])
+      ]));
+    }());
+
     kids.push(el('button', {
       cls: 'btn ghost sm', type: 'button', text: 'Add measure',
       on: { click: function () { work.measures = work.measures || []; work.measures.push({ k: 'SAFEGUARD', desc: '', newSev: '' }); drawMeasures(); } }
@@ -10137,57 +10215,13 @@ function riskForm(existing) {
     fArea(bag, 'resWhy', 'Basis for the residual score', work, { ph: 'What changed, and why the new ratings are credible.' })
   ]));
 
-  /* Every function this row relies on, however it got here: named
-     against a measure above, or ticked directly for a function that
-     serves the row without belonging to one particular measure. */
-  var sfBox = el('div');
-  function drawSfLinks() {
-    var kids = [];
-    if (!P.sfs.length) {
-      kids.push(el('p', { cls: 'hint', text: 'No safety functions defined yet. Add one from a measure above, or in the safety functions step, and it can be linked here.' }));
-      put(sfBox, kids);
-      return;
-    }
-    kids.push(el('p', { cls: 'hint', text: 'A function named against a measure above is already linked and is shown here with the measure that named it. Tick one directly only where it serves the row without belonging to a particular measure.' }));
-    var wrap = el('div', { cls: 'chkwrap' });
-    P.sfs.forEach(function (sf) {
-      var viaMeasures = measuresNaming(work, sf.id);
-      var direct = (work.sfIds || []).indexOf(sf.id) >= 0;
-      var c = el('input', { type: 'checkbox', checked: direct || viaMeasures.length > 0 });
-      c.setAttribute('data-sf', sf.id);
-      if (viaMeasures.length) {
-        /* it is linked because a measure says so; unticking it here
-           would not remove that, so the box says why rather than
-           pretending to be the switch */
-        c.disabled = true;
-      }
-      wrap.appendChild(el('label', { cls: 'chkrow' }, [
-        c,
-        el('span', { text: sf.id + '  ' + (sf.name || sf.type) }),
-        viaMeasures.length
-          ? el('span', {
-            cls: 'chip tag',
-            text: 'from ' + viaMeasures.map(function (m) { return (measureByKey(m.k) || {}).label || m.k; }).join(', ')
-          })
-          : null
-      ].filter(Boolean)));
-    });
-    kids.push(wrap);
-    put(sfBox, kids);
-  }
-  drawSfLinks();
-  bag.push(function () {
-    /* the row keeps only the links that were made here; the ones a
-       measure carries stay on the measure, and rowSfIds() puts the two
-       together wherever the row's functions are asked for */
-    var direct = $$('input[data-sf]', sfBox)
-      .filter(function (c) { return c.checked && !c.disabled; })
-      .map(function (c) { return c.getAttribute('data-sf'); });
-    var fromMeasures = {};
-    (work.measures || []).forEach(function (m) { (m.sfIds || []).forEach(function (id) { fromMeasures[id] = 1; }); });
-    work.sfIds = direct.filter(function (id) { return !fromMeasures[id]; });
-  });
-  body.push(fset('Safety functions this row relies on', [sfBox]));
+  /* The row no longer keeps a list of its own. A function is named on
+     the measure it carries out, which is the statement worth recording:
+     "guarding" and "the interlock that proves the guard is shut" are
+     different things, and only the second reaches a performance level.
+     rowSfIds() still reads any link left on a row by an older file, so
+     nothing saved before this is lost. */
+  function drawSfLinks() { /* the measures draw their own pickers */ }
 
   work.images = work.images || [];
   body.push(fset('Photos of this task and hazard', [
@@ -12031,10 +12065,12 @@ function loadExample() {
   r1.hazard = 'In running nip between the belt and the transfer plate';
   r1.harm = 'Crushing or degloving of the hand'; r1.personnel = ['Operator', 'Maintenance'];
   r1.s = 'S3'; r1.e = 'E2'; r1.a = 'A3';
-  r1.measures = [{ k: 'SAFEGUARD', desc: 'Perimeter guard with interlocked gate GS-101, monitored by SF-01' }];
+  /* the function is named on the measure it carries out, which is
+     where a link belongs */
+  r1.measures = [{ k: 'SAFEGUARD', desc: 'Perimeter guard with interlocked gate GS-101, monitored by SF-01', sfIds: ['SF-01'] }];
   r1.resS = 'S3'; r1.resE = 'E0'; r1.resA = '';
   r1.resWhy = 'The guard prevents access to the nip while the conveyor can run. Severity is unchanged because the hazard itself is unchanged.';
-  r1.sfIds = ['SF-01']; r1.status = 'Implemented';
+  r1.status = 'Implemented';
   P.risks.push(r1);
 
   var r2 = newRisk();

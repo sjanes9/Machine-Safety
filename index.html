@@ -110,15 +110,16 @@ nav.steps{padding:8px}
 /* the fixed columns come to about 880px. Below that plus room for the
    device name the wrapper has to scroll, or the name column is crushed
    to nothing and its text runs out over the column beside it. */
-.devtbl{min-width:1060px}
+.devtbl{min-width:1118px}
 .devtbl th:nth-child(1),.devtbl td:nth-child(1){width:28px}
-.devtbl th:nth-child(2),.devtbl td:nth-child(2){width:62px}
+/* column 2 is the status chip, which has to hold "Caution" whole */
+.devtbl th:nth-child(2),.devtbl td:nth-child(2){width:84px}
 .devtbl th:nth-child(3),.devtbl td:nth-child(3){width:74px}
 .devtbl th:nth-child(5),.devtbl td:nth-child(5){width:70px}
 /* column 6 is Cat, and it carries the provenance chip under the
    number. At 74px a "field verified" chip ran out over the column
    beside it. */
-.devtbl th:nth-child(6),.devtbl td:nth-child(6){width:108px}
+.devtbl th:nth-child(6),.devtbl td:nth-child(6){width:126px}
 .devtbl th:nth-child(7),.devtbl td:nth-child(7){width:76px}
 .devtbl th:nth-child(8),.devtbl td:nth-child(8){width:66px}
 .devtbl th:nth-child(9),.devtbl td:nth-child(9){width:86px}
@@ -361,8 +362,10 @@ table.dt.risk .chip{white-space:normal;display:inline-block;max-width:100%;line-
 /* ---------- Chips ---------- */
 .chip{display:inline-block;font:600 10px/1 var(--mono);padding:4px 6px;border-radius:2px;white-space:nowrap;border:1px solid transparent}
 /* inside a table a chip wraps at a space rather than running out over
-   the column beside it; a one word chip is unaffected */
-table.dt .chip{white-space:normal}
+   the column beside it, but never inside a word: .devtbl sets
+   word-break:break-word on its cells, which was splitting a status chip
+   into "chec" and "k" when the column was a couple of pixels short */
+table.dt .chip{white-space:normal;word-break:keep-all;overflow-wrap:normal}
 .chip.tag{background:var(--panel-2);color:var(--ink-2);border-color:var(--rule-2)}
 .chip.ok{background:var(--ok-bg);color:var(--ok)}
 .chip.warn{background:var(--warn-bg);color:var(--warn)}
@@ -5744,10 +5747,27 @@ function plChip(pl, ok) {
 /* SISTEMA's three object states, carried over so the two tools read the
    same way: green tick, yellow dot, red cross, worst wins on roll up.
    Cookbook 5, section 4.2.5, page 22. */
+/* One vocabulary for every status the app shows. SISTEMA prints its
+   own as a traffic light, and this file used to echo that, but a colour
+   name tells a reader what the chip looks like rather than what it
+   means, and it says nothing at all to anyone reading in greyscale or
+   with a colour vision deficiency. */
+var STATUS_WORDS = { ok: 'OK', warn: 'Caution', bad: 'Failed' };
+var STATUS_PLURAL = { warn: 'cautions', bad: 'failed' };
+function statusWord(level) { return STATUS_WORDS[level] || '--'; }
+/* SISTEMA reports a colour; this says the same thing in our words. */
+function statusLevelFromSistema(v) {
+  var t = String(v || '').toLowerCase();
+  if (/green/.test(t)) return 'ok';
+  if (/yellow|amber/.test(t)) return 'warn';
+  if (/red/.test(t)) return 'bad';
+  return '';
+}
+
 function statusChip(level, n) {
-  if (level === 'bad') return el('span', { cls: 'chip bad', text: n > 1 ? n + ' errors' : 'error' });
-  if (level === 'warn') return el('span', { cls: 'chip warn', text: n > 1 ? n + ' checks' : 'check' });
-  if (level === 'ok') return el('span', { cls: 'chip ok', text: 'ok' });
+  if (level === 'bad') return el('span', { cls: 'chip bad', text: n > 1 ? n + ' ' + STATUS_PLURAL.bad : STATUS_WORDS.bad });
+  if (level === 'warn') return el('span', { cls: 'chip warn', text: n > 1 ? n + ' ' + STATUS_PLURAL.warn : STATUS_WORDS.warn });
+  if (level === 'ok') return el('span', { cls: 'chip ok', text: STATUS_WORDS.ok });
   return el('span', { cls: 'chip tag', text: '--' });
 }
 /* opts.help adds the same explanation marker the form fields carry, for
@@ -6994,7 +7014,7 @@ function renderSf() {
       }()),
       el('span', {}, [el('b', { text: 'Status' }), el('span', {
         cls: 'chip ' + (meets === false ? 'bad' : (build.deviceStatus === 'bad' ? 'bad' : (build.deviceStatus === 'warn' || meets === null ? 'warn' : 'ok'))),
-        text: meets === false ? 'red' : (build.deviceStatus === 'bad' ? 'red' : (build.deviceStatus === 'warn' || meets === null ? 'amber' : 'green'))
+        text: statusWord(meets === false ? 'bad' : (build.deviceStatus === 'bad' ? 'bad' : (build.deviceStatus === 'warn' || meets === null ? 'warn' : 'ok')))
       })])
     ]));
 
@@ -9081,7 +9101,15 @@ function sistemaPreview(res) {
         el('td', { cls: 'num' }, plChip(f.plr)),
         el('td', { cls: 'num' }, plChip(f.pl)),
         el('td', { cls: 'mono num', text: isFinite(f.pfhd) ? Number(f.pfhd).toExponential(2) : '--' }),
-        el('td', null, el('span', { cls: 'chip ' + (/green/i.test(f.status) ? 'ok' : 'warn'), text: f.status }))
+        el('td', null, (function () {
+          /* the report states a colour; show what it means, and keep
+             the word SISTEMA used underneath it */
+          var lvl = statusLevelFromSistema(f.status);
+          return el('div', null, [
+            el('span', { cls: 'chip ' + (lvl || 'tag'), text: lvl ? statusWord(lvl) : (f.status || '--') }),
+            f.status ? el('div', { cls: 'hint', text: 'SISTEMA: ' + f.status }) : null
+          ].filter(Boolean));
+        }()))
       ]));
     });
     ft.appendChild(fb);
@@ -11276,7 +11304,7 @@ function sfForm(existing, opts) {
         tb.appendChild(el('tr', null, [
           el('td', null, r.empty
             ? el('span', { cls: 'chip tag', text: 'empty' })
-            : el('span', { cls: 'chip ' + (r.status || 'tag'), text: r.status === 'ok' ? 'green' : (r.status === 'warn' ? 'amber' : (r.status === 'bad' ? 'red' : 'grey')) })),
+            : el('span', { cls: 'chip ' + (r.status || 'tag'), text: statusWord(r.status) })),
           el('td', null, [
             el('div', { text: r.name }),
             el('div', { cls: 'hint', text: r.empty ? 'no device assigned to this position' : r.items.length + ' block' + (r.items.length === 1 ? '' : 's') })

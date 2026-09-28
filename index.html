@@ -295,6 +295,10 @@ fieldset{border:1px solid var(--rule-2);padding:10px 12px 2px;margin:0 0 12px}
 legend{font:600 9.5px/1 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);padding:0 5px}
 .inline{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
 .chkrow{display:flex;gap:6px;align-items:center;font-size:12.5px;margin-bottom:5px}
+/* a set of tick boxes that reads as one field */
+.chkwrap{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:2px 14px;
+  border:1px solid var(--rule);background:var(--panel);padding:8px 10px}
+.chkwrap .chkrow{margin-bottom:0}
 .chkrow input{flex:0 0 auto}
 
 /* ---------- Buttons ---------- */
@@ -830,9 +834,9 @@ function debounce(fn, ms) {
 }
 
 /* ---------- 20.2 Schema and state ---------- */
-var SCHEMA = 11;
-var STORE_KEY = 'safetyFile.v11';
-var LEGACY_KEYS = ['safetyFile.v10', 'safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
+var SCHEMA = 12;
+var STORE_KEY = 'safetyFile.v12';
+var LEGACY_KEYS = ['safetyFile.v11', 'safetyFile.v10', 'safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
 
 function blankProject() {
   return {
@@ -945,6 +949,7 @@ function migrate(data) {
   if (v < 9) { migrateV8(base); }
   if (v < 10) { migrateV9(base); }
   if (v < 11) { migrateV10(base); }
+  if (v < 12) { migrateV11(base); }
   normalise(base);
   return base;
 }
@@ -1106,6 +1111,22 @@ function migrateV10(base) {
   return base;
 }
 
+/* v11 allowed one group of people per row, which is not how a machine
+   works: an unguarded nip at an infeed is reached by the operator
+   clearing a jam and by sanitation cleaning it down, and the two carry
+   different training and different exposure. The single value becomes a
+   list holding whatever was there, so nothing is lost and nothing is
+   invented. Measures also gain their own safety function links. */
+function migrateV11(base) {
+  (base.risks || []).forEach(function (r) {
+    if (typeof r.personnel === 'string') {
+      r.personnel = r.personnel.trim() ? [r.personnel.trim()] : [];
+    }
+    (r.measures || []).forEach(function (m) { m.sfIds = m.sfIds || []; });
+  });
+  return base;
+}
+
 function migrateV7(base) {
   base.checklist = base.checklist || null;
   base.guardOpenings = base.guardOpenings || [];
@@ -1182,6 +1203,10 @@ function normalise(base) {
   });
   base.risks.forEach(function (r) {
     r.images = r.images || []; r.sfIds = r.sfIds || []; r.measures = r.measures || [];
+    /* a file written before people could be listed carries a string */
+    if (typeof r.personnel === 'string') { r.personnel = r.personnel.trim() ? [r.personnel.trim()] : []; }
+    if (!Array.isArray(r.personnel)) { r.personnel = []; }
+    r.measures.forEach(function (m) { m.sfIds = m.sfIds || []; });
     if (r.initLevelOverride === undefined) r.initLevelOverride = '';
     if (r.initLevelWhy === undefined) r.initLevelWhy = '';
     if (r.resLevelOverride === undefined) r.resLevelOverride = '';
@@ -2538,8 +2563,12 @@ function nsCode(scheme, k) {
   if (!k) return '';
   return (scheme === SCHEME_ISO ? 'ISO ' : 'RIA ') + k;
 }
+/* The scheme travels with the codes, but it only has to be said once:
+   "RIA S3 E2 A3" carries exactly what "RIA S3 RIA E2 RIA A3" did. */
 function nsTriple(scheme, a, b, c) {
-  return [a, b, c].filter(Boolean).map(function (k) { return nsCode(scheme, k); }).join(' ');
+  var codes = [a, b, c].filter(Boolean);
+  if (!codes.length) return '';
+  return (scheme === SCHEME_ISO ? 'ISO ' : 'RIA ') + codes.join(' ');
 }
 /* Returns '' when the token is legal for the scheme, otherwise the reason. */
 function schemeGuard(scheme, k) {
@@ -2855,6 +2884,37 @@ var HAZARD_TYPES = ['Mechanical', 'Electrical', 'Thermal', 'Noise', 'Vibration',
    is compliance with the other regulation or standard. */
 var OUT_OF_SCOPE_TYPES = ['Electrical', 'Slip trip fall', 'Working at height', 'Confined space', 'Welding arc flash or radiation', 'Fire or flammability', 'Material or substance'];
 var PERSONNEL = ['Operator', 'Maintenance', 'Sanitation', 'Engineering', 'Contractor', 'Passer by'];
+/* Which safety functions a row relies on: the ones named against its
+   measures, plus any linked at the row itself. Kept as one list because
+   everything downstream, Table 5 and the E0 performance gate included,
+   asks the same question of the row rather than of each measure. */
+function rowSfIds(r) {
+  var out = [], seen = {};
+  function add(id) {
+    if (!id || seen[id]) return;
+    seen[id] = 1;
+    out.push(id);
+  }
+  (r.measures || []).forEach(function (m) { (m.sfIds || []).forEach(add); });
+  (r.sfIds || []).forEach(add);
+  return out;
+}
+/* Which measures named a given function, for showing where a link
+   came from rather than just that it exists. */
+function measuresNaming(r, sfId) {
+  return (r.measures || []).filter(function (m) { return (m.sfIds || []).indexOf(sfId) >= 0; });
+}
+
+/* A row may expose more than one group of people, and usually does. */
+function personnelList(r) {
+  if (!r) return [];
+  if (Array.isArray(r.personnel)) return r.personnel.filter(Boolean);
+  return String(r.personnel || '').trim() ? [String(r.personnel).trim()] : [];
+}
+function personnelText(r) {
+  var l = personnelList(r);
+  return l.length ? l.join(', ') : 'nobody named';
+}
 var STOP_CATS = [
   { k: '0', label: 'Stop category 0, immediate removal of power' },
   { k: '1', label: 'Stop category 1, controlled stop then power removed' },
@@ -3078,7 +3138,7 @@ function newRisk() {
   return {
     uid: uid('r'), id: '', task: '', phase: 'Normal production', hazardType: 'Mechanical',
     images: [],
-    hazard: '', hazardSource: '', harm: '', personnel: 'Operator',
+    hazard: '', hazardSource: '', harm: '', personnel: ['Operator'],
     s: 'S3', e: 'E2', a: 'A3',
     measures: [],                        /* [{k, desc, newSev, limitMode}] */
     resS: '', resE: '', resA: '',        /* assessor entered, as in Annex A */
@@ -3330,7 +3390,7 @@ function e0Claim(r) {
   if (!usesSrpcs) {
     gates.push({ k: 'PL', ok: true, note: 'No functional safety is claimed on this row, so the performance level condition does not apply.' });
   } else {
-    var sfs = (r.sfIds || []).map(sfById).filter(Boolean);
+    var sfs = rowSfIds(r).map(sfById).filter(Boolean);
     var req = requiredPl(r);
     if (!sfs.length) {
       gates.push({ k: 'PL', ok: false, note: 'E0 is claimed through safeguarding but no safety function is linked, so the performance level cannot be checked.' });
@@ -4051,7 +4111,7 @@ function pfhScale(pfhd, pl) {
 /* ---------- Cross references ---------- */
 function sfById(id) { for (var i = 0; i < P.sfs.length; i += 1) { if (P.sfs[i].id === id) return P.sfs[i]; } return null; }
 function riskById(id) { for (var i = 0; i < P.risks.length; i += 1) { if (P.risks[i].id === id) return P.risks[i]; } return null; }
-function risksForSf(id) { return P.risks.filter(function (r) { return (r.sfIds || []).indexOf(id) >= 0; }); }
+function risksForSf(id) { return P.risks.filter(function (r) { return rowSfIds(r).indexOf(id) >= 0; }); }
 function testsForSf(id) { return P.tests.filter(function (t) { return t.sfId === id; }); }
 
 /* ---------------------------------------------------------------------
@@ -4333,7 +4393,7 @@ function findings() {
     } else if (dl.scored && !dl.sameFactors && dl.sameLevel && !dl.hasWhy) {
       add('warn', 'risk', r.id, lbl + ' stays at ' + dl.residual + ' after risk reduction even though the factors moved. Record what the measures achieved and why the level did not shift.', '6.6');
     }
-    if (t4.hasSafeguard && !(r.sfIds || []).length) {
+    if (t4.hasSafeguard && !rowSfIds(r).length) {
       add('warn', 'risk', r.id, lbl + ' is safeguarded but no safety function is linked, so no PL can be verified against it.', '6.7 step 3');
     }
   });
@@ -5850,7 +5910,7 @@ function renderRisk() {
 
     tb.appendChild(el('tr', null, [
       el('td', { cls: 'num', text: r.id || '--' }),
-      el('td', null, [el('div', { text: r.task || '--' }), el('div', { cls: 'hint', text: r.phase + '  /  ' + r.personnel })]),
+      el('td', null, [el('div', { text: r.task || '--' }), el('div', { cls: 'hint', text: r.phase + '  /  ' + personnelText(r) })]),
       el('td', null, [
         el('div', { text: r.hazard || '--' }),
         el('div', { cls: 'hint', text: [r.hazardType, r.hazardSource, r.harm].filter(Boolean).join(' / ') }),
@@ -5869,7 +5929,7 @@ function renderRisk() {
         res.scored ? null : el('div', { cls: 'hint', text: 'suggested, not scored' })
       ]),
       el('td', null, [plChip(req), reqCat && reqCat !== '-' ? el('div', { cls: 'hint', text: 'Cat ' + reqCat }) : null]),
-      el('td', { cls: 'num', text: (r.sfIds || []).join(', ') || '--' }),
+      el('td', { cls: 'num', text: rowSfIds(r).join(', ') || '--' }),
       el('td', null, [
         el('div', null, el('span', { cls: 'chip ' + (r.status === 'Closed' || r.status === 'Verified' ? 'ok' : (r.status === 'Open' ? 'warn' : 'tag')), text: r.status })),
         el('div', { cls: 'rowacts', style: { marginTop: '5px' } }, [
@@ -6148,6 +6208,15 @@ var GUIDE = [
       'Exposure prevented is a claim with two independent conditions, and both have to hold. Guards must prevent access, which is what the safeguarding checklist records. And where functional safety is part of the measure, the implemented performance level must meet the required one. Meeting one is not enough: a control system that reaches its required level does not close a gap in a guard.'
     ],
     tip: 'An unchanged residual score can be the right answer. If barrier guarding has gaps, exposure is not reduced however good the circuit is. The app asks you to write down why rather than to change the score.'
+  },
+  {
+    k: 'rowlinks', title: 'People exposed, and what carries a measure',
+    body: [
+      'A row names every group that reaches the hazard during that task, not just the most obvious one. An unguarded nip at an infeed is reached by the operator clearing a jam and by sanitation cleaning it down, and those two carry different training and different exposure. A group nobody listed is a group nobody assessed.',
+      'Each measure names the safety function that carries it out, rather than the row naming a loose list at the end. "Guarding" and "the interlock that proves the guard is shut" are two different statements, and it is the second one that has to reach a performance level. Naming a function against a safeguarding measure is what brings the performance level condition into play when the row claims exposure prevented.',
+      'A function named on a measure is linked to the row automatically and shows in the row panel with the measure that named it, where it cannot be unticked: the link belongs to the measure. Tick a function directly in that panel only where it serves the row without belonging to one particular measure. New safety function for this measure raises one already linked and seeded from what you typed.'
+    ],
+    tip: 'Recorded scores are written with their scheme in front of them, as RIA S3 E2 A3. The dropdowns do not repeat it on every option, because the field already says which scheme is in use.'
   },
   {
     k: 'devices', title: 'Devices, and where their numbers come from',
@@ -6842,7 +6911,12 @@ function renderSf() {
         actBtn('Delete', function () {
           confirmDelete('safety function ' + (sf.id || ''), function () {
             P.sfs = P.sfs.filter(function (x) { return x.uid !== sf.uid; });
-            P.risks.forEach(function (r) { r.sfIds = (r.sfIds || []).filter(function (i) { return i !== sf.id; }); });
+            P.risks.forEach(function (r) {
+              r.sfIds = (r.sfIds || []).filter(function (i) { return i !== sf.id; });
+              (r.measures || []).forEach(function (m) {
+                m.sfIds = (m.sfIds || []).filter(function (i) { return i !== sf.id; });
+              });
+            });
             commit('Safety function deleted');
           });
         }, 'danger')
@@ -7520,13 +7594,26 @@ function renderReport() {
       var iso = P.meta.method === 'ISO 13849-1';
       var dl2 = residualDelta(r);
       rb.appendChild(el('tr', null, [
-        el('td', { cls: 'num', text: r.id }), el('td', { text: r.task }), el('td', { text: r.hazard }),
+        el('td', { cls: 'num', text: r.id }),
+        el('td', null, [
+          el('div', { text: r.task }),
+          el('div', { cls: 'hint', text: r.phase + '  /  ' + personnelText(r) })
+        ]),
+        el('td', { text: r.hazard }),
         el('td', null, [
           levelChipOr(initialLevel(r), initialLevelText(r)),
           el('div', { cls: 'hint', text: iso ? nsTriple(sch, r.isoS, r.isoF, r.isoP) : nsTriple(sch, r.s, r.e, r.e === 'E0' ? '' : r.a) }),
           r.initLevelOverride ? el('div', { cls: 'hint', text: 'overridden, table gives ' + (initialLevelComputed(r) || 'no value') }) : null
         ]),
-        el('td', { text: (r.measures || []).map(function (x) { var d = measureByKey(x.k); return d ? d.label : x.k; }).join('; ') || 'none' }),
+        el('td', null, (r.measures || []).length
+          ? (r.measures || []).map(function (x) {
+            var d = measureByKey(x.k);
+            return el('div', null, [
+              el('span', { text: (d ? d.label : x.k) }),
+              (x.sfIds || []).length ? el('span', { cls: 'hint', text: '  (' + (x.sfIds || []).join(', ') + ')' }) : null
+            ].filter(Boolean));
+          })
+          : el('span', { text: 'none' })),
         el('td', null, [
           levelChipOr(residualLevel(r), residualLevelText(r)),
           el('div', { cls: 'hint', text: nsTriple(sch, res.s, res.e, res.e === 'E0' ? '' : res.a) }),
@@ -7537,7 +7624,7 @@ function renderReport() {
           r.resLevelOverride ? el('div', { cls: 'hint', text: 'overridden, table gives ' + (residualLevelComputed(r) || 'no value') }) : null
         ]),
         el('td', { cls: 'num', text: (requiredPl(r) && requiredPl(r) !== '-' ? 'PL' + requiredPl(r) : '--') + (requiredCat(r) && requiredCat(r) !== '-' ? ' / ' + requiredCat(r) : '') }),
-        el('td', { cls: 'num', text: (r.sfIds || []).join(', ') })
+        el('td', { cls: 'num', text: rowSfIds(r).join(', ') })
       ]));
     });
     rt.appendChild(rb);
@@ -9713,11 +9800,30 @@ function riskForm(existing) {
   }
   drawScopeNote(work.hazardType);
 
+  /* More than one group reaches most hazards: an unguarded nip at an
+     infeed is reached by the operator clearing a jam and by sanitation
+     cleaning it down. They carry different training and different
+     exposure, so the row names all of them. */
+  var whoBox = el('div', { cls: 'chkwrap' });
+  PERSONNEL.forEach(function (who) {
+    var c = el('input', { type: 'checkbox', checked: personnelList(work).indexOf(who) >= 0 });
+    c.setAttribute('data-who', who);
+    whoBox.appendChild(el('label', { cls: 'chkrow' }, [c, el('span', { text: who })]));
+  });
+  bag.push(function () {
+    work.personnel = $$('input[data-who]', whoBox)
+      .filter(function (c) { return c.checked; })
+      .map(function (c) { return c.getAttribute('data-who'); });
+  });
+
   body.push(fset('Identification', [
-    row('g3', [
+    row('g2', [
       fText(bag, 'id', 'Row ID', work, { mono: true }),
-      fSel(bag, 'phase', 'Lifecycle phase', work, LIFECYCLE),
-      fSel(bag, 'personnel', 'Person exposed', work, PERSONNEL)
+      fSel(bag, 'phase', 'Lifecycle phase', work, LIFECYCLE)
+    ]),
+    el('label', { cls: 'f' }, [
+      fLabel('People exposed', 'Every group that reaches this hazard during this task, not just the most obvious one. Tick as many as apply: each group carries its own training and its own exposure, and a group nobody listed is a group nobody assessed.'),
+      whoBox
     ]),
     fText(bag, 'task', 'Task', work, { ph: 'What is the person doing when the hazard is present' }),
     row('g2', [
@@ -9749,11 +9855,13 @@ function riskForm(existing) {
       ]));
     } else {
       kids.push(row('g3', [
-        fSel(bag, 's', 'Severity (RIA)', work, SEV.map(function (x) { return { k: x.k, label: 'RIA ' + x.label }; }), live('s')),
-        fSel(bag, 'e', 'Exposure (RIA)', work, EXP.filter(function (x) { return x.k !== 'E0'; }).map(function (x) { return { k: x.k, label: 'RIA ' + x.label }; }), live('e')),
-        fSel(bag, 'a', 'Avoidance (RIA)', work, AVO.map(function (x) { return { k: x.k, label: 'RIA ' + x.label }; }), live('a'))
+        /* the scheme is named by the field, so the options do not
+           repeat it on every line of every dropdown */
+        fSel(bag, 's', 'Severity, ANSI/RIA', work, SEV, live('s')),
+        fSel(bag, 'e', 'Exposure, ANSI/RIA', work, EXP.filter(function (x) { return x.k !== 'E0'; }), live('e')),
+        fSel(bag, 'a', 'Avoidance, ANSI/RIA', work, AVO, live('a'))
       ]));
-      kids.push(el('p', { cls: 'hint', text: 'Score the machine with no protective measure in place. That is the initial risk the standard asks for, not the risk you observe today. Codes carry an RIA prefix because the ISO 13849-1 risk graph uses the same letters for different things.' }));
+      kids.push(el('p', { cls: 'hint', text: 'Score the machine with no protective measure in place. That is the initial risk the standard asks for, not the risk you observe today. Recorded levels are written with their scheme in front of them, as RIA S3 E2 A3, because the ISO 13849-1 risk graph uses some of the same letters for different things.' }));
     }
     put(initHost, kids);
   }
@@ -9833,6 +9941,60 @@ function riskForm(existing) {
         ls.addEventListener('change', function () { m.limitMode = ls.value; drawMeasures(); });
         kids2.push(el('label', { cls: 'f', style: { marginTop: '6px' } }, [el('span', { text: 'Extent' }), ls]));
       }
+      /* A measure carried out by a safety function names it here. The
+         link belongs to the measure rather than to the row: "guarding"
+         and "the interlock that proves the guard is shut" are two
+         different statements, and it is the second one that has to
+         reach a performance level. */
+      (function () {
+        var box = el('div');
+        if (!P.sfs.length) {
+          box.appendChild(el('p', { cls: 'hint', text: 'No safety functions yet. Add one and it can be named here as what carries this measure out.' }));
+        } else {
+          var wrap = el('div', { cls: 'chkwrap' });
+          P.sfs.forEach(function (sf) {
+            var c = el('input', { type: 'checkbox', checked: (m.sfIds || []).indexOf(sf.id) >= 0 });
+            c.addEventListener('change', function () {
+              m.sfIds = m.sfIds || [];
+              var at = m.sfIds.indexOf(sf.id);
+              if (c.checked && at < 0) { m.sfIds.push(sf.id); }
+              else if (!c.checked && at >= 0) { m.sfIds.splice(at, 1); }
+              drawMeasures();
+              if (typeof drawSfLinks === 'function') { drawSfLinks(); }
+            });
+            wrap.appendChild(el('label', { cls: 'chkrow' }, [
+              c,
+              el('span', { text: sf.id + '  ' + (sf.name || sf.type) }),
+              (function () { var pl = sfRequiredPl(sf), ach = sfAchievedPl(sf); return pl ? plChip(ach, plMeets(ach, pl)) : null; }())
+            ].filter(Boolean)));
+          });
+          box.appendChild(wrap);
+        }
+        box.appendChild(el('div', { cls: 'rowacts', style: { marginTop: '6px' } }, [
+          el('button', {
+            cls: 'btn ghost sm', type: 'button', text: 'New safety function for this measure',
+            on: {
+              click: function () {
+                var sf = newSf();
+                sf.id = nextId('SF-', P.sfs, 2);
+                sf.name = m.desc || def.label;
+                sf.description = 'Carries out the ' + def.label.toLowerCase() + ' measure on ' + (work.id || 'this row') + (m.desc ? ': ' + m.desc : '') + '.';
+                P.sfs.push(sf);
+                m.sfIds = (m.sfIds || []).concat([sf.id]);
+                saveLocalSoon();
+                say(sf.id + ' added and linked to this measure');
+                drawMeasures();
+                if (typeof drawSfLinks === 'function') { drawSfLinks(); }
+              }
+            }
+          })
+        ]));
+        kids2.push(el('label', { cls: 'f', style: { marginTop: '8px', marginBottom: 0 } }, [
+          fLabel('Safety functions carrying this measure', 'The functions that actually bring this measure about. Naming one here is what brings the performance level condition into play: a guard with an interlock only reduces exposure if the interlock reaches the level the row requires.'),
+          box
+        ]));
+      }());
+
       kids2.push(el('p', { cls: 'hint', text: def.examples || '' }));
       kids2.push(el('p', { cls: 'hint', text: def.effect }));
       kids.push(el('div', { style: { border: '1px solid var(--rule-2)', padding: '8px 10px', marginBottom: '8px' } }, kids2));
@@ -9975,20 +10137,57 @@ function riskForm(existing) {
     fArea(bag, 'resWhy', 'Basis for the residual score', work, { ph: 'What changed, and why the new ratings are credible.' })
   ]));
 
+  /* Every function this row relies on, however it got here: named
+     against a measure above, or ticked directly for a function that
+     serves the row without belonging to one particular measure. */
   var sfBox = el('div');
-  if (P.sfs.length) {
+  function drawSfLinks() {
+    var kids = [];
+    if (!P.sfs.length) {
+      kids.push(el('p', { cls: 'hint', text: 'No safety functions defined yet. Add one from a measure above, or in the safety functions step, and it can be linked here.' }));
+      put(sfBox, kids);
+      return;
+    }
+    kids.push(el('p', { cls: 'hint', text: 'A function named against a measure above is already linked and is shown here with the measure that named it. Tick one directly only where it serves the row without belonging to a particular measure.' }));
+    var wrap = el('div', { cls: 'chkwrap' });
     P.sfs.forEach(function (sf) {
-      var c = el('input', { type: 'checkbox', checked: (work.sfIds || []).indexOf(sf.id) >= 0 });
+      var viaMeasures = measuresNaming(work, sf.id);
+      var direct = (work.sfIds || []).indexOf(sf.id) >= 0;
+      var c = el('input', { type: 'checkbox', checked: direct || viaMeasures.length > 0 });
       c.setAttribute('data-sf', sf.id);
-      sfBox.appendChild(el('label', { cls: 'chkrow' }, [c, el('span', { text: sf.id + '  ' + (sf.name || sf.type) })]));
+      if (viaMeasures.length) {
+        /* it is linked because a measure says so; unticking it here
+           would not remove that, so the box says why rather than
+           pretending to be the switch */
+        c.disabled = true;
+      }
+      wrap.appendChild(el('label', { cls: 'chkrow' }, [
+        c,
+        el('span', { text: sf.id + '  ' + (sf.name || sf.type) }),
+        viaMeasures.length
+          ? el('span', {
+            cls: 'chip tag',
+            text: 'from ' + viaMeasures.map(function (m) { return (measureByKey(m.k) || {}).label || m.k; }).join(', ')
+          })
+          : null
+      ].filter(Boolean)));
     });
-    bag.push(function () {
-      work.sfIds = $$('input[data-sf]', sfBox).filter(function (c) { return c.checked; }).map(function (c) { return c.getAttribute('data-sf'); });
-    });
-  } else {
-    sfBox.appendChild(el('p', { cls: 'hint', text: 'No safety functions defined yet. Add them in section 02, then come back and link them here.' }));
+    kids.push(wrap);
+    put(sfBox, kids);
   }
-  body.push(fset('Linked safety functions', [sfBox]));
+  drawSfLinks();
+  bag.push(function () {
+    /* the row keeps only the links that were made here; the ones a
+       measure carries stay on the measure, and rowSfIds() puts the two
+       together wherever the row's functions are asked for */
+    var direct = $$('input[data-sf]', sfBox)
+      .filter(function (c) { return c.checked && !c.disabled; })
+      .map(function (c) { return c.getAttribute('data-sf'); });
+    var fromMeasures = {};
+    (work.measures || []).forEach(function (m) { (m.sfIds || []).forEach(function (id) { fromMeasures[id] = 1; }); });
+    work.sfIds = direct.filter(function (id) { return !fromMeasures[id]; });
+  });
+  body.push(fset('Safety functions this row relies on', [sfBox]));
 
   work.images = work.images || [];
   body.push(fset('Photos of this task and hazard', [
@@ -11105,7 +11304,12 @@ function sfForm(existing, opts) {
       work.uid = sf.uid;
       if (i >= 0) P.sfs[i] = work;
       if (old !== work.id) {
-        P.risks.forEach(function (r) { r.sfIds = (r.sfIds || []).map(function (v) { return v === old ? work.id : v; }); });
+        P.risks.forEach(function (r) {
+          r.sfIds = (r.sfIds || []).map(function (v) { return v === old ? work.id : v; });
+          (r.measures || []).forEach(function (m) {
+            m.sfIds = (m.sfIds || []).map(function (v) { return v === old ? work.id : v; });
+          });
+        });
         P.tests.forEach(function (t) { if (t.sfId === old) t.sfId = work.id; });
       }
     }
@@ -11544,7 +11748,7 @@ function exportCsv() {
       if (!g) return 'n/a';
       return (g.ok ? (g.soft ? 'pass, modelled only' : 'pass') : 'FAIL') + (g.note ? ': ' + g.note : '');
     }
-    rows.push([r.id, r.task, r.phase, r.hazardType, r.otherStandard || '', r.hazard, r.hazardSource, r.harm, r.personnel,
+    rows.push([r.id, r.task, r.phase, r.hazardType, r.otherStandard || '', r.hazard, r.hazardSource, r.harm, personnelList(r).join('; '),
       iso ? r.isoS : r.s, iso ? r.isoF : r.e, iso ? r.isoP : r.a,
       iso ? nsTriple(sch, r.isoS, r.isoF, r.isoP) : nsTriple(sch, r.s, r.e, r.e === 'E0' ? '' : r.a),
       initialLevelText(r), initialLevelComputed(r) || 'no value', r.initLevelWhy || '',
@@ -11560,7 +11764,7 @@ function exportCsv() {
       claim.claimed ? gate('PL') : 'n/a',
       residualLevel(r) ? (isAcceptable(residualLevel(r)) ? 'yes' : 'NO') : 'not determined',
       requiredPl(r) && requiredPl(r) !== '-' ? 'PL' + requiredPl(r) : '',
-      requiredCat(r) || '', (r.sfIds || []).join(' '), r.status, r.owner, r.due, r.notes]);
+      requiredCat(r) || '', rowSfIds(r).join(' '), r.status, r.owner, r.due, r.notes]);
   });
   rows.push([]);
   rows.push(['SECTION', 'Safety functions']);
@@ -11825,7 +12029,7 @@ function loadExample() {
   r1.id = 'RA-001'; r1.task = 'Clear a jammed case from the infeed'; r1.phase = 'Troubleshooting and fault clearing';
   r1.hazardType = 'Mechanical'; r1.hazardSource = 'Infeed conveyor nip at the transfer plate';
   r1.hazard = 'In running nip between the belt and the transfer plate';
-  r1.harm = 'Crushing or degloving of the hand'; r1.personnel = 'Operator';
+  r1.harm = 'Crushing or degloving of the hand'; r1.personnel = ['Operator', 'Maintenance'];
   r1.s = 'S3'; r1.e = 'E2'; r1.a = 'A3';
   r1.measures = [{ k: 'SAFEGUARD', desc: 'Perimeter guard with interlocked gate GS-101, monitored by SF-01' }];
   r1.resS = 'S3'; r1.resE = 'E0'; r1.resA = '';
@@ -11836,7 +12040,7 @@ function loadExample() {
   var r2 = newRisk();
   r2.id = 'RA-002'; r2.task = 'Wipe down the case magazine at end of shift'; r2.phase = 'Cleaning and sanitation';
   r2.hazardType = 'Ergonomic'; r2.hazardSource = 'Magazine at 1900 mm above floor';
-  r2.hazard = 'Overreaching to the top of the magazine'; r2.harm = 'Shoulder or back strain'; r2.personnel = 'Sanitation';
+  r2.hazard = 'Overreaching to the top of the magazine'; r2.harm = 'Shoulder or back strain'; r2.personnel = ['Sanitation'];
   r2.s = 'S1'; r2.e = 'E2'; r2.a = 'A1';
   r2.measures = [
     { k: 'LIMIT', limitMode: 'reduce', desc: 'Magazine lowered to 1500 mm and cleaning frequency reduced to weekly' },
@@ -11851,7 +12055,7 @@ function loadExample() {
   r3.id = 'RA-003'; r3.task = 'Replace the drive belt on the palletiser lift'; r3.phase = 'Routine maintenance';
   r3.hazardType = 'Electrical'; r3.hazardSource = 'Drive cabinet DP-401 at 480 V';
   r3.hazard = 'Contact with energised conductors while the cabinet is open';
-  r3.harm = 'Electric shock or arc flash burn'; r3.personnel = 'Maintenance';
+  r3.harm = 'Electric shock or arc flash burn'; r3.personnel = ['Maintenance', 'Contractor'];
   r3.otherStandard = 'NFPA 70E and the plant control of hazardous energy procedure';
   r3.s = 'S3'; r3.e = 'E1'; r3.a = 'A3';
   r3.measures = [

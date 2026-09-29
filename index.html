@@ -341,6 +341,9 @@ button.libitem:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 .libwrap.edit .libitem{flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
 .libwrap.edit .libitem .libname{flex:1 1 220px}
 .libwrap.edit .libitem .rowacts{margin-left:auto}
+/* photographs of a risk reduction measure, in the report table */
+.mshots{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.mshots img,.mshots .markwrap{max-width:104px;height:auto}
 .chkrow input{flex:0 0 auto}
 
 /* ---------- Buttons ---------- */
@@ -408,7 +411,15 @@ table.dt .chip{white-space:normal;word-break:keep-all;overflow-wrap:normal}
 /* ---------- Notices ---------- */
 .notice{border-left:3px solid var(--accent-line);background:var(--accent-bg);color:var(--ink);padding:10px 13px;margin:0 0 14px;font-size:12.5px}
 .notice.bad{border-left-color:var(--bad);background:var(--bad-bg)}
+.notice.warn{border-left-color:var(--warn);background:var(--warn-bg)}
 .notice.ok{border-left-color:var(--ok);background:var(--ok-bg)}
+/* A notice that reports a risk level is filled with that level's color, so
+   the banner and the chip inside it never state different things. */
+.notice.rn-NEGLIGIBLE{border-left-color:var(--r0);background:var(--r0b)}
+.notice.rn-LOW{border-left-color:var(--r1);background:var(--r1b)}
+.notice.rn-MEDIUM{border-left-color:var(--r2);background:var(--r2b)}
+.notice.rn-HIGH{border-left-color:var(--r3);background:var(--r3b)}
+.notice.rn-VERYHIGH{border-left-color:var(--r4);background:var(--r4b)}
 .notice strong{display:block;margin-bottom:3px;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
 /* a notice may carry more than one paragraph; direct children only, so the spans inside a findings list stay inline */
 .notice>span{display:block}
@@ -677,7 +688,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
         <div id="hzList"></div>
 
         <h2 class="sec">Safeguarding checklist</h2>
-        <p class="lede">The other half of the walkdown: an observation of the installed guarding rather than an analysis of it. Four of these are access prevention questions, marked below, and they decide whether exposure can be scored as prevented anywhere on this file. Answering them here, before the risk assessment, is the order they are actually needed in. A control system that reaches its required performance level does not prevent access on its own.</p>
+        <p class="lede">The other half of the walkdown: an observation of the installed guarding rather than an analysis of it. Four of these are access prevention questions, marked below, and they determine whether exposure can be scored as prevented anywhere on this file. They are answered here, before the risk assessment, because the risk assessment depends on them. A control system that reaches its required performance level does not prevent access on its own.</p>
         <div class="btnbar noprint">
           <button class="btn ghost" id="btnCheckReset" type="button">Reset to the shipped question set</button>
         </div>
@@ -738,7 +749,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
       <!-- ============ 06 FIELD VERIFICATION ============ -->
       <section class="view" id="v-check" aria-labelledby="h-check">
         <h2 class="sec" id="h-check">Field verification</h2>
-        <p class="lede">The last step, and a different question from the one before it. The verification step asks whether the analysis is right. This asks whether the hardware bolted to the machine does what the analysis says it does. It is done device by device, on the installed equipment, with the machine in front of you. The guarding observations that used to sit here have moved to the safety report, which is where the walkdown belongs.</p>
+        <p class="lede">The last step, and a different question from the preceding one. The verification step establishes whether the analysis is correct. This step establishes whether the installed hardware performs as the analysis states. It is done device by device, on the installed equipment. The guarding observations are recorded in the safety report.</p>
         <p class="lede">An emergency stop is not proved by pressing it. It is proved by pressing it, then by removing channel A, then by removing channel B, because a device wired single channel passes the first step and fails the other two. Each step carries its own verdict for that reason.</p>
         <div class="grid g4" id="fieldStats"></div>
         <div class="btnbar noprint">
@@ -1366,7 +1377,7 @@ var SEV = [
 var EXP = [
   { k: 'E2', label: 'E2 High', help: 'Typically more than once per day or shift; frequent or multiple short duration; or situations which could lead to increases in the duration of a task, not to include teaching tasks.' },
   { k: 'E1', label: 'E1 Low', help: 'Typically less than or once per day or shift, or occasional short durations.' },
-  { k: 'E0', label: 'E0 Prevented', help: 'Exposure is eliminated, controlled or limited by inherently safe design measures; or guards prevent exposure or access to the hazard. Where an interlocked guard is selected, the functional safety condition must also be met: the implemented PL meets or exceeds the required PLr. E0 may not be used in scoring unless the measures have actually been implemented. Not selectable for initial risk.' }
+  { k: 'E0', label: 'E0 Prevented', help: 'Exposure is eliminated, controlled or limited by inherently safe design measures, or guards prevent exposure or access to the hazard. Where an interlocked guard is selected, the functional safety condition must also be met: the implemented PL meets or exceeds the required PLr. E0 may not be used in scoring unless the measures are implemented. Not selectable for initial risk.' }
 ];
 var AVO = [
   { k: 'A3', label: 'A3 Not possible', help: 'Insufficient clearance and no safety rated reduced speed, or the layout traps the person with the escape route toward the hazard, or safeguarding is not expected to protect against the process hazard.' },
@@ -2696,7 +2707,7 @@ var PROVENANCE = [
   },
   {
     k: 'DIVERGES', label: 'Field observation differs from the model', tone: 'bad',
-    help: 'The installed hardware does not match the record. State what was actually observed. Any performance level claimed from this record is not supportable until the divergence is resolved.'
+    help: 'The installed hardware does not match the record. State what was observed. Any performance level claimed from this record is not supportable until the divergence is resolved.'
   }
 ];
 function provDef(k) {
@@ -2976,6 +2987,138 @@ function measureByKey(k) {
 
 var LIFECYCLE = ['Installation and commissioning', 'Normal production', 'Setup and changeover', 'Teach or program', 'Cleaning and sanitation', 'Routine maintenance', 'Troubleshooting and fault clearing', 'Material load and unload', 'Decommissioning'];
 var HAZARD_TYPES = ['Mechanical', 'Electrical', 'Thermal', 'Noise', 'Vibration', 'Radiation', 'Material or substance', 'Ergonomic', 'Environmental', 'Slip trip fall', 'Working at height', 'Confined space', 'Welding arc flash or radiation', 'Fire or flammability', 'Combination'];
+/* ---------------------------------------------------------------------
+   The risk reduction measure library.
+
+   The hierarchy in ANSI/RIA R15.306-2016 Table 3 is given as a bulleted
+   list of examples under each tier. Those bullets are the entries here,
+   with the safety sign and label entries expanded against ANSI Z535.4,
+   because a row whose whole answer is "fit a compliant label" is a
+   normal outcome at a low or negligible initial rating and needs to be
+   recordable as precisely as a guard is.
+
+   Table 4 still governs what may carry a row: warnings, administrative
+   controls and PPE may support a primary measure but never replace one
+   at medium or above. Picking from this list does not change that.
+   --------------------------------------------------------------------- */
+var MEASURE_LIBRARY = [
+  { k: 'ML001', m: 'ELIM', label: "Process design or redesign that removes the hazard", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML002', m: 'ELIM', label: "Layout change that removes the hazard", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML003', m: 'ELIM', label: "Pinch point designed out", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML004', m: 'ELIM', label: "Manual handling removed from the task", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML005', m: 'ELIM', label: "Hazardous material removed from the process", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML006', m: 'SUBST', label: "Less hazardous material substituted", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML007', m: 'SUBST', label: "Intrinsically safe design, energy contained", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML008', m: 'SUBST', label: "Reduced speed", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML009', m: 'SUBST', label: "Reduced force", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML010', m: 'SUBST', label: "Reduced amperage or voltage", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML011', m: 'SUBST', label: "Reduced pressure", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML012', m: 'SUBST', label: "Reduced temperature", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML013', m: 'SUBST', label: "Reduced volume", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML014', m: 'SUBST', label: "Reduced noise", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML015', m: 'LIMIT', label: "Human interaction eliminated from the process", detail: "Scores exposure as prevented.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML016', m: 'LIMIT', label: "Human interaction reduced", detail: "Scores exposure one level lower.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML017', m: 'LIMIT', label: "Task automated", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML018', m: 'LIMIT', label: "Material handling automated, conveyor", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML019', m: 'LIMIT', label: "Material handling automated, lift table", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML020', m: 'LIMIT', label: "Material handling automated, balancer", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML021', m: 'SAFEGUARD', label: "Fixed guard, tool removal only", detail: "Mechanical. No performance level applies.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML022', m: 'SAFEGUARD', label: "Perimeter fence guarding", detail: "Openings must meet the reach table.", src: 'ANSI B11.19-2019' },
+  { k: 'ML023', m: 'SAFEGUARD', label: "Interlocked guard without guard locking", detail: "Functional safety. A performance level applies.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML024', m: 'SAFEGUARD', label: "Interlocked guard with guard locking", detail: "Functional safety. A performance level applies.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML025', m: 'SAFEGUARD', label: "Light curtain", detail: "Functional safety. Safety distance per ISO 13855.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML026', m: 'SAFEGUARD', label: "Safety laser scanner", detail: "Functional safety. Safety distance per ISO 13855.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML027', m: 'SAFEGUARD', label: "Safety mat", detail: "Functional safety.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML028', m: 'SAFEGUARD', label: "Two hand control device", detail: "Functional safety.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML029', m: 'SAFEGUARD', label: "Safety relay or safety controller logic", detail: "Functional safety.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML030', m: 'SAFEGUARD', label: "Safety rated speed limiting", detail: "Functional safety.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML031', m: 'SAFEGUARD', label: "Safety rated position or axis limiting", detail: "Functional safety.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML032', m: 'SAFEGUARD', label: "Safety rated stop function", detail: "Functional safety.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML033', m: 'CPM', label: "Emergency stop device, palm or push button", detail: "Complementary. Not a primary measure.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML034', m: 'CPM', label: "Emergency stop device, rope or cable pull", detail: "Complementary. Not a primary measure.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML035', m: 'CPM', label: "Energy isolation means, lockable disconnect", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML036', m: 'CPM', label: "Energy dissipation means", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML037', m: 'CPM', label: "Fall prevention, guard railing", detail: "Building codes or standards can apply.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML038', m: 'CPM', label: "Safe access, platform or fixed stair", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML039', m: 'CPM', label: "Measures for escape and rescue of people", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML040', m: 'CPM', label: "Provisions for safe handling of heavy component parts", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML041', m: 'CPM', label: "Controlled selection of operating modes, mode selector", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML042', m: 'CPM', label: "Enabling device", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML043', m: 'WARN', label: "Safety sign or label to ANSI Z535.4", detail: "Pictogram, color code, signal word and word message stating hazard, consequence and avoidance.", src: 'ANSI Z535.4' },
+  { k: 'ML044', m: 'WARN', label: "Safety label applied at the point of hazard", detail: "Placed where the hazard is reached, not only at the entrance.", src: 'ANSI Z535.4' },
+  { k: 'ML045', m: 'WARN', label: "Existing sign or label upgraded to ANSI Z535.4", detail: "For a sign already fitted that does not meet the standard.", src: 'ANSI Z535.4' },
+  { k: 'ML046', m: 'WARN', label: "Floor or hazard zone marking", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML047', m: 'WARN', label: "Awareness barrier, chain or rail", detail: "Awareness means only. It does not prevent access.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML048', m: 'WARN', label: "Awareness signal, beacon or strobe", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML049', m: 'WARN', label: "Awareness signal, audible alarm, horn or siren", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML050', m: 'ADMIN', label: "Training and safe job procedures", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML051', m: 'ADMIN', label: "Written safe work procedure for minor servicing", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML052', m: 'ADMIN', label: "Control of hazardous energy procedure, lockout", detail: "Used with an energy isolation or dissipation means.", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML053', m: 'ADMIN', label: "Confined space policy and procedures", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML054', m: 'ADMIN', label: "Rotation of workers or change of work schedule", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML055', m: 'ADMIN', label: "Equipment safety inspections", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML056', m: 'ADMIN', label: "Hazard communication", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML057', m: 'PPE', label: "Safety glasses or face shield", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML058', m: 'PPE', label: "Hearing protection", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML059', m: 'PPE', label: "Respirator", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML060', m: 'PPE', label: "Cut resistant gloves or sleeves", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML061', m: 'PPE', label: "Safety harness or lanyard", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML062', m: 'PPE', label: "Hard hat", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+  { k: 'ML063', m: 'PPE', label: "Safety footwear, metatarsal protection", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+];
+
+function measureLib() {
+  if (!Array.isArray(P.measureLib) || !P.measureLib.length) {
+    P.measureLib = MEASURE_LIBRARY.map(function (e) {
+      return { k: e.k, m: e.m, label: e.label, detail: e.detail, src: e.src };
+    });
+  }
+  return P.measureLib;
+}
+function measureLibFor(mk) {
+  return measureLib().filter(function (e) { return e.m === mk; });
+}
+function measureLibItem(k) {
+  var list = measureLib();
+  for (var i = 0; i < list.length; i += 1) { if (list[i].k === k) return list[i]; }
+  return null;
+}
+function measureLibSearch(q, mk) {
+  var needle = String(q || '').trim().toLowerCase();
+  var list = mk ? measureLibFor(mk) : measureLib();
+  if (!needle) return list;
+  return list.filter(function (e) {
+    return (e.label + ' ' + (e.detail || '')).toLowerCase().indexOf(needle) >= 0;
+  });
+}
+function newMeasureLibEntry(mk) {
+  var n = 1, used = {};
+  measureLib().forEach(function (e) { used[e.k] = 1; });
+  while (used['MU' + n]) { n += 1; }
+  return { k: 'MU' + n, m: mk || 'SAFEGUARD', label: '', detail: '', src: 'Added on this file' };
+}
+function measureLibIsCustom(e) {
+  for (var i = 0; i < MEASURE_LIBRARY.length; i += 1) {
+    var b = MEASURE_LIBRARY[i];
+    if (b.k !== e.k) continue;
+    return !(b.label === e.label && b.m === e.m && b.detail === e.detail);
+  }
+  return true;
+}
+function measureLibReset() {
+  P.measureLib = null;
+  return measureLib();
+}
+/* An entry that names a mechanical guard, or one that names functional
+   safety, answers the control system question on the measure without the
+   assessor having to answer it twice. */
+function measureLibSrpcs(e) {
+  var t = (e.label + ' ' + (e.detail || '')).toLowerCase();
+  if (t.indexOf('mechanical. no performance level') >= 0) return 'no';
+  if (t.indexOf('functional safety') >= 0) return 'yes';
+  return '';
+}
+
 /* ---------------------------------------------------------------------
    The hazard library.
 
@@ -3271,7 +3414,7 @@ var DEVICE_TYPES = [
   { k: '', label: 'Not classified', level: '', help: 'Classify it so this file can check the right fields have been filled in.' },
   { k: '1', label: 'Type 1, encapsulated subsystem', level: 'Subsystem', help: 'The manufacturer already states PL or SIL with a PFHd. Safety relays, safety controllers, safety drives, light curtains.' },
   { k: '2', label: 'Type 2, not subject to wear', level: 'Block or element', help: 'MTTFd or a dangerous failure rate is stated and does not depend on cycles. Electronic, mechanical and hydraulic parts.' },
-  { k: '3', label: 'Type 3, subject to wear', level: 'Block or element', help: 'B10d is stated. MTTFd only exists once you supply the operations per year. Switches, relays, contactors, pneumatics.' },
+  { k: '3', label: 'Type 3, subject to wear', level: 'Block or element', help: 'B10d is stated. MTTFd exists only once the operations per year are supplied. Switches, relays, contactors, pneumatics.' },
   { k: '4', label: 'Type 4, fault exclusion', level: 'Subsystem', help: 'PFHd is zero, or a dangerous failure of the component is excluded. Record the basis for the exclusion.' }
 ];
 function deviceTypeDef(k) {
@@ -3408,7 +3551,7 @@ function newRisk() {
     images: [],
     hazard: '', hazardSource: '', harm: '', personnel: ['Operator'],
     s: 'S3', e: 'E2', a: 'A3',
-    measures: [],                        /* [{k, desc, newSev, limitMode, srpcs, sfIds}] */
+    measures: [],                        /* [{k, desc, newSev, limitMode, srpcs, sfIds, images}] */
     resS: '', resE: '', resA: '',        /* assessor entered, as in Annex A */
     resWhy: '', otherStandard: '',
     initLevelOverride: '', initLevelWhy: '',
@@ -4130,7 +4273,7 @@ function deviceIssues(dv) {
 
   /* Diagnostic coverage, left at nothing by the library on purpose. */
   if (!excluded && type !== '1' && (dv.dcPct === '' || dv.dcPct === null)) {
-    warn('No diagnostic coverage. A manufacturer library leaves this blank on purpose; it depends on the diagnostics in your circuit, so set it here even if the answer is zero.');
+    warn('No diagnostic coverage. A manufacturer library leaves this blank because it depends on the diagnostics in the circuit. Set it here even where the value is zero.');
   }
 
   /* Stated PL against the PFHd band. Cookbook 5, section 10.3.5, page 59
@@ -4728,7 +4871,7 @@ function findings() {
     (function () {
       var res2 = residualOf(r);
       if (res2.e === 'E0' && r.status && /open|planned|in progress/i.test(r.status)) {
-        add('bad', 'risk', r.id, lbl + ' claims exposure prevented while the row is still marked ' + r.status.toLowerCase() + '. Prevented may not be used in risk scoring unless the risk reduction measures have actually been implemented.', '6.4.3');
+        add('bad', 'risk', r.id, lbl + ' claims exposure prevented while the row is still marked ' + r.status.toLowerCase() + '. Prevented may not be used in risk scoring unless the risk reduction measures are implemented.', '6.4.3');
       }
     }());
 
@@ -4877,7 +5020,7 @@ function findings() {
     var list = fsChecklist();
     var blank = list.filter(function (c) { return !fsAnswered(c); });
     if (blank.length === list.length) {
-      add('warn', 'fs', '', 'The functional safety onsite verification checklist has not been answered. It is the record that somebody looked at the installed control system rather than only at the drawings.', 'ANSI B11.26');
+      add('warn', 'fs', '', 'The functional safety onsite verification checklist has not been answered. It is the record that the installed control system was examined, not only the drawings.', 'ANSI B11.26');
     } else if (blank.length) {
       add('warn', 'fs', '', blank.length + ' line' + (blank.length === 1 ? '' : 's') + ' of the functional safety checklist ' + (blank.length === 1 ? 'is' : 'are') + ' unanswered.', 'ANSI B11.26');
     }
@@ -4941,7 +5084,7 @@ function findings() {
       add('bad', 'dev', d.uid, dlbl + ': ' + auto + ' That is a divergence between the model and the installation, so set the provenance accordingly.', 'provenance');
     }
     if (d.prov === 'DIVERGES' && !String(d.provNote || '').trim()) {
-      add('bad', 'dev', d.uid, dlbl + ' is marked as diverging from the model but nothing records what was actually observed.', 'provenance', 'provNote');
+      add('bad', 'dev', d.uid, dlbl + ' is marked as diverging from the model but nothing records what was observed.', 'provenance', 'provNote');
     }
     /* ISO 13849-2. A fault exclusion is a claim that something cannot
        happen, and the standard names components where it cannot be made
@@ -5315,6 +5458,10 @@ function allImages() {
   var out = (P.meta.images || []).slice();
   function take(list) { (list || []).forEach(function (o) { out = out.concat(o.images || []); }); }
   take(P.hazards); take(P.risks); take(P.devices); take(P.sfs);
+  /* Photographs attached to a risk reduction measure. They can be marked
+     up and they print, so every count that walks the file has to see
+     them or the legend and the no-photograph checks go wrong. */
+  (P.risks || []).forEach(function (r) { take(r.measures); });
   return out;
 }
 
@@ -5595,7 +5742,7 @@ function markupForm(img, onDone) {
   function drawList() {
     var kids = [];
     if (!marks.length) {
-      kids.push(el('p', { cls: 'hint', text: 'No marks yet. Choose a color, then drag a ring around the thing you want the reader to look at.' }));
+      kids.push(el('p', { cls: 'hint', text: 'No marks yet. Choose a color, then drag a ring around the subject of the note.' }));
     }
     marks.forEach(function (m, i) {
       var d = markKind(m.kind);
@@ -6041,6 +6188,13 @@ function provChip(k, opts) {
   var short = k === 'OBSERVED' ? 'field verified' : (k === 'DIVERGES' ? 'diverges from model' : 'modeled');
   return el('span', { cls: 'chip ' + cls, text: (opts && opts.long) ? d.label : short });
 }
+/* The class that fills a notice with the color of the level it reports.
+   A banner stating NEGLIGIBLE against an amber background reads as a
+   warning about a level that is not one. */
+function noticeLevelClass(level) {
+  if (!level || LEVEL_RANK[level] === undefined) return '';
+  return ' rn-' + level.replace(/\s+/g, '');
+}
 function levelChip(level) {
   if (!level) return el('span', { cls: 'chip tag', text: 'not scored' });
   return el('span', { cls: 'rl rl-' + level.replace(/\s+/g, ''), text: level });
@@ -6282,7 +6436,12 @@ function renderRisk() {
       var orphan = d && !d.primary && t4.needsPrimary && !t4.hasPrimary;
       mList.appendChild(el('div', { style: { marginBottom: '3px' } }, [
         el('span', { cls: 'chip ' + (orphan ? 'bad' : 'tag'), text: d ? (d.tier + '. ' + d.label) : m.k }),
-        m.desc ? el('div', { cls: 'hint', text: m.desc }) : null
+        m.desc ? el('div', { cls: 'hint', text: m.desc }) : null,
+        (m.images && m.images.length)
+          ? el('div', { cls: 'mshots' }, m.images.slice(0, 3).map(function (im) {
+              return markedImage(im, { width: '104px', display: 'block' });
+            }))
+          : null
       ]));
     });
     if (!(r.measures || []).length) mList.appendChild(el('span', { cls: 'chip bad', text: 'none recorded' }));
@@ -6545,8 +6704,8 @@ var GUIDE = [
   {
     k: 'idea', title: 'What this is, in one paragraph',
     body: [
-      'One HTML file that holds a whole machine safety file: the risk assessment, the device library, the safety functions, the verification of the analysis, and the proving of the installed hardware. It runs from the file itself with no server, no install and no network. What you save is a single .json that contains everything, including the photographs.',
-      'The app checks your work as you go and lists what it finds. A blocking finding means something in the file contradicts a standard or contradicts itself. A review finding means something is missing that an auditor would ask about. Neither stops you working; both appear on the report until resolved.'
+      'One HTML file holding a complete machine safety file: the risk assessment, the device library, the safety functions, the verification of the analysis, and the proving of the installed hardware. It runs from the file itself with no server, no install and no network. The saved output is a single .json containing everything, including the photographs.',
+      'The file is checked continuously and the results are listed. A blocking finding means something in the file contradicts a standard or contradicts itself. A review finding means something is missing that an auditor would ask about. Neither prevents further editing. Both appear on the report until resolved.'
     ]
   },
   {
@@ -6554,19 +6713,19 @@ var GUIDE = [
     body: [
       'New starts a blank file. Save as writes it to disk and links it, after which Save writes back to that same file rather than making another copy. The rail shows which file is linked and whether there are unsaved changes.',
       'Chrome and Edge support writing back to a file. Firefox and Safari do not, so there Save downloads a fresh copy and says so rather than pretending it overwrote anything. After a page reload the link needs re-establishing with Open, because a browser will not hold a file permission across a refresh.',
-      'The Demo button loads a worked example. It is deliberately imperfect: it carries a performance level shortfall so you can see what a finding looks like.'
+      'The Demo button loads a worked example. It is deliberately imperfect, carrying a performance level shortfall that demonstrates how a finding is reported.'
     ]
   },
   {
     k: 'order', title: 'The order to work in',
     steps: [
-      { n: '00', t: 'Scope', d: 'Identify the machine, the revision, who is doing the work, and what is inside and outside the assessment. The exclusions matter more than the inclusions: name the adjacent equipment you did not assess.' },
+      { n: '00', t: 'Scope', d: 'Identify the machine, the revision, the personnel doing the work, and what is inside and outside the assessment. The exclusions matter more than the inclusions: name the adjacent equipment that was not assessed.' },
       { n: '01', t: 'Safety report', d: 'The walkdown. One entry per hazard found, with photographs and a recommendation, plus the safeguarding checklist and the reach measurements. This is observation, not scoring, and it comes first because the checklist decides whether exposure can be scored as prevented at all.' },
-      { n: '02', t: 'Risk assessment', d: 'One row per task and hazard pair, raised from the observations or added directly. Score the initial risk with no protective measure in place, list the measures, then score the residual. The level is computed for you and is never left blank.' },
-      { n: '03', t: 'Safety devices', d: 'Every interlock, relay, contactor and drive that makes up a safety circuit, with its safety values and where those values came from. Import a manufacturer library in VDMA 66413 XML if you have one. The functional safety onsite verification sheet sits at the foot of this step, because every line of it is a statement about these devices.' },
-      { n: '04', t: 'Safety functions', d: 'Chain the devices into functions: input, logic, output. The form is laid out as SISTEMA lays a safety function out, on the same four tabs. Write one by hand, or import a SISTEMA report and have them written for you. The app works out the achieved performance level and structure category and checks them against what the risk rows require.' },
+      { n: '02', t: 'Risk assessment', d: 'One row per task and hazard pair, raised from the observations or added directly. Score the initial risk with no protective measure in place, list the measures, then score the residual. The level is computed and is never left blank.' },
+      { n: '03', t: 'Safety devices', d: 'Every interlock, relay, contactor and drive that makes up a safety circuit, with its safety values and the source of those values. A manufacturer library in VDMA 66413 XML can be imported. The functional safety onsite verification sheet sits at the foot of this step, because every line of it is a statement about these devices.' },
+      { n: '04', t: 'Safety functions', d: 'Chain the devices into functions: input, logic, output. The form is laid out as SISTEMA lays a safety function out, on the same four tabs. Functions are entered by hand or generated from an imported SISTEMA report. The achieved performance level and structure category are computed and checked against what the risk rows require.' },
       { n: '05', t: 'Risk assessment verification', d: 'Does the analysis hold? Verification of the scoring, the specification and the performance claims. This is desk work.' },
-      { n: '06', t: 'Field verification', d: 'Does the hardware do what the analysis says? Device by device, on the installed equipment, with the machine in front of you.' },
+      { n: '06', t: 'Field verification', d: 'Whether the hardware does what the analysis states. Device by device, on the installed equipment.' },
       { n: '07', t: 'Compliance report', d: 'Choose which sections to print, sign the revision, and issue.' }
     ]
   },
@@ -6575,34 +6734,34 @@ var GUIDE = [
     body: [
       'What comes off a walkdown is an observation: a photograph of a nip point with no guard over it, and a sentence about it. What goes into a risk assessment is a task and hazard pair with a score against it. They are not the same record, and forcing the first into the shape of the second loses both.',
       'One observation often raises several rows, because the same unguarded nip point is reached during cleaning, during a jam clear and during a changeover, and those are three different exposures. Some observations raise none at all: recorded on the walk, then ruled out. The safety report keeps that record of having looked.',
-      'Raise a risk row means what it says. The hazard, the area, the phase and the photographs carry across. The scoring does not, on purpose, because a photograph does not know how often somebody stands there.'
+      'Raising a risk row carries the hazard, the area, the phase and the photographs across. The scoring does not carry across: exposure and avoidance are properties of the task, which an observation does not record.'
     ],
-    tip: 'The safeguarding checklist and the reach measurements sit in this section too. They are the same walk with a fixed question set, and their answers decide whether exposure prevented is available on any row, which is something you want settled before you start scoring rather than after.'
+    tip: 'The safeguarding checklist and the reach measurements sit in this section. They are the same walk with a fixed question set, and their answers decide whether exposure prevented is available on any row. Settle them before scoring begins.'
   },
   {
     k: 'scoring', title: 'Scoring a risk row',
     body: [
-      'The initial score assumes no protective measure at all. That is not the risk you observe today, and it is not the risk with the guard fitted. Safety-rated features that could be installed are excluded on purpose, because the assessment is what decides whether they are needed.',
+      'The initial score assumes no protective measure at all. It is neither the risk observed on the day nor the risk with the guard fitted. Safety-rated features that could be installed are excluded, because the assessment is what determines whether they are needed.',
       'Read the criteria from the top of each factor and take the most likely. If any criterion for a rating applies, that is the rating. The exposure column is deliberately printed prevented, high, low rather than in severity order.',
       'Exposure prevented is a claim with two independent conditions, and both have to hold. Guards must prevent access, which is what the safeguarding checklist records. And where functional safety is part of the measure, the implemented performance level must meet the required one. Meeting one is not enough: a control system that reaches its required level does not close a gap in a guard.'
     ],
-    tip: 'An unchanged residual score can be the right answer. If barrier guarding has gaps, exposure is not reduced however good the circuit is. The app asks you to write down why rather than to change the score.'
+    tip: 'An unchanged residual score can be correct. Where barrier guarding has gaps, exposure is not reduced however good the circuit is. The basis for the score is required, not a change to the score.'
   },
   {
     k: 'rowlinks', title: 'People exposed, and what carries a measure',
     body: [
       'A row names every group that reaches the hazard during that task, not just the most obvious one. An unguarded nip at an infeed is reached by the operator clearing a jam and by sanitation cleaning it down, and those two carry different training and different exposure. A group nobody listed is a group nobody assessed.',
       'Each measure names the safety function that carries it out, rather than the row naming a loose list at the end. "Guarding" and "the interlock that proves the guard is shut" are two different statements, and it is the second one that has to reach a performance level. Naming a function against a safeguarding measure is what brings the performance level condition into play when the row claims exposure prevented.',
-      'The row keeps no separate list. A function named on a measure is what the row relies on, and everything that asks which functions a row uses reads them from the measures. New safety function for this measure raises one already linked and seeded from what you typed. A file written before this moves its links onto the measure that earns them, and where a row has no measures to move them to, the link stays put and the form says so with a way to clear it.'
+      'The row keeps no separate list. A function named on a measure is what the row relies on, and every check that asks which functions a row uses reads them from the measures. New safety function for this measure raises one already linked and seeded from the measure description. On an older file the links are moved onto the measure that carries them; where a row has no measures, the link is retained and reported, with an action to clear it.'
     ],
     tip: 'Task based scores are written bare, as S3 E2 A3. Only the ISO 13849-1 risk graph is prefixed, as ISO S2 F2 P2, because it reuses S1 and S2 for different things.'
   },
   {
     k: 'devices', title: 'Devices, and where their numbers come from',
     body: [
-      'Every safety value needs a source, and the app ranks them: manufacturer data first, then a recognized data collection, then a typical value from a standard. Choosing a typical value from ISO 13849-1 Table C.1 writes the source for you and drops the rank accordingly.',
-      'A device imported from a manufacturer library carries whatever the manufacturer published. The app does not nag about fields they chose to omit. It still checks the things that are your decisions rather than theirs.',
-      'Where a mechanical, hydraulic or pneumatic part has no reliability data at all, and the good engineering practice method cannot be applied either, the alternative procedure in clause 6.1.9 gives a performance level from the architecture alone. It is a last resort with three preconditions, and the app asks you to state that all three hold.'
+      'Every safety value needs a source, and the sources are ranked: manufacturer data first, then a recognized data collection, then a typical value from a standard. Selecting a typical value from ISO 13849-1 Table C.1 records the source and lowers the rank accordingly.',
+      'A device imported from a manufacturer library carries whatever the manufacturer published. Fields the manufacturer omitted are not reported as gaps. Fields that are an engineering decision rather than a published value are still checked.',
+      'Where a mechanical, hydraulic or pneumatic part has no reliability data, and the good engineering practice method cannot be applied, the alternative procedure in clause 6.1.9 gives a performance level from the architecture alone. It is a last resort with three preconditions, each of which must be stated as holding.'
     ]
   },
   {
@@ -6619,7 +6778,7 @@ var GUIDE = [
     body: [
       'A photograph of a panel is a photograph of forty things. Press Mark up on any photograph and drag a ring around the one the reader is meant to look at. Green is good practice, worth recording so it is not undone later; yellow is a caution the reader should know about; red is something that has to be put right, and is what a corrective action gets written against.',
       'Marks sit on top of the photograph rather than being burned into it. The image data is never altered, so a ring can be moved, recolored or removed at any time, and the original photograph is still the original photograph if it is ever needed as evidence. Each mark is held as a fraction of the picture rather than in pixels, so one drawn on a laptop lands in the same place in the printed report.',
-      'A short label on a mark, an A or a B, lets the text underneath refer to it. The report prints a legend of the colors, and only of the colors actually used in that file.'
+      'A short label on a mark, an A or a B, lets the text underneath refer to it. The report prints a legend of the colors used in that file.'
     ],
     tip: 'A marked photograph is shown whole on its card rather than cropped to fill the tile, because a ring drawn on the part that the crop removes would point at nothing.'
   },
@@ -6627,7 +6786,7 @@ var GUIDE = [
     k: 'fssheet', title: 'The functional safety onsite sheet',
     body: [
       'A one page summary of what the installed control system was observed to be, per ISO 13849-1, ANSI B11.26, ANSI B11.19 and NFPA 79: whether the sensors, the logic and the output devices each reach the level claimed, whether the architecture matches the drawings, and what category and performance level the emergency stop and safeguarding systems were found to achieve.',
-      'The two observed lines are the point of it. Beside each one the app shows what this file models for that system, without writing it into the observed column. Where the observation comes out below the model, that is raised as blocking: an observation of the installed system outranks a calculation about it, so either the model is wrong or the installation is, and both are worth knowing before the file is issued.',
+      'The two observed lines carry the result. Beside each one the modeled value for that system is shown, without being written into the observed column. Where the observation falls below the model, it is raised as blocking: an observation of the installed system outranks a calculation about it, so either the model or the installation is wrong. Both must be resolved before the file is issued.',
       'A line answered No or N/A needs an explanation, for the same reason the guarding checklist does: a verdict with nothing behind it cannot be questioned later, and a corrective action has to be written against something.'
     ]
   },
@@ -6635,15 +6794,15 @@ var GUIDE = [
     k: 'provenance', title: 'Modeled against observed',
     body: [
       'A Category 3 taken from a schematic and a Category 3 confirmed in the panel are not the same claim. Every device and every function records which it is, and the default is modeled, because anything from a design review starts there.',
-      'When you look at the installed hardware, record what you saw. If the observed category differs from the recorded one, the app raises it as a divergence and marks every performance level that rests on that device as unsupported until it is resolved.'
+      'Record what the installed hardware was observed to be. Where the observed category differs from the recorded one, the difference is raised as a divergence and every performance level resting on that device is marked unsupported until it is resolved.'
     ],
     tip: 'This is the check that catches a contactor drawn as dual channel and wired single channel, which is the most common way a Category 3 claim turns out to be a Category 2 installation.'
   },
   {
     k: 'field', title: 'Proving the hardware',
     body: [
-      'Field verification is done per installed device, as a procedure of steps, each with its own verdict. Generate baseline procedures and the app writes the steps for you from the device role and its wiring.',
-      'The channel steps are the point. Pressing an emergency stop proves it is connected. Removing channel A and then channel B proves it is connected twice, which is what a Category 3 claim actually asserts. A single channel installation passes the first step and fails the other two.',
+      'Field verification is done per installed device, as a procedure of steps, each with its own verdict. Generate baseline procedures to write the steps from the device role and its wiring.',
+      'The channel steps carry the result. Pressing an emergency stop proves it is connected. Removing channel A and then channel B proves it is connected twice, which is what a Category 3 claim asserts. A single channel installation passes the first step and fails the other two.',
       'A step marked failed needs a note about what happened. A step marked not applicable needs a reason. A whole procedure that has passed with nobody named against it is flagged, because a verdict with no name behind it cannot be questioned later.'
     ]
   },
@@ -6651,16 +6810,16 @@ var GUIDE = [
     k: 'findings', title: 'Working through the findings',
     body: [
       'Every finding names the record it is about and offers a link to it. Following the link opens that record and, where the finding is about a particular field, scrolls to that field, rings it and puts the cursor in it.',
-      'Findings that cite a table carry a link to it. Clicking the citation opens that table over the page rather than sending you to the reference section and back.',
-      'Hide findings in the rail quietens the panels while you are drafting. Each one collapses to a single line that still states how many findings there are and how many block, so nothing disappears without trace, and the report is not affected at all. Mute these findings on the field verification step is narrower: it sets aside the checks that cannot be answered until the hardware is installed.'
+      'Findings that cite a table carry a link to it. The citation opens that table over the page rather than navigating to the reference section.',
+      'Hide findings in the rail collapses the panels during drafting. Each one reduces to a single line stating how many findings there are and how many block, so nothing disappears without trace, and the report is unaffected. Mute these findings on the field verification step is narrower: it sets aside the checks that cannot be answered until the hardware is installed.'
     ],
-    tip: 'Hiding findings is a preference of yours, not a property of the file. It lives in this browser and does not travel with the saved project, so nobody opens your file and finds the checks switched off.'
+    tip: 'Hiding findings is a display preference, not a property of the file. It is held in this browser and does not travel with the saved project, so the checks are never switched off for another reader.'
   },
   {
     k: 'report', title: 'Reporting and signing',
     body: [
-      'The report is assembled from sections you choose, in the order you put them in. The picker lists the chosen sections first, numbered as they will print, each with arrows to move it up or down; the ones left out sit underneath with no position. Reset the order puts them back the way the app ships them. Presets cover the combinations people actually ask for: risk assessment only, controls package, field verification only. Numbering follows what is included, so a two section report numbers them 1 and 2.',
-      'The conclusion prints at the end rather than the top, after the evidence it draws on and immediately before the signatures, which is the order somebody signs in: read the findings, read the conclusion, then sign. Move it to the front if you would rather have it as a cover summary.',
+      'The report is assembled from the selected sections, in the selected order. The picker lists the chosen sections first, numbered as they will print, each with arrows to move it up or down. Sections left out sit underneath with no position. Reset the order restores the default sequence. Presets cover the common combinations: risk assessment only, controls package, field verification only. Numbering follows what is included, so a two section report numbers them 1 and 2.',
+      'The conclusion prints at the end rather than the top, after the evidence it draws on and immediately before the signatures: findings, conclusion, signature. It can be moved to the front to serve as a cover summary.',
       'Signing records who signed, in what role, when, against a stated declaration, and a fingerprint of the file contents. Change anything afterwards and the signature is marked as given against different contents. It is an attributability record, not a cryptographic signature, and the report says so.'
     ]
   },
@@ -6669,14 +6828,14 @@ var GUIDE = [
     body: [
       'It does not compute separation distances. The formulae are in clause 6 of ISO 13855, which is not held with this project, so the app records the distance and where it came from and says plainly that it did not calculate it.',
       'It does not replace SISTEMA. It reproduces the numerical route from Annex K and flags where the simplified graphical route disagrees, but a SISTEMA project remains the reference for a submitted calculation.',
-      'It does not decide anything for you. Every enforcement it applies is traceable to a clause, and every value it holds is either from a standard or entered by you with its source recorded.'
+      'No engineering decision is made by the application. Every enforcement is traceable to a clause, and every value it holds is either from a standard or entered by the assessor with its source recorded.'
     ]
   }
 ];
 
 function renderGuide() {
   var host = clear($('guideBody'));
-  host.appendChild(el('p', { cls: 'lede', text: 'A walkthrough rather than a feature list. The order the steps are done in is most of what is worth knowing, because each step answers a different question and the app enforces rules that only make sense once you know which question you are on.' }));
+  host.appendChild(el('p', { cls: 'lede', text: 'A walkthrough rather than a feature list. The order of the steps carries most of the meaning: each step answers a different question, and the rules enforced at each step follow from that question.' }));
 
   var toc = el('div', { cls: 'card noprint' });
   var tl = el('ul');
@@ -6926,8 +7085,8 @@ function unscoredNotice() {
   if (!open.length) return [];
   var box = el('div', { cls: 'notice warn', id: 'hzUnscored' }, [
     el('strong', { text: open.length === 1 ? 'One observation has not been scored yet' : open.length + ' observations have not been scored yet' }),
-    el('span', { text: 'An observation says what you saw. It carries no risk rating: the rating is worked out on a row in the risk assessment, using severity, exposure and avoidance. Until a row exists, the hazard is written down but not assessed, and it will not appear in the risk assessment, in Table 4 or in any performance level requirement.' }),
-    el('span', { text: 'To clear one: press Raise a risk row on the observation. That copies the hazard, the area, the phase, the harm and the photographs onto a new row and takes you to it, where you enter the task and the scoring. If the observation turned out not to need scoring, set its status to Not a finding instead.' })
+    el('span', { text: 'An observation records what was seen. It carries no risk rating: the rating is worked out on a row in the risk assessment, using severity, exposure and avoidance. Until a row exists the hazard is recorded but not assessed, and it appears in neither the risk assessment, Table 4, nor any performance level requirement.' }),
+    el('span', { text: 'To clear one, use Link or raise a risk row on the observation. Creating a row copies the hazard, the area, the phase, the harm and the photographs across, leaving the task and the scoring to be entered. An observation that does not require scoring is set to Not a finding instead.' })
   ]);
   var ul = el('ul');
   open.forEach(function (h) {
@@ -6976,14 +7135,14 @@ function renderHazards() {
         ? (noPhoto === 1 ? '1 observation still needs a photo' : noPhoto + ' observations still need a photo')
         : 'all of them have a photo',
       noPhoto ? 'alert' : 'good',
-      { help: 'How many observations have no photograph attached. Open an observation, or use the photo strip on its card, and add the shot you took on the walk. A photograph is what lets somebody check the observation months later without going back to the machine.' }),
+      { help: 'How many observations have no photograph attached. Photographs are added from the observation form or the photo strip on its card. A photograph is what allows an observation to be checked months later without returning to the machine.' }),
     statCard('Not scored yet', unlinked,
       unlinked
         ? (unlinked === 1 ? '1 observation has no risk assessment row' : unlinked + ' observations have no risk assessment row')
         : 'every observation has a risk row',
       unlinked ? 'alert' : 'good',
       {
-        help: 'An observation records what you saw. It does not carry a risk rating. The rating is worked out on a row in the risk assessment, so each observation needs at least one row raised from it. Press "Raise a risk row" on the observation, or mark it "Not a finding" if it turned out not to need scoring.',
+        help: 'An observation records what was seen. It does not carry a risk rating. The rating is worked out on a row in the risk assessment, so each observation needs at least one row linked to it. Use "Link or raise a risk row" on the observation, or mark it "Not a finding" where scoring is not required.',
         action: unlinked ? { label: 'Show me which', fn: function () { showUnscored(); } } : null
       })
   ]);
@@ -7072,7 +7231,7 @@ function hazardRiskPicker(h) {
       cls: 'btn', type: 'button', text: 'Create a new risk row from this observation',
       on: { click: function () { riskFromHazard(h); } }
     }));
-    kids.push(el('p', { cls: 'hint', text: 'The hazard, the area, the phase, the harm and the photographs carry across. The scoring does not, on purpose: a photograph does not know how often somebody stands there.' }));
+    kids.push(el('p', { cls: 'hint', text: 'The hazard, the area, the phase, the harm and the photographs carry across. The scoring does not: exposure and avoidance are properties of the task, which an observation does not record.' }));
 
     if (!P.risks.length) {
       kids.push(el('p', { cls: 'hint', text: 'There are no risk rows yet, so there is nothing to link to. Create one above.' }));
@@ -7133,6 +7292,183 @@ function hazardRiskPicker(h) {
   }, 'Save links');
 }
 
+
+
+/* ---------------------------------------------------------------------
+   Picking a risk reduction measure from the library, and editing it.
+   Scoped to the measure kind on the row, so the list offered under
+   Warnings and awareness means is the sign and label list and nothing
+   else.
+   --------------------------------------------------------------------- */
+function measureLibPicker(mk, onPick) {
+  var d = measureByKey(mk);
+  var host = el('div');
+  var q = el('input', { type: 'search', placeholder: 'Search this tier' });
+  var allBox = el('input', { type: 'checkbox' });
+  var listHost = el('div');
+
+  function paint() {
+    var rows = measureLibSearch(q.value, allBox.checked ? '' : mk);
+    if (!rows.length) {
+      put(listHost, [
+        el('p', { cls: 'hint', text: 'Nothing in the list matches. Enter the measure in the description field, or add it to the list.' }),
+        el('button', {
+          cls: 'btn ghost sm', type: 'button', text: 'Add it to the list',
+          on: { click: function () { measureLibForm(null, mk, q.value.trim(), paint); } }
+        })
+      ]);
+      return;
+    }
+    var byTier = {};
+    rows.forEach(function (e) { (byTier[e.m] = byTier[e.m] || []).push(e); });
+    var kids = [];
+    MEASURES.forEach(function (def) {
+      if (!byTier[def.k]) return;
+      kids.push(el('h4', { cls: 'libcat' }, [
+        el('span', { text: def.label }),
+        el('span', { cls: 'chip ' + (def.primary ? 'ok' : 'tag'), text: def.primary ? 'may carry a row' : 'supporting only' })
+      ]));
+      var wrap = el('div', { cls: 'libwrap' });
+      byTier[def.k].forEach(function (e) {
+        wrap.appendChild(el('button', {
+          cls: 'libitem', type: 'button',
+          on: { click: function () { dismissDlg(); onPick(e); } }
+        }, [
+          el('span', { cls: 'libname', text: e.label }),
+          e.detail ? el('span', { cls: 'hint', text: e.detail }) : null,
+          e.src ? el('span', { cls: 'hint', text: e.src }) : null
+        ]));
+      });
+      kids.push(wrap);
+    });
+    put(listHost, kids);
+  }
+  q.addEventListener('input', paint);
+  allBox.addEventListener('change', paint);
+  paint();
+
+  put(host, [
+    el('p', { cls: 'hint', text: 'The examples listed under this tier of the ANSI/RIA R15.306 Table 3 hierarchy. Selecting one fills the description, which remains editable.' }),
+    d && !d.primary ? el('div', { cls: 'notice warn' }, [
+      el('strong', { text: d.label + ' is a supporting measure' }),
+      el('span', { text: 'Table 4 permits it alongside a primary measure but not in place of one at a medium or higher initial rating. At a low or negligible rating it may carry the row on its own.' })
+    ]) : null,
+    row('g2', [
+      el('label', { cls: 'f', style: { marginBottom: 0 } }, [el('span', { text: 'Search' }), q]),
+      el('label', { cls: 'chkrow', style: { marginBottom: 0 } }, [allBox, el('span', { text: 'Show every tier, not only this one' })])
+    ]),
+    listHost
+  ]);
+
+  var body = [
+    el('div', { cls: 'rowacts', style: { marginBottom: '10px' } }, [
+      el('button', { cls: 'btn ghost sm', type: 'button', text: 'Add an entry to the list', on: { click: function () { measureLibForm(null, mk, q.value.trim(), paint); } } }),
+      el('button', { cls: 'btn ghost sm', type: 'button', text: 'Edit the list', on: { click: function () { measureLibManager(paint); } } })
+    ]),
+    host
+  ];
+  if ($('dlg').open) { pushDlg('Risk reduction measures', body, 'Close'); }
+  else { openDlg('Risk reduction measures', body, null, 'Close'); }
+  $('dlgOk').style.display = 'none';
+}
+
+function measureLibForm(entry, seedKind, seedLabel, after) {
+  var isNew = !entry;
+  var work = entry ? JSON.parse(JSON.stringify(entry)) : newMeasureLibEntry(seedKind);
+  if (isNew && seedLabel) { work.label = seedLabel; }
+  var bag = [], body = [];
+  body.push(fset('The measure', [
+    fSel(bag, 'm', 'Tier in the hierarchy', work, MEASURES.map(function (d) { return { k: d.k, label: d.label }; }),
+      { help: 'Which line of the Table 3 hierarchy this belongs to. The tier decides whether the measure can carry a row on its own under Table 4.' }),
+    fText(bag, 'label', 'Measure', work, { ph: 'Safety sign or label to ANSI Z535.4', help: 'The measure as it should read on a risk row. Short enough to read in a list.' }),
+    fText(bag, 'detail', 'Note', work, { ph: 'Pictogram, color code, signal word and word message', help: 'What the measure has to include to count. Shown beneath the entry in the picker.' }),
+    fText(bag, 'src', 'Source', work, { ph: 'ANSI/RIA R15.306-2016, Table 3', help: 'The clause, table or standard this measure is taken from.' })
+  ]));
+  var commitEntry = function () {
+    bag.forEach(function (fn) { fn(); });
+    if (!String(work.label || '').trim()) { say('The measure needs a name'); return false; }
+    var list = measureLib();
+    if (isNew) { list.push(work); }
+    else {
+      var i = -1;
+      list.forEach(function (e, j) { if (e.k === work.k) i = j; });
+      if (i >= 0) { list[i] = work; }
+    }
+    saveLocalSoon();
+    if (after) { after(); }
+    say(isNew ? 'Added to the measures list' : 'Measures list updated');
+    return true;
+  };
+  var title = isNew ? 'Add a measure to the list' : 'Edit ' + (entry.label || 'this entry');
+  if ($('dlg').open) {
+    body.push(el('div', { cls: 'rowacts', style: { marginTop: '12px' } }, [
+      el('button', { cls: 'btn', type: 'button', text: isNew ? 'Add it to the list' : 'Save the entry', on: { click: function () { if (commitEntry() !== false) { dismissDlg(); } } } }),
+      el('button', { cls: 'btn ghost', type: 'button', text: 'Back', on: { click: dismissDlg } })
+    ]));
+    pushDlg(title, body, 'Save');
+    $('dlgOk').style.display = 'none';
+  } else {
+    openDlg(title, body, commitEntry);
+  }
+}
+
+function measureLibManager(after) {
+  var host = el('div');
+  function paint() {
+    var kids = [];
+    var custom = measureLib().filter(measureLibIsCustom).length;
+    kids.push(el('p', { cls: 'hint', text: measureLib().length + ' entries, of which ' + custom + ' ' + (custom === 1 ? 'was' : 'were') + ' added or edited on this file. The list is saved in the file, so it travels with the assessment.' }));
+    MEASURES.forEach(function (def) {
+      var rows = measureLibFor(def.k);
+      kids.push(el('h4', { cls: 'libcat' }, [
+        el('span', { text: def.label + '  (' + rows.length + ')' }),
+        el('button', { cls: 'btn ghost sm', type: 'button', text: 'Add', on: { click: function () { measureLibForm(null, def.k, '', function () { paint(); if (after) after(); }); } } })
+      ]));
+      if (!rows.length) { kids.push(el('p', { cls: 'hint', text: 'Nothing under this tier yet.' })); return; }
+      var wrap = el('div', { cls: 'libwrap edit' });
+      rows.forEach(function (e) {
+        wrap.appendChild(el('div', { cls: 'libitem' }, [
+          el('span', { cls: 'libname' }, [
+            el('span', { text: e.label }),
+            measureLibIsCustom(e) ? el('span', { cls: 'chip tag', text: 'added here' }) : null
+          ]),
+          e.detail ? el('span', { cls: 'hint', text: e.detail }) : null,
+          e.src ? el('span', { cls: 'hint', text: e.src }) : null,
+          el('span', { cls: 'rowacts' }, [
+            actBtn('Edit', function () { measureLibForm(e, e.m, '', function () { paint(); if (after) after(); }); }),
+            actBtn('Remove', function () {
+              P.measureLib = measureLib().filter(function (x) { return x.k !== e.k; });
+              saveLocalSoon(); paint(); if (after) after();
+              say(e.label + ' removed from the list');
+            }, 'danger')
+          ])
+        ]));
+      });
+      kids.push(wrap);
+    });
+    put(host, kids);
+  }
+  paint();
+  var mbody = [
+    host,
+    el('div', { cls: 'rowacts', style: { marginTop: '12px' } }, [
+      el('button', {
+        cls: 'btn ghost sm', type: 'button', text: 'Restore the list the application ships with',
+        on: {
+          click: function () {
+            confirmDelete('every change made to the measures list', function () {
+              measureLibReset(); saveLocalSoon(); paint(); if (after) after();
+              say('The measures list is back to the built-in one');
+            }, 'Restore');
+          }
+        }
+      })
+    ])
+  ];
+  if ($('dlg').open) { pushDlg('The measures list', mbody, 'Close'); }
+  else { openDlg('The measures list', mbody, null, 'Close'); }
+  $('dlgOk').style.display = 'none';
+}
 
 /* ---------------------------------------------------------------------
    Picking from the library, and editing it.
@@ -7195,7 +7531,7 @@ function hazardLibPicker(onPick) {
   paint();
 
   put(host, [
-    el('p', { cls: 'hint', text: 'Pick one to fill the hazard in. The wording is a starting point: edit it to say what is actually on this machine. Nothing here limits what you can record, and anything missing can be added to the list.' }),
+    el('p', { cls: 'hint', text: 'Selecting an entry fills the hazard field. The wording is a starting point and should be edited to match this machine. The list does not restrict what can be recorded, and any hazard missing from it can be added.' }),
     row('g2', [
       el('label', { cls: 'f', style: { marginBottom: 0 } }, [el('span', { text: 'Search' }), q]),
       el('label', { cls: 'f', style: { marginBottom: 0 } }, [el('span', { text: 'Category' }), catSel])
@@ -7278,7 +7614,7 @@ function hazardLibManager(after) {
   function paint() {
     var kids = [];
     var custom = hazardLib().filter(hazardLibIsCustom).length;
-    kids.push(el('p', { cls: 'hint', text: hazardLib().length + ' entries, of which ' + custom + ' ' + (custom === 1 ? 'is' : 'are') + ' yours or edited by you. The list is saved in this file, so it travels with the assessment.' }));
+    kids.push(el('p', { cls: 'hint', text: hazardLib().length + ' entries, of which ' + custom + ' ' + (custom === 1 ? 'is' : 'are') + ' added or edited on this file. The list is saved in the file, so it travels with the assessment.' }));
     HAZARD_TYPES.forEach(function (c) {
       var rows = hazardLibByCat(c);
       kids.push(el('h4', { cls: 'libcat' }, [
@@ -7317,7 +7653,7 @@ function hazardLibManager(after) {
         cls: 'btn ghost sm', type: 'button', text: 'Put the list back to the one the app ships with',
         on: {
           click: function () {
-            confirmDelete('every change you have made to the hazard list', function () {
+            confirmDelete('every change made to the hazard list', function () {
               hazardLibReset(); saveLocalSoon(); paint(); if (after) after();
               say('The hazard list is back to the built-in one');
             }, 'Restore');
@@ -7397,7 +7733,7 @@ function hazardForm(existing) {
       fSel(bag, 'phase', 'Lifecycle phase', work, ['Normal production', 'Setup', 'Changeover', 'Cleaning', 'Maintenance', 'Fault finding', 'Installation', 'Decommissioning'].map(function (k) { return { k: k, label: k }; })),
       fSel(bag, 'hazardType', 'Hazard type', work, HAZARD_TYPES.map(function (k) { return { k: k, label: k }; }))
     ]),
-    fArea(bag, 'observed', 'What was observed', work, { ph: 'What you saw, in the words you would use to describe it to someone standing next to you.' }),
+    fArea(bag, 'observed', 'What was observed', work, { ph: 'What was seen, in plain description.' }),
     fArea(bag, 'existing', 'Safeguarding in place at the time', work, { ph: 'What was already fitted, and whether it was working, defeated or missing.' }),
     fArea(bag, 'consequence', 'Possible harm', work, { ph: 'What could happen to whom.' })
   ]));
@@ -8077,7 +8413,7 @@ function signPanel() {
   SIGN_ROLES.forEach(function (r) { roleSel.appendChild(el('option', { value: r.k, text: r.label })); });
   var nameIn = el('input'); nameIn.type = 'text'; nameIn.placeholder = 'Full name';
   var titleIn = el('input'); titleIn.type = 'text'; titleIn.placeholder = 'Job title and any credential';
-  var typedIn = el('input'); typedIn.type = 'text'; typedIn.placeholder = 'Type your name to sign';
+  var typedIn = el('input'); typedIn.type = 'text'; typedIn.placeholder = 'Enter the name to sign';
   var declBox = el('p', { cls: 'hint' });
   var warn = el('div');
 
@@ -8088,7 +8424,7 @@ function signPanel() {
     put(warn, blocking.length ? [
       el('div', { cls: 'notice bad' }, [
         el('strong', { text: blocking.length + ' blocking finding' + (blocking.length === 1 ? '' : 's') + ' remain open' }),
-        el('span', { text: 'Signing does not clear them, and the signature records the file exactly as it stands. Resolve them first unless you intend to sign a file with open items.' })
+        el('span', { text: 'Signing does not clear them, and the signature records the file exactly as it stands. Resolve them before signing unless the intent is to issue a file with open items.' })
       ])
     ] : []);
   }
@@ -8113,12 +8449,12 @@ function signPanel() {
     el('h3', { text: 'Sign this revision' }),
     el('p', { cls: 'hint', text: 'A signature records who signed, in what role, when, against a stated declaration, and a fingerprint of the file as it stands. Change anything afterwards and the signature is marked as given against different contents.' }),
     row('g2', [
-      fWrap('Role', '', roleSel, 'Which declaration you are signing against.'),
+      fWrap('Role', '', roleSel, 'The declaration being signed against.'),
       fWrap('Name', '', nameIn, 'The full name of the person signing.')
     ]),
     row('g2', [
       fWrap('Title and credential', '', titleIn, 'Job title, and any credential relevant to the sign-off.'),
-      fWrap('Type your name to sign', '', typedIn, 'Typing the name exactly as entered above is the act of signing. It must match.')
+      fWrap('Enter the name to sign', '', typedIn, 'Entering the name exactly as recorded above constitutes the signature. It must match.')
     ]),
     declBox,
     warn,
@@ -8289,9 +8625,16 @@ function renderReport() {
         el('td', null, (r.measures || []).length
           ? (r.measures || []).map(function (x) {
             var d = measureByKey(x.k);
-            return el('div', null, [
+            return el('div', { style: { marginBottom: '4px' } }, [
               el('span', { text: (d ? d.label : x.k) }),
-              (x.sfIds || []).length ? el('span', { cls: 'hint', text: '  (' + (x.sfIds || []).join(', ') + ')' }) : null
+              (x.sfIds || []).length ? el('span', { cls: 'hint', text: '  (' + (x.sfIds || []).join(', ') + ')' }) : null,
+              x.desc ? el('div', { cls: 'hint', text: x.desc }) : null,
+              /* the measure as installed, beside the measure it evidences */
+              (x.images && x.images.length)
+                ? el('div', { cls: 'mshots' }, x.images.slice(0, 3).map(function (im) {
+                    return markedImage(im, { width: '96px', display: 'block' });
+                  }))
+                : null
             ].filter(Boolean));
           })
           : el('span', { text: 'none' })),
@@ -8561,7 +8904,7 @@ function renderReport() {
 
   sec('field', function (H) {
     doc.appendChild(el('h3', { text: H }));
-    doc.appendChild(el('p', { cls: 'wrap', text: 'Proving of the installed hardware, device by device. A performance level determined on paper says what the design should achieve. These records say what the machine in front of the tester actually did. Each step carries its own verdict, because a device wired single channel passes an actuation test and fails the channel tests.' }));
+    doc.appendChild(el('p', { cls: 'wrap', text: 'Proving of the installed hardware, device by device. A performance level determined on paper states what the design should achieve. These records state what the installed machine did. Each step carries its own verdict, because a device wired single channel passes an actuation test and fails the channel tests.' }));
     (P.fieldTests || []).forEach(function (t) {
       var dv = deviceByUid(t.deviceUid);
       var ts = fieldTestState(t);
@@ -8698,7 +9041,7 @@ function renderReport() {
   if (!reportSelection().length) {
     doc.appendChild(el('div', { cls: 'notice bad' }, [
       el('strong', { text: 'No sections selected' }),
-      el('span', { text: 'Choose at least one section above. Nothing will print until you do.' })
+      el('span', { text: 'At least one section is required. Nothing prints until a section is selected.' })
     ]));
   }
 
@@ -9078,7 +9421,7 @@ function buildTables(host) {
 
   /* ISO 13849-1:2023 Table C.1 */
   host.appendChild(el('h2', { cls: 'sec', text: 'Typical values, ISO 13849-1:2023 Table C.1' }));
-  host.appendChild(el('p', { cls: 'lede', text: 'Fallback values for a component whose manufacturer gives no data. A last resort rather than a shortcut: manufacturer data first, then an established data collection, then this table. Consult your own copy of the standard for the full text and the conditions of use.' }));
+  host.appendChild(el('p', { cls: 'lede', text: 'Fallback values for a component whose manufacturer gives no data. A last resort rather than a shortcut: manufacturer data first, then an established data collection, then this table. Consult the standard for the full text and the conditions of use.' }));
   var c1 = el('table', { cls: 'mx' });
   var c1h = el('tr');
   ['Component', 'Typical value', 'Relevant standards', 'Conditions'].forEach(function (h) { c1h.appendChild(el('th', { scope: 'col', text: h })); });
@@ -9212,7 +9555,7 @@ function buildTables(host) {
 
   /* PL grid */
   host.appendChild(el('h2', { cls: 'sec', text: 'Reference  Simplified performance level determination' }));
-  host.appendChild(el('p', { cls: 'lede', text: 'Category, mean time to dangerous failure and average diagnostic coverage give an achieved performance level. This is the commonly published simplified relationship from ISO 13849-1, included as a sanity check rather than as the calculation of record. Use SISTEMA or an equivalent tool for the number you put your name to.' }));
+  host.appendChild(el('p', { cls: 'lede', text: 'Category, mean time to dangerous failure and average diagnostic coverage give an achieved performance level. This is the commonly published simplified relationship from ISO 13849-1, included as a cross check rather than as the calculation of record. SISTEMA or an equivalent tool is the source for the value of record.' }));
   var t4t = el('table', { cls: 'mx' });
   var hr4 = el('tr');
   ['Category', 'Diagnostic coverage', 'MTTFd low', 'MTTFd medium', 'MTTFd high'].forEach(function (h) { hr4.appendChild(el('th', { scope: 'col', text: h })); });
@@ -9423,7 +9766,7 @@ function renderDevices() {
   DEV_SELECTION = DEV_SELECTION.filter(function (u) { return !!deviceByUid(u); });
   if (!P.devices.length) {
     DEV_SELECTION = [];
-    host.appendChild(el('div', { cls: 'card empty', text: 'No devices yet. Add the interlocks, relays, contactors and drives that make up your safety circuits, or load a manufacturer library in VDMA 66413 XML format.' }));
+    host.appendChild(el('div', { cls: 'card empty', text: 'No devices yet. Add the interlocks, relays, contactors and drives that make up the safety circuits, or load a manufacturer library in VDMA 66413 XML format.' }));
     return;
   }
   /* ---- bulk selection bar ---- */
@@ -9804,7 +10147,7 @@ function vdmaPreview(devices, fileName) {
   var body = [];
   body.push(el('div', { cls: 'notice' }, [
     el('strong', { text: devices.length + ' device' + (devices.length === 1 ? '' : 's') + ' read from ' + fileName }),
-    el('span', { text: 'This reader matches field names loosely, because publishers structure the format differently. Check the values against the datasheet before you rely on them, and set the role and tag afterwards. Roles below are a guess from the device name, and nothing is selected until you choose it.' })
+    el('span', { text: 'This reader matches field names loosely, because publishers structure the format differently. Check the values against the datasheet before relying on them, then set the role and tag. Roles below are inferred from the device name, and nothing is selected until it is ticked.' })
   ]));
 
   var search = el('input', { cls: 'inp' });
@@ -10060,11 +10403,11 @@ var FIELD_HELP = {
   provBy: 'Who made the observation. A field verification with no name against it cannot be followed up.',
   provDate: 'When the observation was made. A verification from three revisions ago may no longer describe the machine.',
   obsCat: 'The structure category as observed in the panel, which may not be the category on the record. A mismatch is the whole point of this control.',
-  obsChannels: 'How the device is actually wired, in plain words. "Wired single channel with monitoring" is the finding that turns a Category 3 claim into a Category 2 one.',
+  obsChannels: 'How the device is wired, in plain words. "Wired single channel with monitoring" is the finding that turns a Category 3 claim into a Category 2 one.',
   prov: 'Whether this determination comes from a design review or from looking at the installed hardware. Anything from a schematic or a datasheet starts as modeled.',
   deviceType: 'VDMA 66413 device type. Decides which safety values apply and at which level in the structure the device sits.',
   sourceKind: 'Where the safety values came from, ranked. Manufacturer data first, then an established data collection, then a typical value from a standard.',
-  mttfdBasis: 'How the MTTFd figure was arrived at. A figure the manufacturer pre-computed assumed an operations per year that may not match yours.',
+  mttfdBasis: 'How the MTTFd figure was arrived at. A figure pre-computed by the manufacturer assumed an operations per year that may not match this application.',
   cat: 'Structure category to ISO 13849-1. Describes the architecture, not the reliability: how many channels there are, and what is monitored.',
   mttfdYears: 'Mean time to dangerous failure in years for this device. Leave blank where it should be worked out from B10d.',
   oneChannelOfTwo: 'Whether this device sits in one channel of a redundant pair. Affects how its failure rate combines with the other channel.',
@@ -10095,15 +10438,15 @@ var FIELD_HELP = {
   title: 'A name for this safety file. Appears on the report cover and in the file name.',
   client: 'The company that owns the machine. This is who the report is addressed to.',
   location: 'Plant, building, line. Specific enough that someone can find the machine from the report alone.',
-  machine: 'The identifier the plant actually uses, not a description. If the tag on the cabinet says CP-4200, use CP-4200.',
+  machine: 'The identifier the plant uses, not a description. Where the tag on the cabinet reads CP-4200, the entry is CP-4200.',
   robotMake: 'Manufacturer and model of the machine. Include the variant where it changes the safety functions. This covers any machine, not only robot cells.',
-  robotDom: 'Date of manufacture. Decides which edition of the standards applied when the machine was built, which is not always the edition you are assessing against.',
+  robotDom: 'Date of manufacture. Determines which edition of the standards applied when the machine was built, which is not always the edition being assessed against.',
   rev: 'Revision of this assessment. Increment it whenever an issued report changes, so two copies in circulation can be told apart.',
   revDate: 'The date this revision was issued, not the date of the site visit.',
   lead: 'Who carried out the assessment. Named, because the report is signed.',
   reviewer: 'Who checked the assessment independently of whoever performed it.',
   team: 'Everyone who took part, with their role. An assessment done alone is worth saying so.',
-  scope: 'What is inside the assessment boundary and what is outside it. The exclusions matter more than the inclusions: name the adjacent equipment you did not assess.',
+  scope: 'What is inside the assessment boundary and what is outside it. The exclusions matter more than the inclusions: name the adjacent equipment that was not assessed.',
   assumptions: 'The conditions the assessment holds under. Speed, product, staffing, which procedures are assumed to be followed. If one of these turns out to be false, the assessment does not hold.',
   standards: 'The documents this was carried out against, with editions. An edition matters: the 2023 and 2015 editions of ISO 13849-1 differ.',
   narrative: 'What the machine does, in plain words. Written for someone who has never seen it.',
@@ -10112,7 +10455,7 @@ var FIELD_HELP = {
   id: 'A stable identifier for this row. Used to link safety functions and test records, so avoid renumbering once issued.',
   task: 'What the person is doing, not what the machine is doing. Clear a jam, change a size part, wipe down the magazine.',
   phase: 'The lifecycle phase the task belongs to. Most injuries happen outside normal production, which is why the phase is scored separately.',
-  observed: 'What you saw, described plainly. This is the record somebody reads when they cannot get back to the machine, so write what was there rather than what it means.',
+  observed: 'What was seen, described plainly. This is the record read when the machine is no longer accessible, so it states what was present rather than what it implies.',
   existing: 'The safeguarding fitted at the time of the walk, and its condition. A guard that is present but propped open is a different observation from one that is missing.',
   consequence: 'The harm the hazard could cause and to whom. Not a score: the scoring happens on the risk assessment row raised from this.',
   recommendation: 'What should be done, in hierarchy order. Eliminate, then substitute, then engineer, then administrate, then protect. An administrative control offered where a guard would work invites the question why.',
@@ -10137,10 +10480,10 @@ var FIELD_HELP = {
   initiator: 'The event that demands the function. A switch opening, a beam broken, a button pressed.',
   triggeringEvent: 'The SISTEMA wording of the same thing, at the level of detail a controls engineer needs to trace the circuit.',
   reaction: 'What the machine does in response. Name the drives and the valves, not just "stops".',
-  reactionPowerFail: 'SISTEMA combines the reaction and the behavior on power failure into one field. Where the machine needs a genuinely different reaction on power loss, that is a separate safety function rather than a sentence in this box.',
+  reactionPowerFail: 'SISTEMA combines the reaction and the behavior on power failure into one field. Where the machine requires a different reaction on power loss, that is a separate safety function rather than a sentence in this field.',
   stopCat: 'Stop category to IEC 60204-1. Category 0 removes power immediately, category 1 brings to a controlled stop then removes power, category 2 stops with power maintained.',
   respReq: 'The response time the safety distance calculation assumed.',
-  respMeas: 'The response time actually measured. If it exceeds the required time, the safety distance is wrong.',
+  respMeas: 'The measured response time. Where it exceeds the required time, the safety distance is incorrect.',
   reset: 'How the function is reset, and from where. A reset inside the guarded space is a defect.',
   safeState: 'The state the machine is left in. Without it there is nothing for validation to test against.',
   modes: 'The operating modes the function is active in. A function that is not active in setup mode is not reducing risk in setup mode, and setup is where people are closest to the machine.',
@@ -10163,7 +10506,7 @@ var FIELD_HELP = {
   quantity: 'How many of this device the function uses. Two contactors in series is a quantity of two, not two separate records.',
   b10d: 'Cycles to 10 per cent dangerous failure, from the manufacturer or from Table C.1. Only meaningful for wearing parts.',
   nop: 'Operations per year for this device. Worked out from the demand rate, not guessed independently of it.',
-  assumedNop: 'The operations per year the manufacturer assumed when quoting a pre-computed MTTFD. If your actual rate is higher, their figure does not apply.',
+  assumedNop: 'The operations per year the manufacturer assumed when quoting a pre-computed MTTFD. Where the application rate is higher, the published figure does not apply.',
   dcPct: 'Diagnostic coverage as a percentage. What proportion of dangerous failures the diagnostics detect.',
   pfhd: 'Probability of dangerous failure per hour, as stated by the manufacturer for an encapsulated subsystem.',
   plStated: 'The performance level the manufacturer states for this device as a complete subsystem.',
@@ -10179,7 +10522,7 @@ var FIELD_HELP = {
 
   /* tests */
   method: 'How the requirement is checked. Inspection, functional test, measurement or analysis, chosen to suit what is being proven.',
-  steps: 'What the tester actually does, in order, in enough detail that a different person gets the same result.',
+  steps: 'What the tester does, in order, in enough detail that a different person obtains the same result.',
   acceptance: 'What counts as a pass, written down before the test is run rather than after the result is known.',
   actual: 'What was observed. Record the measurement, not just the verdict.',
   testedBy: 'Who performed the test. Named, because a verdict with nobody behind it cannot be questioned later.',
@@ -10286,7 +10629,7 @@ function hazardPickButton(labelKey, typeKey, harmKey) {
         }
       }
     }),
-    el('span', { cls: 'hint', text: 'Eighty potential hazards by category, searchable and editable. Nothing here limits what you can type in the field.' })
+    el('span', { cls: 'hint', text: 'Eighty potential hazards by category, searchable and editable. The list does not restrict what can be entered in the field.' })
   ]);
 }
 
@@ -10488,7 +10831,7 @@ function provFieldset(bag, work, opts) {
   });
   var helpLine = el('p', { cls: 'hint' });
 
-  var note = el('textarea', { rows: 2, value: work.provNote || '', placeholder: 'What was actually observed, and where' });
+  var note = el('textarea', { rows: 2, value: work.provNote || '', placeholder: 'What was observed, and where' });
   var by = el('input', { value: work.provBy || '', placeholder: 'Who made the observation' });
   var when = el('input', { value: work.provDate || '' });
   when.type = 'date';
@@ -10515,7 +10858,7 @@ function provFieldset(bag, work, opts) {
       ]),
       fWrap(k === 'DIVERGES' ? 'What was observed (required)' : 'Observation note', '', note,
         k === 'DIVERGES'
-          ? 'What the installed hardware actually is, and where you saw it. Required, because a divergence with no detail cannot be acted on.'
+          ? 'What the installed hardware is, and where it was observed. Required, because a divergence with no detail cannot be acted on.'
           : 'What was checked and against what. A note here is what lets someone else confirm the verification later.')
     ]);
     if (opts.withCategory) {
@@ -10551,7 +10894,7 @@ function provFieldset(bag, work, opts) {
 
   paint();
   put(host, [
-    el('p', { cls: 'hint', text: 'A modeled Category 3 and an observed Category 3 are not the same claim. Everything that comes out of a schematic or a datasheet review starts as modeled, and stays that way until somebody looks at the installed hardware.' }),
+    el('p', { cls: 'hint', text: 'A modeled Category 3 and an observed Category 3 are not the same claim. Anything derived from a schematic or a datasheet review starts as modeled and remains so until the installed hardware is examined.' }),
     fWrap('How was this determined', 'prov', sel),
     helpLine,
     obsWrap,
@@ -10644,7 +10987,7 @@ function riskForm(existing) {
         fSel(bag, 'e', 'Exposure', work, EXP.filter(function (x) { return x.k !== 'E0'; }), live('e')),
         fSel(bag, 'a', 'Avoidance', work, AVO, live('a'))
       ]));
-      kids.push(el('p', { cls: 'hint', text: 'Score the machine with no protective measure in place. That is the initial risk the standard asks for, not the risk you observe today. Scores are written bare, as S3 E2 A3. Only the ISO 13849-1 risk graph is prefixed, as ISO S2 F2 P2, because it reuses S1 and S2 for different things.' }));
+      kids.push(el('p', { cls: 'hint', text: 'Score the machine with no protective measure in place. That is the initial risk the standard requires, not the risk observed on the day. Scores are written bare, as S3 E2 A3. Only the ISO 13849-1 risk graph is prefixed, as ISO S2 F2 P2, because it reuses S1 and S2 for different things.' }));
     }
     put(initHost, kids);
   }
@@ -10656,15 +10999,15 @@ function riskForm(existing) {
     var computed = initialLevelComputed(work);
     var shown = initialLevel(work);
     var kids = [
-      el('div', { cls: 'notice' + (shown ? '' : ' bad') }, [
-        el('strong', { text: 'Initial risk level' }),
+      el('div', { cls: 'notice' + (shown ? noticeLevelClass(shown) : ' bad') }, [
+        el('strong', { text: shown ? ('Initial risk level ' + shown) : 'Initial risk level' }),
         el('div', null, [
           el('span', { cls: 'mono', text: nsTriple(activeScheme(), (P.meta.method === 'ISO 13849-1' ? work.isoS : work.s), (P.meta.method === 'ISO 13849-1' ? work.isoF : work.e), (P.meta.method === 'ISO 13849-1' ? work.isoP : (work.e === 'E0' ? '' : work.a))) + '   ' }),
           shown ? levelChip(shown) : el('span', { cls: 'chip bad', text: initialLevelText(work) })
         ]),
         work.initLevelOverride && computed && work.initLevelOverride !== computed
           ? el('span', { text: 'Overridden. The table gives ' + computed + '.' })
-          : el('span', { text: 'Read straight from the lookup table. This value sets the required performance level and structure category under Table 5, and the minimum measure under Table 4.' })
+          : el('span', { text: 'This value sets the required performance level and structure category under Table 5, and the minimum measure under Table 4.' })
       ])
     ];
     var iSel = el('select', { cls: 'mono' });
@@ -10678,7 +11021,7 @@ function riskForm(existing) {
     paintI();
     kids.push(el('details', {}, [
       el('summary', { text: 'Override the initial risk level' }),
-      fWrap('Initial risk level', '', iSel, 'The level the lookup table gives for the factors above. Override only where the table genuinely gives the wrong answer for this row.'),
+      fWrap('Initial risk level', '', iSel, 'The level the lookup table gives for the factors above. Override only where the table gives the wrong result for this row.'),
       iWrap
     ]));
     put(initLvlHost, kids);
@@ -10705,7 +11048,7 @@ function riskForm(existing) {
             fLabel('Measure ' + (idx + 1), 'The kind of risk reduction, in hierarchy order. Elimination, substitution and engineering controls can carry a medium or higher risk on their own. Administrative controls and personal protective equipment cannot, and where they are found ineffective at a facility they may not be used for risk reduction at all.'),
             sel]),
           el('label', { cls: 'f', style: { marginBottom: 0 } }, [
-            fLabel('Description', 'What this measure actually is, on this machine. "Perimeter guard with interlocked gate GS-101" rather than "guarding". This wording is read when the residual score is questioned, and naming an interlock here brings the performance level condition into play.'),
+            fLabel('Description', 'What this measure is, on this machine. "Perimeter guard with interlocked gate GS-101" rather than "guarding". This wording is read when the residual score is questioned, and naming an interlock here brings the performance level condition into play.'),
             desc]),
           el('button', { cls: 'btn ghost sm', type: 'button', text: 'Remove', on: { click: function () { work.measures.splice(idx, 1); drawMeasures(); } } })
         ])
@@ -10716,6 +11059,28 @@ function riskForm(existing) {
         ss.addEventListener('change', function () { m.newSev = ss.value; drawMeasures(); });
         kids2.push(el('label', { cls: 'f', style: { marginTop: '6px' } }, [el('span', { text: 'Severity after substitution' }), ss]));
       }
+      /* Picking from the Table 3 list. The description stays an ordinary
+         text field: a measure that is not on the list must be no harder
+         to record than one that is. */
+      kids2.push(el('div', { cls: 'rowacts', style: { margin: '6px 0 0' } }, [
+        el('button', {
+          cls: 'btn ghost sm', type: 'button', text: 'Pick from the measures list',
+          on: {
+            click: function () {
+              measureLibPicker(m.k, function (e) {
+                m.desc = e.label + (e.detail ? '. ' + e.detail : '');
+                m.k = e.m;
+                var sr = measureLibSrpcs(e);
+                if (sr && !m.srpcs) { m.srpcs = sr; }
+                drawMeasures();
+                say('Filled from the measures list. Edit the wording to match this machine.');
+              });
+            }
+          }
+        }),
+        el('span', { cls: 'hint', text: 'The ANSI/RIA R15.306 Table 3 examples for this tier, including the ANSI Z535.4 sign and label entries.' })
+      ]));
+
       if (m.k === 'SAFEGUARD') {
         var cs = el('select');
         [['', 'Not stated yet'],
@@ -10727,7 +11092,7 @@ function riskForm(existing) {
         cs.addEventListener('change', function () { m.srpcs = cs.value; drawMeasures(); });
         kids2.push(el('label', { cls: 'f', style: { marginTop: '6px' } }, [
           fLabel('Does this safeguard rely on the control system?',
-            'A bolted fixed guard holds whether or not anything is powered, so there is no performance level to meet. An interlocked gate, light curtain, safety mat or scanner holds only while the safety related parts of the control system work, so exposure prevented may only be claimed if the achieved PL meets the required PLr. Answer this and the residual suggestion stops asking for a safety function you do not need.'),
+            'A bolted fixed guard holds whether or not anything is powered, so there is no performance level to meet. An interlocked gate, light curtain, safety mat or scanner holds only while the safety related parts of the control system function, so exposure prevented may be claimed only where the achieved PL meets the required PLr. Answering this determines whether the residual suggestion requires a linked safety function.'),
           cs]));
       }
       if (m.k === 'LIMIT') {
@@ -10787,10 +11152,20 @@ function riskForm(existing) {
           })
         ]));
         kids2.push(el('label', { cls: 'f', style: { marginTop: '8px', marginBottom: 0 } }, [
-          fLabel('Safety functions carrying this measure', 'The functions that actually bring this measure about. Naming one here is what brings the performance level condition into play: a guard with an interlock only reduces exposure if the interlock reaches the level the row requires.'),
+          fLabel('Safety functions carrying this measure', 'The functions that carry this measure out. Naming one here brings the performance level condition into play: a guard with an interlock reduces exposure only where the interlock reaches the level the row requires.'),
           box
         ]));
       }());
+
+      /* Photographs of the measure itself. A guard as fitted, a label as
+         applied, a barrier as installed: the evidence that the measure
+         exists belongs with the measure, not with the hazard. */
+      m.images = m.images || [];
+      kids2.push(el('details', { style: { marginTop: '8px' } }, [
+        el('summary', { text: 'Photos of this measure' + (m.images.length ? '  (' + m.images.length + ')' : '') }),
+        el('p', { cls: 'hint', text: 'The measure as installed. A photograph of the fitted guard, the applied label or the installed barrier evidences the residual score. These print in the report beside the measure.' }),
+        gallery(m.images, { editable: true, onChange: function () { saveLocalSoon(); } })
+      ]));
 
       kids2.push(el('p', { cls: 'hint', text: def.examples || '' }));
       kids2.push(el('p', { cls: 'hint', text: def.effect }));
@@ -10803,7 +11178,7 @@ function riskForm(existing) {
       if (!orphans.length) return;
       kids.push(el('div', { cls: 'notice warn' }, [
         el('strong', { text: 'Linked to this row but not to a measure' }),
-        el('span', { text: orphans.join(', ') + (orphans.length === 1 ? ' is' : ' are') + ' linked to this row without any measure above naming it. That still counts, but it does not say what the function actually does here. Tick it on the measure it carries out, then clear it below.' }),
+        el('span', { text: orphans.join(', ') + (orphans.length === 1 ? ' is' : ' are') + ' linked to this row without any measure above naming it. The link is honored, but it does not state what the function does on this row. Tick it on the measure it carries out, then clear it below.' }),
         el('div', { cls: 'rowacts' }, [
           el('button', {
             cls: 'btn ghost sm', type: 'button', text: 'Clear the row level links',
@@ -10838,14 +11213,14 @@ function riskForm(existing) {
     var sg = suggestResidual(work);
     var held = sg.e0 && !sg.e0.ok;
     var noChange = sg.s === work.s && sg.e === work.e && (sg.a || '') === (work.a || '');
-    kids.push(el('div', { cls: 'notice' + (held ? (sg.e0.state === 'fail' ? ' bad' : ' warn') : ''), style: { marginTop: '10px' } }, [
+    kids.push(el('div', { cls: 'notice' + (held ? (sg.e0.state === 'fail' ? ' bad' : ' warn') : noticeLevelClass(sg.level)), style: { marginTop: '10px' } }, [
       el('strong', { text: held ? 'Exposure prevented is being held back' : 'Suggested residual, for the assessor to confirm' }),
       el('div', null, [
         el('span', { cls: 'mono', text: sg.s + ' ' + sg.e + (sg.a ? ' ' + sg.a : '') + '   ' }),
         levelChip(sg.level)
       ]),
       sg.notes.length ? el('ul', null, sg.notes.map(function (n) { return el('li', { text: n }); })) : null,
-      noChange ? el('p', { cls: 'hint', text: 'This is the same score as before risk reduction, so copying it records no reduction. That is the point: the suggestion will only fall once the measure is evidenced.' }) : null,
+      noChange ? el('p', { cls: 'hint', text: 'This is the same score as before risk reduction, so copying it records no reduction. The suggestion falls only once the measure is evidenced.' }) : null,
       el('button', {
         cls: 'btn ghost sm', type: 'button',
         text: noChange ? 'Copy it in anyway, unchanged' : 'Copy into the residual score',
@@ -10888,7 +11263,7 @@ function riskForm(existing) {
         fWrap('Residual exposure', 'resE', eSel),
         fWrap('Residual avoidance', 'resA', aSel)
       ]),
-      el('div', { cls: 'notice' + (lvl ? (isAcceptable(lvl) ? ' ok' : ' bad') : '') }, [
+      el('div', { cls: 'notice' + (lvl ? noticeLevelClass(lvl) : '') }, [
         el('strong', { text: lvl ? ('Residual risk level ' + lvl) : 'Residual not scored' }),
         el('span', {
           text: lvl
@@ -10949,8 +11324,8 @@ function riskForm(existing) {
     paintOv();
     kids.push(el('details', {}, [
       el('summary', { text: 'Override the residual risk level' }),
-      el('p', { cls: 'hint', text: 'The level is computed from the factors and is never left blank. Override it only where the table genuinely gives the wrong answer for this row, and say why.' }),
-      fWrap('Residual risk level', '', ovSel, 'The level the lookup table gives for the residual factors. Override only where the table genuinely gives the wrong answer for this row.'),
+      el('p', { cls: 'hint', text: 'The level is computed from the factors and is never left blank. Override it only where the table gives the wrong result for this row, and state the reason.' }),
+      fWrap('Residual risk level', '', ovSel, 'The level the lookup table gives for the residual factors. Override only where the table gives the wrong result for this row.'),
       ovWrap
     ]));
 
@@ -11343,7 +11718,7 @@ function deviceForm(existing, seed) {
     typeHelp,
     row('g2', [
       fWrap('How the MTTFd was arrived at', 'mttfdBasis', basisSel,
-        'How the MTTFd figure was arrived at. A bare MTTFd on a wearing part is not self describing: if the manufacturer computed it at an assumed duty, that duty has to hold for your machine too.'),
+        'How the MTTFd figure was arrived at. A bare MTTFd on a wearing part is not self describing: where the manufacturer computed it at an assumed duty, that duty must also hold for this machine.'),
       numField('assumedNop', 'Operations per year that MTTFd assumes', { ph: 'only for a pre-computed MTTFd' })
     ]),
     row('g2', [
@@ -11357,7 +11732,7 @@ function deviceForm(existing, seed) {
       fText(bag, 'libVersion', 'Library version', work),
       fText(bag, 'libImported', 'Taken from that library on', work, { mono: true })
     ]),
-    el('p', { cls: 'hint', text: 'SISTEMA cannot tell you whether a manufacturer has since published newer values for a part you have already used, or which projects a library part ended up in. Recording the library and the date it was taken is what makes that answerable here.' })
+    el('p', { cls: 'hint', text: 'SISTEMA does not report whether a manufacturer has since published newer values for a part already in use, or which projects a library part was used in. Recording the library and the date it was taken makes both answerable here.' })
   ]));
 
   /* ---- Where the designated architectures do not fit ---- */
@@ -11434,7 +11809,7 @@ function deviceForm(existing, seed) {
   }
 
   body.push(fset('Safety values', [
-    el('p', { cls: 'hint', text: 'Fill in whatever the manufacturer gives you. A stated PFHd is used first, then a stated performance level, then category with MTTFd and diagnostic coverage. For wearing parts give B10d and the operations per year instead of MTTFd.' }),
+    el('p', { cls: 'hint', text: 'Enter whatever the manufacturer publishes. A stated PFHd is used first, then a stated performance level, then category with MTTFd and diagnostic coverage. For wearing parts enter B10d and the operations per year instead of MTTFd.' }),
     row('g3', [
       fWrap('Category', 'cat', catSel),
       numField('mttfdYears', 'MTTFd, years', { ph: 'leave blank to use B10d' }),
@@ -11503,7 +11878,7 @@ function sfDeviceForm(sf) {
       if (again && again.focus) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
     });
     kids.push(el('div', { cls: 'importbar' }, [
-      el('label', { cls: 'f importsearch' }, [fLabel('Search', 'Narrows the list below. Devices already assigned to this function stay visible whatever you search for.'), search]),
+      el('label', { cls: 'f importsearch' }, [fLabel('Search', 'Narrows the list below. Devices already assigned to this function remain visible regardless of the search term.'), search]),
       el('span', { cls: 'hint', text: picks.length + ' assigned, ' + P.devices.filter(visible).length + ' of ' + P.devices.length + ' shown' })
     ]));
     if (!P.devices.length) {
@@ -12380,7 +12755,7 @@ function newFile() {
   fillMetaInputs();
   saveLocal();
   show('project');
-  say('New file. Nothing is linked on disk yet, so use Save as when you are ready.');
+  say('New file. No file is linked on disk. Use Save as to link one.');
 }
 function newFileAsked() {
   var hasWork = P.risks.length || P.sfs.length || P.devices.length || P.tests.length;

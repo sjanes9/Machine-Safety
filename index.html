@@ -920,10 +920,13 @@ function blankProject() {
     devices: [],
     sfs: [],
     tests: [],
+    hazardLib: null,       // null means "use the shipped hazard list"
+    measureLib: null,      // null means "use the shipped measures list"
     checklist: null,       // null means "use shipped question set"
     fsChecklist: null,     // functional safety onsite verification, same rule
     guardOpenings: [],     // ANSI B11.19 reach measurements
     reportSections: null,  // null means "every section"
+    sectionTitles: {},     // section key -> the heading this file prints for it
     muteField: false,      // field verification findings set aside for now
     signatures: [],        // e-signed approvals
     fieldTests: [],        // per-device proving of the installed hardware
@@ -1005,6 +1008,15 @@ function migrate(data) {
   base.fieldTests = Array.isArray(data.fieldTests) ? data.fieldTests : [];
   base.sistemaReports = Array.isArray(data.sistemaReports) ? data.sistemaReports : [];
   base.reportSections = Array.isArray(data.reportSections) ? data.reportSections : null;
+  /* Anything an assessor edits that belongs to the file rather than to
+     the browser has to be carried here, or it is silently discarded on
+     the next open. The hazard list, the measures list and the section
+     names all say in the interface that they travel with the
+     assessment, so they must. */
+  base.hazardLib = Array.isArray(data.hazardLib) ? data.hazardLib : null;
+  base.measureLib = Array.isArray(data.measureLib) ? data.measureLib : null;
+  base.sectionTitles = (data.sectionTitles && typeof data.sectionTitles === 'object' && !Array.isArray(data.sectionTitles))
+    ? data.sectionTitles : {};
   base.muteField = !!data.muteField;
   base.tablesEdited = !!data.tablesEdited;
   if (v < 4) { migrateV3(base); }
@@ -1244,6 +1256,11 @@ function migrateV7(base) {
   if (base.meta.capCat4At100 === undefined) { base.meta.capCat4At100 = false; }
   if (base.meta.plRoute === undefined) { base.meta.plRoute = 'K1'; }
   if (base.reportSections === undefined) { base.reportSections = null; }
+  if (base.hazardLib === undefined) { base.hazardLib = null; }
+  if (base.measureLib === undefined) { base.measureLib = null; }
+  if (!base.sectionTitles || typeof base.sectionTitles !== 'object' || Array.isArray(base.sectionTitles)) {
+    base.sectionTitles = {};
+  }
   base.devices.forEach(function (d) {
     if (d.prov === undefined) { d.prov = 'OUTSTANDING'; }
   });
@@ -2180,6 +2197,121 @@ function fieldTestById(u) {
 }
 /* A procedure passes only when every applicable step passes. One
    unproven step leaves the whole thing unproven. */
+/* ---------------------------------------------------------------------
+   Duplicating a field procedure.
+
+   The steps are the work. Writing the three channel steps for the first
+   emergency stop and then writing them again for the second is how
+   procedures end up subtly different from each other on the same
+   machine, which is worse than having none.
+
+   What carries: the steps, their text and what proves them, the linked
+   safety function and the test equipment. What does not: every recorded
+   result. A copied procedure has been run nowhere, so each step returns
+   to Not run and the observed column, the tester, the witness and the
+   date are all cleared. Carrying a verdict across would state that a
+   device was proved when it was not.
+   --------------------------------------------------------------------- */
+function duplicateFieldTest(t, targetDeviceUid, newTitle) {
+  var c = JSON.parse(JSON.stringify(t));
+  var from = deviceByUid(t.deviceUid);
+  var to = deviceByUid(targetDeviceUid || t.deviceUid);
+  c.uid = uid('ft');
+  c.deviceUid = targetDeviceUid || t.deviceUid;
+  c.title = newTitle || retitleForDevice(t.title, from, to);
+  c.testedBy = ''; c.witnessedBy = ''; c.date = ''; c.notes = '';
+  c.steps = (c.steps || []).map(function (stp) {
+    return {
+      uid: uid('fs'),
+      /* The steps name the device as often as the title does. "Remove
+         channel A at ESPB1" left on a procedure for ESPB2 is an
+         instruction to test the wrong device, so the tag is substituted
+         here too. Any other wording is left exactly as written. */
+      text: retitleForDevice(stp.text, from, to),
+      expected: retitleForDevice(stp.expected, from, to),
+      result: '', verdict: 'Not run', note: ''
+    };
+  });
+  return c;
+}
+
+/* A title written for one device usually names it. Substituting the tag
+   turns "Prove ESPB1 as installed" into "Prove ESPB2 as installed"
+   instead of leaving a copy that claims to be about the wrong device. */
+function retitleForDevice(title, fromDv, toDv) {
+  var t = String(title || '');
+  if (!t) return t;
+  var from = fromDv && (fromDv.tag || fromDv.name);
+  var to = toDv && (toDv.tag || toDv.name);
+  if (!from || !to || from === to) return t;
+  var esc = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  var re = new RegExp('(^|[^A-Za-z0-9])' + esc + '($|[^A-Za-z0-9])', 'g');
+  if (!re.test(t)) { return t; }
+  return t.replace(new RegExp('(^|[^A-Za-z0-9])' + esc + '($|[^A-Za-z0-9])', 'g'),
+    function (m, a, b) { return a + to + b; });
+}
+
+/* ---------------------------------------------------------------------
+   Renaming a device tag carries the tag through the procedures written
+   against it. "Actuate GS-101" left on a device now called ESPB1 is an
+   instruction to test a device that no longer exists under that name,
+   which is the same fault the duplicate guards against. Only whole tag
+   matches are substituted; any other wording is left as written.
+   --------------------------------------------------------------------- */
+function retagProcedures(dv, fromTag) {
+  var from = { tag: fromTag }, to = { tag: dv.tag || dv.name };
+  if (!fromTag || !to.tag || fromTag === to.tag) return 0;
+  var n = 0;
+  (P.fieldTests || []).forEach(function (t) {
+    if (t.deviceUid !== dv.uid) return;
+    var was = t.title;
+    t.title = retitleForDevice(t.title, from, to);
+    if (t.title !== was) { n += 1; }
+    (t.steps || []).forEach(function (stp) {
+      var wt = stp.text, we = stp.expected;
+      stp.text = retitleForDevice(stp.text, from, to);
+      stp.expected = retitleForDevice(stp.expected, from, to);
+      if (stp.text !== wt || stp.expected !== we) { n += 1; }
+    });
+  });
+  return n;
+}
+
+/* Devices with no procedure yet. The usual reason to copy a procedure is
+   a second device of the same kind, so these are offered before devices
+   that already have one. */
+function devicesWithoutProcedure() {
+  return (P.devices || []).filter(function (d) { return !fieldTestsForDevice(d.uid).length; });
+}
+
+/* Ordered targets for a duplicate. Within the devices that have no
+   procedure, the ones most like the source come first: an emergency stop
+   is copied onto another emergency stop far more often than onto a
+   contactor, and scrolling past the whole device library to find it is
+   how the wrong device gets picked. */
+function duplicateTargets(t) {
+  var src = deviceByUid(t.deviceUid);
+  function rank(d) {
+    if (!src) return 3;
+    var sameRole = (d.role || '') === (src.role || '');
+    var sameTech = (d.technology || '') === (src.technology || '');
+    if (sameRole && sameTech) return 0;
+    if (sameRole) return 1;
+    if (sameTech) return 2;
+    return 3;
+  }
+  function order(list) {
+    return list.map(function (d, i) { return { d: d, r: rank(d), i: i }; })
+      .sort(function (a, b) { return a.r - b.r || a.i - b.i; })
+      .map(function (x) { return x.d; });
+  }
+  var free = devicesWithoutProcedure().filter(function (d) { return d.uid !== t.deviceUid; });
+  var taken = (P.devices || []).filter(function (d) {
+    return d.uid !== t.deviceUid && free.indexOf(d) < 0;
+  });
+  return { free: order(free), taken: order(taken), source: src || null };
+}
+
 function fieldTestState(t) {
   var steps = (t.steps || []);
   var live = steps.filter(function (x) { return x.verdict !== 'N/A'; });
@@ -6544,6 +6676,20 @@ function renderFieldTests() {
       ]),
       el('div', { cls: 'rowacts' }, [
         el('span', { cls: 'chip ' + st.tone, text: st.label }),
+        dv ? actBtn('Rename', function () {
+          renameDialog({
+            title: 'Rename ' + (dv.tag || dv.name || 'this device'),
+            label: 'Device tag', value: dv.tag || '', mono: true, ph: 'ESPB1',
+            help: 'The identifier the plant uses for this device. It heads the procedures written against it.',
+            note: 'This is the device tag itself, so it changes everywhere the device appears: the device schedule, the safety functions that use it, the procedures written against it and the report. Where a procedure title or a step names the old tag, the new one is substituted.',
+            onSave: function (v) {
+              var was = dv.tag;
+              dv.tag = v;
+              var n = retagProcedures(dv, was);
+              commit('Renamed to ' + v + (n ? ', and the tag substituted in ' + n + ' place' + (n === 1 ? '' : 's') + ' in its procedures' : ''));
+            }
+          });
+        }) : null,
         actBtn('Add a procedure', function () { fieldTestForm(null, u); })
       ])
     ]));
@@ -6558,6 +6704,15 @@ function renderFieldTests() {
         ]),
         el('div', { cls: 'rowacts noprint' }, [
           el('span', { cls: 'chip ' + ts.tone, text: ts.label }),
+          actBtn('Rename', function () {
+            renameDialog({
+              title: 'Rename this procedure',
+              label: 'Procedure title', value: t.title || '', ph: 'Prove ESPB1 as installed',
+              help: 'What this procedure proves, in a line. It heads the procedure in the field verification list and in the report.',
+              onSave: function (v) { t.title = v; commit('Procedure renamed'); }
+            });
+          }),
+          actBtn('Duplicate', function () { duplicateFieldTestForm(t); }),
           actBtn('Edit', function () { fieldTestForm(t); }),
           actBtn('Delete', function () {
             confirmDelete('the procedure "' + (t.title || 'untitled') + '"', function () {
@@ -6606,6 +6761,97 @@ function renderFieldTests() {
 }
 
 /* The editor: title, links, who tested it, and the steps themselves. */
+
+/* ---------------------------------------------------------------------
+   Renaming, and duplicating, from the field verification list.
+   --------------------------------------------------------------------- */
+
+/* One field, one value. Used wherever a name is edited in place rather
+   than by opening the whole record. */
+function renameDialog(opts) {
+  var input = el('input', {
+    value: opts.value || '', placeholder: opts.ph || '',
+    cls: opts.mono ? 'mono' : ''
+  });
+  var body = [
+    el('label', { cls: 'f' }, [fLabel(opts.label, opts.help, input), input])
+  ];
+  if (opts.note) { body.push(el('p', { cls: 'hint', text: opts.note })); }
+  var apply = function () {
+    var v = input.value.trim();
+    if (!v && !opts.allowEmpty) { say(opts.label + ' cannot be empty'); return false; }
+    opts.onSave(v);
+    return true;
+  };
+  if ($('dlg').open) {
+    body.push(el('div', { cls: 'rowacts', style: { marginTop: '12px' } }, [
+      el('button', { cls: 'btn', type: 'button', text: 'Rename', on: { click: function () { if (apply() !== false) { dismissDlg(); } } } }),
+      el('button', { cls: 'btn ghost', type: 'button', text: 'Back', on: { click: dismissDlg } })
+    ]));
+    pushDlg(opts.title, body, 'Rename');
+    $('dlgOk').style.display = 'none';
+  } else {
+    openDlg(opts.title, body, apply, 'Rename');
+  }
+}
+
+/* Duplicate a procedure onto another device. The device is the point of
+   the copy, so it is asked for rather than assumed. */
+function duplicateFieldTestForm(t) {
+  var targets = duplicateTargets(t);
+  var src = targets.source;
+  var free = targets.free, rest = targets.taken;
+  var devSel = el('select');
+  function optLabel(d, suffix) {
+    return (d.tag || d.name || 'device') + (d.role ? ', ' + d.role : '') + (suffix || '');
+  }
+  free.forEach(function (d) { devSel.appendChild(el('option', { value: d.uid, text: optLabel(d, '  (no procedure yet)') })); });
+  rest.forEach(function (d) { devSel.appendChild(el('option', { value: d.uid, text: optLabel(d) })); });
+  if (src) { devSel.appendChild(el('option', { value: src.uid, text: optLabel(src, '  (the same device)') })); }
+  if (!devSel.options.length) {
+    devSel.appendChild(el('option', { value: '', text: 'No devices in the library' }));
+  }
+
+  var titleIn = el('input', { value: '' });
+  function syncTitle() {
+    var to = deviceByUid(devSel.value);
+    titleIn.value = retitleForDevice(t.title || '', src, to);
+  }
+  syncTitle();
+  devSel.addEventListener('change', syncTitle);
+
+  var steps = (t.steps || []).length;
+  var body = [
+    el('p', { cls: 'hint', text: steps + ' ' + (steps === 1 ? 'step is' : 'steps are') + ' copied, along with the linked safety function and the test equipment. Every verdict returns to Not run and the observed column, the tester, the witness and the date are cleared: the copy has been run nowhere.' }),
+    el('label', { cls: 'f' }, [
+      fLabel('Device the copy is for', 'The installed device the new procedure proves. Devices with no procedure of their own are listed first, because a second identical device is the usual reason to copy one.'),
+      devSel
+    ]),
+    el('label', { cls: 'f' }, [
+      fLabel('Title of the copy', 'Where the original title named the source device, the new device tag is substituted. Edit it to whatever the procedure should be called.'),
+      titleIn
+    ])
+  ];
+  var apply = function () {
+    if (!devSel.value) { say('Add a device to the library first'); return false; }
+    var c = duplicateFieldTest(t, devSel.value, titleIn.value.trim());
+    P.fieldTests.push(c);
+    var to = deviceByUid(c.deviceUid);
+    commit('Procedure copied to ' + (to ? (to.tag || to.name || 'the device') : 'the device'));
+    return true;
+  };
+  if ($('dlg').open) {
+    body.push(el('div', { cls: 'rowacts', style: { marginTop: '12px' } }, [
+      el('button', { cls: 'btn', type: 'button', text: 'Duplicate', on: { click: function () { if (apply() !== false) { dismissDlg(); } } } }),
+      el('button', { cls: 'btn ghost', type: 'button', text: 'Back', on: { click: dismissDlg } })
+    ]));
+    pushDlg('Duplicate ' + (t.title || 'this procedure'), body, 'Duplicate');
+    $('dlgOk').style.display = 'none';
+  } else {
+    openDlg('Duplicate ' + (t.title || 'this procedure'), body, apply, 'Duplicate');
+  }
+}
+
 function fieldTestForm(existing, seedDeviceUid) {
   var isNew = !existing;
   var work = existing
@@ -6818,7 +7064,7 @@ var GUIDE = [
   {
     k: 'report', title: 'Reporting and signing',
     body: [
-      'The report is assembled from the selected sections, in the selected order. The picker lists the chosen sections first, numbered as they will print, each with arrows to move it up or down. Sections left out sit underneath with no position. Reset the order restores the default sequence. Presets cover the common combinations: risk assessment only, controls package, field verification only. Numbering follows what is included, so a two section report numbers them 1 and 2.',
+      'The report is assembled from the selected sections, in the selected order. The picker lists the chosen sections first, numbered as they will print, each with arrows to move it up or down. Sections left out sit underneath with no position. Rename gives a section the heading a client expects instead of the one it ships with; the shipped name is kept, so clearing the field restores it. Reset the order restores the default sequence. Presets cover the common combinations: risk assessment only, controls package, field verification only. Numbering follows what is included, so a two section report numbers them 1 and 2.',
       'The conclusion prints at the end rather than the top, after the evidence it draws on and immediately before the signatures: findings, conclusion, signature. It can be moved to the front to serve as a cover summary.',
       'Signing records who signed, in what role, when, against a stated declaration, and a fingerprint of the file contents. Change anything afterwards and the signature is marked as given against different contents. It is an attributability record, not a cryptographic signature, and the report says so.'
     ]
@@ -8222,6 +8468,47 @@ function compactTable(cols, rows) {
   return { table: t, columns: keep.map(function (c) { return c.label; }) };
 }
 
+/* ---------------------------------------------------------------------
+   Section names.
+
+   The shipped names are the ones the standards use, which is the right
+   default and the wrong answer for a firm whose clients expect its own
+   wording. A custom name is stored per section and overrides the
+   default everywhere the section is named: the heading that prints, the
+   picker, the move controls and the presets.
+
+   Storing the override rather than editing the label keeps the default
+   recoverable, and keeps the section key stable so an older file still
+   opens with its order and its selection intact.
+   --------------------------------------------------------------------- */
+function reportSectionTitle(k) {
+  var def = reportSectionDef(k);
+  var custom = P.sectionTitles && P.sectionTitles[k];
+  if (custom && String(custom).trim()) return String(custom).trim();
+  return def ? def.label : k;
+}
+function reportSectionRenamed(k) {
+  var def = reportSectionDef(k);
+  var custom = P.sectionTitles && P.sectionTitles[k];
+  return !!(custom && String(custom).trim() && def && String(custom).trim() !== def.label);
+}
+/* An empty value clears the override rather than storing a blank name,
+   so a section can always be put back to the name it ships with. */
+function setReportSectionTitle(k, v) {
+  P.sectionTitles = P.sectionTitles || {};
+  var def = reportSectionDef(k);
+  var t = String(v || '').trim();
+  if (!t || (def && t === def.label)) { delete P.sectionTitles[k]; return false; }
+  P.sectionTitles[k] = t;
+  return true;
+}
+function renamedSectionCount() {
+  return REPORT_SECTIONS.filter(function (d) { return reportSectionRenamed(d.k); }).length;
+}
+function resetReportSectionTitles() {
+  P.sectionTitles = {};
+}
+
 function reportSectionDef(k) {
   for (var i = 0; i < REPORT_SECTIONS.length; i += 1) {
     if (REPORT_SECTIONS[i].k === k) return REPORT_SECTIONS[i];
@@ -8322,28 +8609,28 @@ function renderReportPicker() {
         want.splice(at, 0, def.k);
       } else if (!c.checked && i >= 0) { want.splice(i, 1); }
       P.reportSections = want;
-      commit(def.label + (c.checked ? ' added to the report' : ' removed from the report'));
+      commit(reportSectionTitle(def.k) + (c.checked ? ' added to the report' : ' removed from the report'));
     });
 
     var moves = null;
     if (on) {
       var up = el('button', {
         cls: 'btn ghost sm', type: 'button', text: '\u2191',
-        'aria-label': 'Move ' + def.label + ' earlier in the report',
+        'aria-label': 'Move ' + reportSectionTitle(def.k) + ' earlier in the report',
         on: {
           click: function (ev) {
             ev.preventDefault();
-            if (reportMove(def.k, -1)) { commit(def.label + ' moved up'); }
+            if (reportMove(def.k, -1)) { commit(reportSectionTitle(def.k) + ' moved up'); }
           }
         }
       });
       var down = el('button', {
         cls: 'btn ghost sm', type: 'button', text: '\u2193',
-        'aria-label': 'Move ' + def.label + ' later in the report',
+        'aria-label': 'Move ' + reportSectionTitle(def.k) + ' later in the report',
         on: {
           click: function (ev) {
             ev.preventDefault();
-            if (reportMove(def.k, 1)) { commit(def.label + ' moved down'); }
+            if (reportMove(def.k, 1)) { commit(reportSectionTitle(def.k) + ' moved down'); }
           }
         }
       });
@@ -8352,14 +8639,48 @@ function renderReportPicker() {
       moves = el('div', { cls: 'rowacts noprint' }, [up, down]);
     }
 
+    /* Renaming is offered whether or not the section is in the report,
+       because a name is a property of the section rather than of this
+       particular selection. */
+    var ren = el('button', {
+      cls: 'btn ghost sm', type: 'button', text: 'Rename',
+      'aria-label': 'Rename the section ' + reportSectionTitle(def.k),
+      on: {
+        click: function (ev) {
+          ev.preventDefault();
+          renameDialog({
+            title: 'Rename ' + reportSectionTitle(def.k),
+            label: 'Section name',
+            value: reportSectionTitle(def.k),
+            ph: def.label,
+            allowEmpty: true,
+            help: 'The heading this section prints under. The numbering is added automatically and follows the order the sections are in.',
+            note: 'Shipped name: ' + def.label + '. Clearing the field puts it back to that.',
+            onSave: function (v) {
+              setReportSectionTitle(def.k, v);
+              commit(reportSectionRenamed(def.k)
+                ? 'Section renamed to ' + reportSectionTitle(def.k)
+                : 'Section name back to ' + def.label);
+            }
+          });
+        }
+      }
+    });
+
     return el('label', { cls: 'pickrow' }, [
       c,
       el('div', { cls: 'picknum mono', text: on ? String(pos + 1) : '\u2013' }),
       el('div', {}, [
-        el('div', { cls: 'pickname', text: def.label }),
-        el('div', { cls: 'hint', text: def.help })
-      ]),
-      moves
+        el('div', { cls: 'pickname' }, [
+          el('span', { text: reportSectionTitle(def.k) }),
+          reportSectionRenamed(def.k) ? el('span', { cls: 'chip tag', text: 'renamed' }) : null
+        ].filter(Boolean)),
+        el('div', { cls: 'hint', text: def.help }),
+        reportSectionRenamed(def.k)
+          ? el('div', { cls: 'hint', text: 'Ships as: ' + def.label })
+          : null
+      ].filter(Boolean)),
+      el('div', { cls: 'rowacts noprint' }, [ren].concat(moves ? [moves] : []))
     ].filter(Boolean));
   }
 
@@ -8394,12 +8715,24 @@ function renderReportPicker() {
             cls: 'btn ghost sm', type: 'button', text: 'Clear',
             on: { click: function () { P.reportSections = []; commit('All sections cleared'); } }
           }),
+          renamedSectionCount() ? el('button', {
+            cls: 'btn ghost sm', type: 'button',
+            text: 'Reset the names (' + renamedSectionCount() + ')',
+            on: {
+              click: function () {
+                confirmDelete('every section name you have changed', function () {
+                  resetReportSectionTitles();
+                  commit('Section names back to the ones the application ships with');
+                }, 'Reset');
+              }
+            }
+          }) : null,
           el('button', {
             cls: 'btn sm', type: 'button', text: 'Print this selection',
             on: { click: function () { window.print(); } }
           })
         ]),
-        el('span', { cls: 'hint', style: { marginLeft: 'auto' }, text: sel.length + ' of ' + REPORT_SECTIONS.length + ' sections. Numbering follows what is included.' })
+        el('span', { cls: 'hint', style: { marginLeft: 'auto' }, text: sel.length + ' of ' + REPORT_SECTIONS.length + ' sections. Numbering follows what is included.' + (renamedSectionCount() ? '  ' + renamedSectionCount() + ' renamed.' : '') })
       ]),
       boxes
     ])
@@ -9033,8 +9366,8 @@ function renderReport() {
     var def = reportSectionDef(k);
     if (def && typeof def.empty === 'function' && def.empty()) { return; }
     var label = '';
-    if (def && !def.unnumbered) { num += 1; label = num + '  ' + def.label; }
-    else if (def) { label = def.label; }
+    if (def && !def.unnumbered) { num += 1; label = num + '  ' + reportSectionTitle(k); }
+    else if (def) { label = reportSectionTitle(k); }
     fn(label);
   });
 

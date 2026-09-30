@@ -235,6 +235,28 @@ dialog .dt td,dialog .dt th{word-break:break-word}
 .markstage{position:relative;display:inline-block;max-width:100%;line-height:0;touch-action:none;cursor:crosshair;background:#111;border:1px solid var(--rule)}
 .markstage>img{display:block;max-width:100%;max-height:56vh}
 .markghost{position:absolute;border:2px dashed;border-radius:50%;pointer-events:none}
+
+/* ---------- Handles on the selected mark ----------
+   Positioned in the stage's own pixels, so they stay square whatever
+   shape the photograph is. They never take pointer events: the stage
+   hit tests their positions itself, which keeps one gesture handler in
+   charge of drawing, moving and resizing. */
+.markhandles{position:absolute;inset:0;pointer-events:none}
+.mkh{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;
+  background:var(--panel);border:2px solid var(--ink);border-radius:2px;
+  box-shadow:0 0 0 1px #fff, 0 1px 3px rgba(0,0,0,.45)}
+.mkh-move{width:11px;height:11px;margin:-5.5px 0 0 -5.5px;border-radius:50%;
+  background:var(--ink);border-color:#fff}
+.markstage.dragging{cursor:grabbing}
+/* a wider target where the pointer is a finger */
+@media (pointer:coarse){
+  .mkh{width:20px;height:20px;margin:-10px 0 0 -10px}
+  .mkh-move{width:16px;height:16px;margin:-8px 0 0 -8px}
+}
+/* the line style, shown as the line it draws */
+.linechip{display:inline-block;width:16px;height:0;border-top:2.5px solid currentColor;
+  vertical-align:middle;margin-right:2px}
+.linechip.line-dashed{border-top-style:dashed}
 .swatch{display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid rgba(0,0,0,.35);margin-right:6px;vertical-align:-1px}
 .markpick{display:inline-flex;align-items:center}
 .markpick.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
@@ -393,6 +415,10 @@ button.libitem:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 .libwrap.edit .libitem .rowacts{margin-left:auto}
 /* what a risk level requires, stated beside the level */
 .reqline{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+/* the photo intake is a control now: it takes focus, and a paste aimed
+   at it lands there */
+.dropzone:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-color:var(--focus)}
+.dropzone:hover{border-color:var(--ink-3)}
 /* photographs of a risk reduction measure, in the report table */
 .mshots{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
 .mshots img,.mshots .markwrap{max-width:104px;height:auto}
@@ -1393,11 +1419,20 @@ function migrateV7(base) {
 /* Every photograph in the file, wherever it hangs, gets a marks array. */
 function normaliseMarks(base) {
   function fix(list) {
-    (list || []).forEach(function (img) { img.marks = img.marks || []; });
+    (list || []).forEach(function (img) {
+      img.marks = img.marks || [];
+      /* A mark written before the line could be chosen is a solid one. */
+      img.marks.forEach(function (m) { if (!m.line) { m.line = 'solid'; } });
+    });
   }
   fix(base.meta.images);
   [base.hazards, base.risks, base.devices, base.sfs].forEach(function (coll) {
     (coll || []).forEach(function (o) { o.images = o.images || []; fix(o.images); });
+  });
+  /* Photographs on a risk reduction measure, which arrived later than
+     this function did and were not being reached. */
+  (base.risks || []).forEach(function (r) {
+    (r.measures || []).forEach(function (m) { m.images = m.images || []; fix(m.images); });
   });
   return base;
 }
@@ -5874,6 +5909,90 @@ function newImage(name, data) {
   return { id: uid('img'), name: name || 'photo', caption: '', data: data || '', marks: [] };
 }
 
+/* ---------------------------------------------------------------------
+   Pasting a screenshot.
+
+   A photograph comes off a phone, but a screenshot of an HMI, a drawing
+   or a datasheet comes off the clipboard, and until now the only way in
+   was to save it to a file first.
+
+   The paste is caught on the document rather than on one drop zone,
+   because the clipboard has no notion of which part of the page is
+   meant. Which gallery receives it is decided in this order: the one in
+   the open dialog, since that is what is being looked at; otherwise the
+   last one pointed at or focused; otherwise the only one on the page. A
+   paste that cannot be aimed at exactly one gallery is declined with a
+   word rather than guessed at.
+   --------------------------------------------------------------------- */
+var PASTE_TARGET = null;
+function pasteZones() {
+  return Array.prototype.slice.call(document.querySelectorAll('[data-pastezone]'))
+    .filter(function (n) { return n.offsetParent !== null || n.getClientRects().length; });
+}
+function pasteTarget() {
+  var dlg = $('dlg');
+  if (dlg && dlg.open) {
+    /* A zone inside an open dialog is on screen by virtue of the dialog
+       being open, so it is taken directly rather than through the
+       visibility probe, which needs layout the page may not have been
+       measured for yet. */
+    var inDlg = Array.prototype.slice.call(dlg.querySelectorAll('[data-pastezone]'));
+    if (inDlg.length === 1) return inDlg[0];
+    if (inDlg.length > 1) {
+      /* more than one inside the dialog: the one last pointed at wins */
+      if (PASTE_TARGET && inDlg.indexOf(PASTE_TARGET) >= 0) return PASTE_TARGET;
+      return inDlg[0];
+    }
+    /* a dialog is open and holds no gallery, so a paste is not for one */
+    return null;
+  }
+  if (PASTE_TARGET && PASTE_TARGET.isConnected && pasteZones().indexOf(PASTE_TARGET) >= 0) {
+    return PASTE_TARGET;
+  }
+  var all = pasteZones();
+  return all.length === 1 ? all[0] : null;
+}
+/* The image files on a clipboard event, if any. */
+function clipboardImages(ev) {
+  var dt = ev.clipboardData || window.clipboardData;
+  if (!dt) return [];
+  var out = [];
+  var items = dt.items ? Array.prototype.slice.call(dt.items) : [];
+  items.forEach(function (it) {
+    if (it.kind === 'file' && /^image\//.test(it.type || '')) {
+      var f = it.getAsFile && it.getAsFile();
+      if (f) out.push(f);
+    }
+  });
+  if (!out.length && dt.files && dt.files.length) {
+    Array.prototype.slice.call(dt.files).forEach(function (f) {
+      if (/^image\//.test(f.type || '')) out.push(f);
+    });
+  }
+  return out;
+}
+/* A clipboard image usually arrives called "image.png", which tells a
+   reader nothing six months later. Naming it by when it arrived at
+   least says that much. */
+function pastedName(file, i) {
+  var d = new Date();
+  function p(n) { return (n < 10 ? '0' : '') + n; }
+  var stamp = d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+  var ext = (file && file.type === 'image/jpeg') ? 'jpg' : 'png';
+  return 'pasted-' + stamp + (i ? '-' + (i + 1) : '') + '.' + ext;
+}
+function handleImagePaste(ev) {
+  var files = clipboardImages(ev);
+  if (!files.length) return;            /* a text paste is none of our business */
+  var zone = pasteTarget();
+  if (!zone || typeof zone._addFiles !== 'function') {
+    say('Open the photos of a record first, then paste. The clipboard does not say which set of photos it is for.');
+    return;
+  }
+  ev.preventDefault();
+  zone._addFiles(files, true);
+}
+
 /* =====================================================================
    Photographic mark-up
    ---------------------------------------------------------------------
@@ -5897,12 +6016,71 @@ function markKind(k) {
   for (var i = 0; i < MARK_KINDS.length; i += 1) { if (MARK_KINDS[i].k === k) return MARK_KINDS[i]; }
   return MARK_KINDS[2];
 }
+/* The line, which carries no meaning of its own: the color says what
+   the mark means, the line is there so two marks that overlap can be
+   told apart, and so a ring drawn over busy machinery can be made to
+   read against it. */
+var MARK_LINES = [
+  { k: 'solid', label: 'Solid line' },
+  { k: 'dashed', label: 'Dashed line' }
+];
+function markLine(k) {
+  for (var i = 0; i < MARK_LINES.length; i += 1) { if (MARK_LINES[i].k === k) return MARK_LINES[i]; }
+  return MARK_LINES[0];
+}
 /* cx, cy, rx and ry are fractions of the image, 0 to 1 */
-function newMark(kind, cx, cy, rx, ry) {
+function newMark(kind, cx, cy, rx, ry, line) {
   return {
     uid: uid('mk'), kind: kind || 'problem', label: '',
-    cx: cx, cy: cy, rx: rx, ry: ry
+    cx: cx, cy: cy, rx: rx, ry: ry,
+    line: markLine(line).k
   };
+}
+/* The four points a resize handle sits on, in fractions of the image.
+   Corners rather than edges, so one drag can change both radii. */
+function markHandles(m) {
+  return [
+    { h: 'nw', x: m.cx - m.rx, y: m.cy - m.ry },
+    { h: 'ne', x: m.cx + m.rx, y: m.cy - m.ry },
+    { h: 'se', x: m.cx + m.rx, y: m.cy + m.ry },
+    { h: 'sw', x: m.cx - m.rx, y: m.cy + m.ry }
+  ];
+}
+/* Is this point inside the ring? Normalized distance from the center,
+   so it is the ellipse that is tested and not its bounding box. */
+function markHit(m, x, y) {
+  var rx = Math.max(m.rx, 0.004), ry = Math.max(m.ry, 0.004);
+  var dx = (x - m.cx) / rx, dy = (y - m.cy) / ry;
+  return (dx * dx + dy * dy) <= 1;
+}
+/* The two edits a drag can make, as functions rather than arithmetic
+   buried in a pointer handler, so they can be tested without a mouse.
+   Both take the geometry the gesture started from, because a drag is
+   measured from where it began and not from wherever the mark has got
+   to on the previous frame. */
+function moveMark(m, origin, dx, dy) {
+  m.cx = origin.cx + dx;
+  m.cy = origin.cy + dy;
+  return clampMark(m);
+}
+/* The center holds and the dragged corner follows the pointer, so one
+   movement sets both radii. */
+function resizeMark(m, origin, x, y) {
+  m.cx = origin.cx; m.cy = origin.cy;
+  m.rx = Math.abs(x - origin.cx);
+  m.ry = Math.abs(y - origin.cy);
+  return clampMark(m);
+}
+
+/* Radii are kept above a floor so a ring can never be dragged down to
+   nothing and become impossible to grab again. */
+var MARK_MIN_R = 0.012;
+function clampMark(m) {
+  m.rx = Math.min(0.9, Math.max(MARK_MIN_R, m.rx));
+  m.ry = Math.min(0.9, Math.max(MARK_MIN_R, m.ry));
+  m.cx = Math.min(1, Math.max(0, m.cx));
+  m.cy = Math.min(1, Math.max(0, m.cy));
+  return m;
 }
 function imageMarks(img) { return (img && img.marks) || []; }
 /* Which kinds appear anywhere in a set of images, so the legend can
@@ -5941,6 +6119,24 @@ function markLayer(img, opts) {
     var d = markKind(m.kind);
     /* a white backing stroke, because a colored line on a photograph
        of a dark panel is invisible without one */
+    /* The dash belongs to the mark now, so selection cannot be shown
+       with one: a solid mark that went dashed when picked would be
+       indistinguishable from a dashed one. Selection is shown by a
+       translucent wash inside the ring, and by the handles the editor
+       puts on top. */
+    if (opts.selected === m.uid) {
+      var sel = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+      sel.setAttribute('cx', String(m.cx * 1000));
+      sel.setAttribute('cy', String(m.cy * 1000));
+      sel.setAttribute('rx', String(Math.max(m.rx, 0.005) * 1000));
+      sel.setAttribute('ry', String(Math.max(m.ry, 0.005) * 1000));
+      sel.setAttribute('fill', d.color);
+      /* A hint, not a veil: the point of a mark is to show what is
+         underneath it, so the wash stays light enough to read through. */
+      sel.setAttribute('fill-opacity', '0.07');
+      sel.setAttribute('stroke', 'none');
+      svg.appendChild(sel);
+    }
     ['#ffffff', d.color].forEach(function (col, i) {
       var e = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
       e.setAttribute('cx', String(m.cx * 1000));
@@ -5951,7 +6147,10 @@ function markLayer(img, opts) {
       e.setAttribute('stroke', col);
       e.setAttribute('stroke-width', i === 0 ? '10' : '6');
       e.setAttribute('vector-effect', 'non-scaling-stroke');
-      if (opts.selected === m.uid && i === 1) { e.setAttribute('stroke-dasharray', '18 12'); }
+      /* Only the colored stroke is dashed. The white backing stays
+         continuous, so the ring still reads as a ring against a light
+         background instead of breaking up into unrelated marks. */
+      if (i === 1 && m.line === 'dashed') { e.setAttribute('stroke-dasharray', '20 14'); }
       svg.appendChild(e);
     });
     if (m.label) {
@@ -6109,47 +6308,70 @@ function gallery(list, opts) {
     });
     kids.push(grid);
     if (opts.editable) {
-      var input = el('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true });
-      input.addEventListener('change', function (ev) {
-        var files = Array.prototype.slice.call(ev.target.files || []);
+      /* One way in for all three sources: the picker, a drop and a
+         paste. They differ only in where the files came from. */
+      function addFiles(files, pasted) {
+        files = Array.prototype.slice.call(files || []);
         var pending = files.length, added = 0;
         if (!pending) return;
-        files.forEach(function (f) {
+        files.forEach(function (f, i) {
           readImage(f, function (err, res) {
-            if (!err && res) { list.push(newImage(res.name, res.data)); added += 1; }
-            else if (err) { say(err.message); }
+            if (!err && res) {
+              list.push(newImage(pasted ? pastedName(f, i) : res.name, res.data));
+              added += 1;
+            } else if (err) { say(err.message); }
             pending -= 1;
             if (pending === 0) {
               draw();
               if (opts.onChange) opts.onChange();
-              if (added) say(added + ' photo' + (added === 1 ? '' : 's') + ' added');
+              if (added) {
+                say(added + ' ' + (pasted ? 'pasted image' : 'photo') + (added === 1 ? '' : 's') + ' added');
+              }
             }
           });
         });
+      }
+
+      var input = el('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true });
+      input.addEventListener('change', function (ev) {
+        addFiles(ev.target.files);
         ev.target.value = '';
       });
       var drop = el('div', {
-        cls: 'noprint',
+        cls: 'noprint dropzone',
+        'data-pastezone': '1',
+        tabindex: '0',
+        role: 'button',
         style: { marginTop: list.length ? '10px' : '0', border: '1px dashed var(--rule)', padding: '14px', textAlign: 'center', fontSize: '12.5px', color: 'var(--ink-3)', cursor: 'pointer' }
       }, [
-        el('span', { text: list.length ? 'Add more photos, or drop them here' : 'Add photos, or drop them here' })
+        el('span', { text: list.length ? 'Add more photos, drop them here, or paste a screenshot' : 'Add photos, drop them here, or paste a screenshot' })
       ]);
+      /* The zone carries its own intake, so the document level paste
+         handler has something to hand the files to. */
+      drop._addFiles = addFiles;
+      /* Pointing at it or focusing it is what aims a paste. */
+      ['pointerenter', 'focus', 'click'].forEach(function (e) {
+        drop.addEventListener(e, function () { PASTE_TARGET = drop; });
+      });
+      /* A paste while the zone itself has focus never needs aiming. */
+      drop.addEventListener('paste', function (ev) {
+        var files = clipboardImages(ev);
+        if (!files.length) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        addFiles(files, true);
+      });
+      drop.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); input.click(); }
+      });
       drop.addEventListener('click', function () { input.click(); });
       drop.addEventListener('dragover', function (ev) { ev.preventDefault(); drop.style.borderColor = 'var(--focus)'; });
       drop.addEventListener('dragleave', function () { drop.style.borderColor = 'var(--rule)'; });
       drop.addEventListener('drop', function (ev) {
         ev.preventDefault();
         drop.style.borderColor = 'var(--rule)';
-        var files = Array.prototype.slice.call((ev.dataTransfer && ev.dataTransfer.files) || []);
-        var pending = files.length;
-        if (!pending) return;
-        files.forEach(function (f) {
-          readImage(f, function (err, res) {
-            if (!err && res) list.push(newImage(res.name, res.data));
-            pending -= 1;
-            if (pending === 0) { draw(); if (opts.onChange) opts.onChange(); }
-          });
-        });
+        PASTE_TARGET = drop;
+        addFiles((ev.dataTransfer && ev.dataTransfer.files) || []);
       });
       kids.push(drop);
       kids.push(input);
@@ -6173,6 +6395,7 @@ function markupForm(img, onDone) {
   /* worked on a copy: cancel has to mean cancel */
   var marks = JSON.parse(JSON.stringify(imageMarks(img)));
   var kind = 'problem';
+  var lineKind = 'solid';
   var selected = '';
 
   var stage = el('div', { cls: 'markstage' });
@@ -6194,10 +6417,40 @@ function markupForm(img, onDone) {
       y: Math.min(1, Math.max(0, (ev.clientY - b.top) / b.h))
     };
   }
+  /* The handles are HTML rather than SVG. The overlay draws with
+     preserveAspectRatio "none", so anything drawn in it is stretched by
+     the picture's aspect ratio, and a square handle would come out a
+     rectangle. Positioned divs are measured in the element's own
+     pixels, so they stay square whatever the photograph is. */
+  var handleHost = el('div', { cls: 'markhandles' });
+  stage.appendChild(handleHost);
+  function drawHandles() {
+    var m = markById(selected);
+    if (!m) { put(handleHost, []); return; }
+    var kids = [];
+    markHandles(m).forEach(function (h) {
+      kids.push(el('span', {
+        cls: 'mkh mkh-' + h.h,
+        'data-h': h.h,
+        style: { left: (h.x * 100) + '%', top: (h.y * 100) + '%' }
+      }));
+    });
+    kids.push(el('span', {
+      cls: 'mkh mkh-move',
+      'data-h': 'move',
+      style: { left: (m.cx * 100) + '%', top: (m.cy * 100) + '%' }
+    }));
+    put(handleHost, kids);
+  }
+  function markById(u) {
+    for (var i = 0; i < marks.length; i += 1) { if (marks[i].uid === u) return marks[i]; }
+    return null;
+  }
   function draw() {
     if (layer && layer.parentNode) { layer.parentNode.removeChild(layer); }
     layer = markLayer({ marks: marks }, { selected: selected });
-    stage.appendChild(layer);
+    stage.insertBefore(layer, handleHost);
+    drawHandles();
     drawList();
   }
   function drawList() {
@@ -6216,6 +6469,13 @@ function markupForm(img, onDone) {
         ksel.appendChild(o);
       });
       ksel.addEventListener('change', function () { m.kind = ksel.value; draw(); });
+      var lsel = el('select', { cls: 'inp' });
+      MARK_LINES.forEach(function (x) {
+        var o = el('option', { value: x.k, text: x.label });
+        if (x.k === (m.line || 'solid')) { o.selected = true; }
+        lsel.appendChild(o);
+      });
+      lsel.addEventListener('change', function () { m.line = lsel.value; draw(); });
       kids.push(el('div', { cls: 'subcard' + (selected === m.uid ? ' sel' : '') }, [
         el('div', { cls: 'cardhead' }, [
           el('div', {}, [
@@ -6234,52 +6494,126 @@ function markupForm(img, onDone) {
             }, 'danger')
           ])
         ]),
-        row('g2', [ksel, lab])
+        row('g3', [ksel, lsel, lab])
       ]));
     });
     put(listHost, kids);
   }
 
-  /* drawing: press, drag out from the center, release */
-  var start = null, ghost = null;
+  /* ---------------------------------------------------------------
+     One pointer gesture, three meanings, decided at the moment of
+     press by what is under it:
+
+       a handle of the selected mark   resize it
+       inside any mark                 select it and move it
+       anywhere else                   draw a new one
+
+     Deciding on press rather than on release means the drag does the
+     right thing from the first pixel, and a mark can be nudged without
+     a second one appearing underneath it.
+     --------------------------------------------------------------- */
+  var mode = null, start = null, ghost = null, act = null, origin = null;
+
   function endGhost() {
     if (ghost && ghost.parentNode) { ghost.parentNode.removeChild(ghost); }
     ghost = null;
   }
+  /* Which handle, if any, is under the pointer. Measured in pixels so
+     the target is the same size whatever the picture's shape. */
+  function handleAt(p) {
+    var m = markById(selected);
+    if (!m) return null;
+    var b = box();
+    var grab = 18;
+    var best = null, bestD = grab;
+    markHandles(m).forEach(function (h) {
+      var dx = (h.x - p.x) * b.w, dy = (h.y - p.y) * b.h;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist <= bestD) { bestD = dist; best = h.h; }
+    });
+    return best;
+  }
+  /* The topmost mark under the pointer. Later marks are drawn over
+     earlier ones, so they are tested first. */
+  function markAt(p) {
+    for (var i = marks.length - 1; i >= 0; i -= 1) {
+      if (markHit(marks[i], p.x, p.y)) return marks[i];
+    }
+    return null;
+  }
+
   stage.addEventListener('pointerdown', function (ev) {
     if (ev.button !== undefined && ev.button !== 0) return;
     ev.preventDefault();
-    start = frac(ev);
+    var p = frac(ev);
     try { stage.setPointerCapture(ev.pointerId); } catch (e) { /* older engine */ }
+
+    var h = handleAt(p);
+    if (h && h !== 'move') {
+      mode = 'resize'; act = markById(selected); start = p;
+      origin = { cx: act.cx, cy: act.cy, rx: act.rx, ry: act.ry };
+      stage.classList.add('dragging');
+      return;
+    }
+    var hit = markAt(p);
+    if (hit) {
+      if (selected !== hit.uid) { selected = hit.uid; draw(); }
+      mode = 'move'; act = hit; start = p;
+      origin = { cx: hit.cx, cy: hit.cy, rx: hit.rx, ry: hit.ry };
+      stage.classList.add('dragging');
+      return;
+    }
+    mode = 'draw'; start = p; act = null; origin = null;
     ghost = el('div', { cls: 'markghost', style: { borderColor: markKind(kind).color } });
     stage.appendChild(ghost);
   });
+
   stage.addEventListener('pointermove', function (ev) {
-    if (!start || !ghost) return;
+    if (!mode) return;
     var now = frac(ev);
-    var b = box();
-    var rx = Math.abs(now.x - start.x), ry = Math.abs(now.y - start.y);
-    ghost.style.left = ((start.x - rx) * b.w) + 'px';
-    ghost.style.top = ((start.y - ry) * b.h) + 'px';
-    ghost.style.width = (rx * 2 * b.w) + 'px';
-    ghost.style.height = (ry * 2 * b.h) + 'px';
+    if (mode === 'draw') {
+      if (!ghost) return;
+      var b = box();
+      var rx = Math.abs(now.x - start.x), ry = Math.abs(now.y - start.y);
+      ghost.style.left = ((start.x - rx) * b.w) + 'px';
+      ghost.style.top = ((start.y - ry) * b.h) + 'px';
+      ghost.style.width = (rx * 2 * b.w) + 'px';
+      ghost.style.height = (ry * 2 * b.h) + 'px';
+      return;
+    }
+    if (mode === 'move' && act) {
+      moveMark(act, origin, now.x - start.x, now.y - start.y);
+      draw();
+      return;
+    }
+    if (mode === 'resize' && act) {
+      resizeMark(act, origin, now.x, now.y);
+      draw();
+    }
   });
+
   stage.addEventListener('pointerup', function (ev) {
-    if (!start) return;
+    if (!mode) return;
     var now = frac(ev);
-    var rx = Math.abs(now.x - start.x), ry = Math.abs(now.y - start.y);
+    var wasMode = mode, began = start;
+    mode = null; start = null; act = null; origin = null;
+    stage.classList.remove('dragging');
+    if (wasMode !== 'draw') { endGhost(); draw(); return; }
+    var rx = Math.abs(now.x - began.x), ry = Math.abs(now.y - began.y);
     endGhost();
-    var began = start;
-    start = null;
     /* a click rather than a drag: put down a ring of a usable size
        where they clicked, so the tool is never silent */
     if (rx < 0.012 || ry < 0.012) { rx = 0.09; ry = 0.09; }
-    var m = newMark(kind, began.x, began.y, rx, ry);
+    var m = clampMark(newMark(kind, began.x, began.y, rx, ry, lineKind));
     marks.push(m);
     selected = m.uid;
     draw();
   });
-  stage.addEventListener('pointercancel', function () { start = null; endGhost(); });
+  stage.addEventListener('pointercancel', function () {
+    mode = null; start = null; act = null; origin = null;
+    stage.classList.remove('dragging');
+    endGhost();
+  });
 
   var picker = el('div', { cls: 'btnbar' }, MARK_KINDS.map(function (d) {
     var b = el('button', {
@@ -6301,9 +6635,30 @@ function markupForm(img, onDone) {
     return b;
   }));
 
+  var linePicker = el('div', { cls: 'btnbar' }, MARK_LINES.map(function (d) {
+    var b = el('button', {
+      cls: 'btn ghost sm markpick' + (d.k === lineKind ? ' on' : ''), type: 'button',
+      'data-line': d.k
+    }, [el('span', { cls: 'linechip line-' + d.k }), el('span', { text: d.label })]);
+    b.addEventListener('click', function () {
+      lineKind = d.k;
+      Array.prototype.forEach.call(linePicker.querySelectorAll('.markpick'), function (n) {
+        n.classList.toggle('on', n.getAttribute('data-line') === lineKind);
+      });
+      /* as with the color, a line chosen while something is selected
+         applies to it, which is what the choice looks like it means */
+      if (selected) {
+        marks.forEach(function (m) { if (m.uid === selected) { m.line = lineKind; } });
+        draw();
+      }
+    });
+    return b;
+  }));
+
   var body = [
-    el('p', { cls: 'hint', text: 'Drag a ring around what the reader should look at, or click once for a ring of a standard size. Marks sit on top of the photograph rather than in it, so the original is never altered and a mark can be changed or removed at any time.' }),
+    el('p', { cls: 'hint', text: 'Drag a ring around what the reader should look at, or click once for a ring of a standard size. Drag a ring to move it, or drag a corner handle to resize it. Marks sit on top of the photograph rather than in it, so the original is never altered.' }),
     picker,
+    linePicker,
     stage,
     el('div', { cls: 'btnbar' }, [
       el('button', {
@@ -14488,6 +14843,9 @@ function boot() {
     node.addEventListener('change', sync);
     sync();
   });
+
+  /* A screenshot arrives on the clipboard, not as a file. */
+  document.addEventListener('paste', handleImagePaste);
 
   /* the rail follows the viewport, not just the view */
   syncRailMenu();

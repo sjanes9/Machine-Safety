@@ -341,6 +341,8 @@ button.libitem:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 .libwrap.edit .libitem{flex-direction:row;flex-wrap:wrap;align-items:baseline;gap:4px 10px}
 .libwrap.edit .libitem .libname{flex:1 1 220px}
 .libwrap.edit .libitem .rowacts{margin-left:auto}
+/* what a risk level requires, stated beside the level */
+.reqline{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 /* photographs of a risk reduction measure, in the report table */
 .mshots{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
 .mshots img,.mshots .markwrap{max-width:104px;height:auto}
@@ -381,10 +383,25 @@ table.dt.risk col.c-haz{width:19%}
 table.dt.risk col.c-init{width:88px}
 table.dt.risk col.c-meas{width:24%}
 table.dt.risk col.c-res{width:96px}
-table.dt.risk col.c-plr{width:58px}
+table.dt.risk col.c-plr{width:82px}
 table.dt.risk col.c-sf{width:74px}
 table.dt.risk col.c-st{width:118px}
 table.dt.risk td{word-break:break-word}
+/* The requirements column holds short fixed phrases. Breaking inside a
+   word turns "Control reliable" into one letter per line in a narrow
+   column, so words wrap but never split. */
+table.dt.risk td .hint{word-break:keep-all;overflow-wrap:normal}
+/* the report's risk table: fixed proportions, so the measures column
+   keeps the room its content needs */
+table.dt.ratbl{table-layout:fixed}
+table.dt.ratbl td,table.dt.ratbl th{word-break:normal;overflow-wrap:break-word;
+  white-space:normal;vertical-align:top}
+/* a fixed column will not widen for a chip, so the chip wraps instead of
+   spilling over the column beside it */
+table.dt.ratbl .chip,table.dt.ratbl .rl{white-space:normal;display:inline-block;
+  max-width:100%;line-height:1.35}
+/* a row reference is read as one token, so it never splits */
+table.dt.ratbl td.num{overflow-wrap:normal;word-break:keep-all}
 table.dt.risk th{white-space:normal}
 table.dt.risk .chip{white-space:normal;display:inline-block;max-width:100%;line-height:1.35}
 .empty{padding:22px 14px;text-align:center;color:var(--ink-3);font-size:13px}
@@ -1325,6 +1342,8 @@ function normalize(base) {
   });
   base.risks.forEach(function (r) {
     r.images = r.images || []; r.sfIds = r.sfIds || []; r.measures = r.measures || [];
+    if (r.steps === undefined) { r.steps = ''; }
+    if (r.existingControls === undefined) { r.existingControls = ''; }
     /* a file written before people could be listed carries a string */
     if (typeof r.personnel === 'string') { r.personnel = r.personnel.trim() ? [r.personnel.trim()] : []; }
     if (!Array.isArray(r.personnel)) { r.personnel = []; }
@@ -3118,7 +3137,7 @@ function measureByKey(k) {
 }
 
 var LIFECYCLE = ['Installation and commissioning', 'Normal production', 'Setup and changeover', 'Teach or program', 'Cleaning and sanitation', 'Routine maintenance', 'Troubleshooting and fault clearing', 'Material load and unload', 'Decommissioning'];
-var HAZARD_TYPES = ['Mechanical', 'Electrical', 'Thermal', 'Noise', 'Vibration', 'Radiation', 'Material or substance', 'Ergonomic', 'Environmental', 'Slip trip fall', 'Working at height', 'Confined space', 'Welding arc flash or radiation', 'Fire or flammability', 'Combination'];
+var HAZARD_TYPES = ['Mechanical', 'Control system', 'Electrical', 'Fluid power', 'Material handling', 'Thermal', 'Noise', 'Vibration', 'Radiation', 'Material or substance', 'Ergonomic', 'Environmental', 'Slip trip fall', 'Working at height', 'Confined space', 'Welding arc flash or radiation', 'Fire or flammability', 'Combination'];
 /* ---------------------------------------------------------------------
    The risk reduction measure library.
 
@@ -3197,6 +3216,49 @@ var MEASURE_LIBRARY = [
   { k: 'ML061', m: 'PPE', label: "Safety harness or lanyard", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
   { k: 'ML062', m: 'PPE', label: "Hard hat", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
   { k: 'ML063', m: 'PPE', label: "Safety footwear, metatarsal protection", detail: "", src: 'ANSI/RIA R15.306-2016, Table 3' },
+
+  /* ------------------------------------------------------------------
+     Entries from the ANSI/RIA R15.306 assessment worksheet and from the
+     ANSI B11.0 safeguarding method taxonomy. B11.0 classifies a
+     safeguard by how it keeps the person out: by distance, by the size
+     of the opening, by holding them outside, or by where the hazard is.
+     Table 3 does not name those four, and an American assessment is
+     often written in exactly those terms.
+     ------------------------------------------------------------------ */
+  { k: 'MA001', m: 'SAFEGUARD', label: "Safe-distance safeguarding", detail: "The hazard is placed or the safeguard positioned so the person cannot reach it in the time available. Distance calculated per ISO 13855 or ANSI B11.19.", src: 'ANSI B11.0 safeguarding methods' },
+  { k: 'MA002', m: 'SAFEGUARD', label: "Safe-opening safeguarding", detail: "Access to the hazard is limited by the size of the opening, per the ANSI B11.19 reach table.", src: 'ANSI B11.0 safeguarding methods' },
+  { k: 'MA003', m: 'SAFEGUARD', label: "Safe-holding safeguarding", detail: "The person is held outside the hazard zone while it is hazardous, by guard locking or by a hold-to-run arrangement.", src: 'ANSI B11.0 safeguarding methods' },
+  { k: 'MA004', m: 'SAFEGUARD', label: "Safe-location safeguarding", detail: "The hazard is located where a person is not expected to be during the task.", src: 'ANSI B11.0 safeguarding methods' },
+  { k: 'MA005', m: 'SAFEGUARD', label: "Area scanner with applied safety distance", detail: "Functional safety. Distance per ISO 13855.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA006', m: 'SAFEGUARD', label: "Light curtain installed with applied safety distance", detail: "Functional safety. Distance per ISO 13855.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA007', m: 'SAFEGUARD', label: "Safety fence or perimeter guarding", detail: "Openings must meet the reach table.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA008', m: 'SAFEGUARD', label: "Interlocked enabling device", detail: "Functional safety. Three position enabling device for a task inside the guarded space.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA009', m: 'SAFEGUARD', label: "Robot limited to manual reduced speed", detail: "Functional safety. Safety rated reduced speed for the task.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA010', m: 'SAFEGUARD', label: "Safety rated soft axis and space limiting", detail: "Functional safety. Restricts the space the machine can reach.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA011', m: 'SAFEGUARD', label: "Safety interface or safety relay module", detail: "Functional safety.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA012', m: 'SAFEGUARD', label: "Safety PES, safety PLC or safety controller", detail: "Functional safety, including safety bus systems.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA013', m: 'SAFEGUARD', label: "Stopping performance monitor", detail: "Functional safety. Detects a stop time that has drifted beyond the safety distance.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA014', m: 'SAFEGUARD', label: "Process malfunction detection and monitoring", detail: "Functional safety. Detects the process condition before it becomes a hazard.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA015', m: 'CPM', label: "Safety blocks, locking pins or blocking pins", detail: "Mechanical restraint against unexpected movement during a task.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA016', m: 'CPM', label: "Slide locks", detail: "Mechanical restraint on a press or slide.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA017', m: 'CPM', label: "Blocking or rigging", detail: "Mechanical restraint of a suspended or raised part during servicing.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA018', m: 'CPM', label: "Hard stops", detail: "Mechanical limit on travel.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA019', m: 'CPM', label: "Shields", detail: "Deflects process ejecta without preventing access.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA020', m: 'CPM', label: "Hold-to-run control", detail: "Motion only continues while the control is held.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA021', m: 'CPM', label: "Workholding equipment", detail: "Holds the workpiece so hands do not have to.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA022', m: 'CPM', label: "Hand tools for feeding or clearing", detail: "The tool enters the hazard zone rather than the hand.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA023', m: 'CPM', label: "Lift assist", detail: "Removes the manual handling from the task.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA024', m: 'CPM', label: "Tie-off points for fall arrest", detail: "Anchor for a harness where fall prevention is not practicable.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA025', m: 'ADMIN', label: "Lockout, zero energy state", detail: "All hazardous energy isolated and dissipated before the task.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA026', m: 'ADMIN', label: "Lockout, situational", detail: "Isolation of the specific energy source the task is exposed to.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA027', m: 'ADMIN', label: "Alternative method to lockout", detail: "For minor servicing where lockout is not practicable, with an alternative measure providing equivalent protection.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA028', m: 'ADMIN', label: "Permit to work system", detail: "The task may not begin until the permit is issued.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA029', m: 'ADMIN', label: "Supervision of the task", detail: "A competent person present for the duration of the task.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA030', m: 'ADMIN', label: "Current operating procedure followed", detail: "The task is carried out to a written procedure already in force.", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA031', m: 'PPE', label: "Safety glasses with side shields", detail: "", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA032', m: 'PPE', label: "Face shield", detail: "", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA033', m: 'PPE', label: "Bump cap", detail: "", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'MA034', m: 'PPE', label: "NFPA 70E rated apparel", detail: "Arc rated clothing for the incident energy at the working distance.", src: 'ANSI/RIA R15.306 assessment worksheet' },
 ];
 
 function measureLib() {
@@ -3362,6 +3424,83 @@ var HAZARD_LIBRARY = [
   { k: 'HL078', cat: 'Combination', label: "Heat and workload together", origin: "Hot environment plus physical exertion", harm: "Dehydration, loss of awareness, heat stroke", src: 'ISO 12100:2010, Table B.1' },
   { k: 'HL079', cat: 'Combination', label: "Noise and confined access together", origin: "High noise plus restricted egress", harm: "Loss of awareness, and any consequence that follows", src: 'ISO 12100:2010, Table B.1' },
   { k: 'HL080', cat: 'Combination', label: "Several hazards reached by one task", origin: "One access opening reaching more than one hazard", harm: "Any combination of the consequences of the hazards reached", src: 'ISO 12100:2010, Table B.1' },
+
+  /* ------------------------------------------------------------------
+     Entries taken from the ANSI/RIA R15.306 assessment worksheet's own
+     hazard list. That list is organized by American practice rather
+     than by the ISO 12100 groups, and it names things those groups do
+     not: control system faults, fluid power, and material handling get
+     categories of their own. Where the worksheet and Table B.1 name the
+     same hazard under different groups, both are kept, because an
+     assessor looks for unexpected start-up under Control system as
+     readily as under Mechanical.
+     ------------------------------------------------------------------ */
+  { k: 'HA001', cat: 'Control system', label: "Unintended or unexpected start-up", origin: "Control system fault, restoration of supply, stored energy, remote command", harm: "Any mechanical consequence, according to what moves", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA002', cat: 'Control system', label: "Failure to stop moving parts", origin: "Control system fault, worn or defeated interlock, welded contactor", harm: "Any mechanical consequence, according to what moves", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA003', cat: 'Control system', label: "Uncontrolled speed change", origin: "Drive fault, parameter corruption, loss of feedback", harm: "Impact, entanglement, being thrown", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA004', cat: 'Control system', label: "Machine action from a defeated or failed safeguarding device", origin: "Bypassed interlock, jumpered switch, failed sensor", harm: "Any consequence the safeguard was preventing", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA005', cat: 'Control system', label: "Dropping or ejection of a moving part or of a clamped workpiece", origin: "Loss of clamping, loss of holding force, gripper release on power loss", harm: "Impact, crushing, being thrown", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA006', cat: 'Control system', label: "Software or configuration error", origin: "Program change, parameter error, untested revision", harm: "Any consequence, according to what the software commands", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA007', cat: 'Fluid power', label: "High pressure fluid injection", origin: "Pinhole leak in a hydraulic line, disconnected quick coupling", harm: "Injection, tissue necrosis", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA008', cat: 'Fluid power', label: "Rupture or leakage of a pressurized line", origin: "Hose failure, fitting failure, over pressure", harm: "Injection, impact from a whipping hose, burn", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA009', cat: 'Fluid power', label: "Stored pressure released on servicing", origin: "Accumulator, trapped air, unvented cylinder", harm: "Impact, crushing, injection", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA010', cat: 'Fluid power', label: "Liquid or vapor release from the process", origin: "Process fluid at pressure or temperature", harm: "Burn, scald, poisoning, breathing difficulties", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA011', cat: 'Fluid power', label: "Surge or sloshing of contained liquid", origin: "Vessel movement, sudden valve action", harm: "Impact, machine instability, spillage", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA012', cat: 'Fluid power', label: "Degradation of a material through fluid contact", origin: "Incompatible fluid attacking seals, hoses or guarding", harm: "Loss of containment, loss of a protective measure", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA013', cat: 'Fluid power', label: "Absorption of a fluid through the skin", origin: "Process fluid, metal removal fluid, solvent", harm: "Poisoning, sensitization, corrosion", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA014', cat: 'Material handling', label: "Load of unknown weight", origin: "No weight marked, variable product, no load data", harm: "Musculoskeletal disorder, crushing, machine instability", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA015', cat: 'Material handling', label: "Load with an unknown center of gravity", origin: "Asymmetric load, shifting contents", harm: "Crushing, impact, tipping of the load", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA016', cat: 'Material handling', label: "Unstable stacking or storage", origin: "Stack height, poor interlock of layers, damaged pallet", harm: "Crushing, impact", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA017', cat: 'Material handling', label: "Lifting or moving equipment in use", origin: "Hoist, forklift, manipulator, lift assist", harm: "Crushing, impact, being run over", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA018', cat: 'Material handling', label: "Robot or manipulator movement through the work area", origin: "Programmed path, jog motion, shared space", harm: "Impact, crushing, entanglement", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA019', cat: 'Material handling', label: "High speed material transfer", origin: "Conveyor speed, indexing, transfer arm", harm: "Impact, entanglement, drawing-in", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA020', cat: 'Material handling', label: "Manual handling of a container", origin: "Drum, tote, bin, carton handled by hand", harm: "Musculoskeletal disorder, crushing", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA021', cat: 'Material handling', label: "Manual handling of product or material", origin: "Loading, unloading, stacking by hand", harm: "Musculoskeletal disorder, cutting, crushing", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA022', cat: 'Electrical', label: "Inadvertent contact with a live part", origin: "Unshrouded terminal, missing cover, work on a live panel", harm: "Electrocution, shock, burn", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA023', cat: 'Electrical', label: "Jumpered or bypassed switch", origin: "A defeated interlock or a jumper left in the panel", harm: "Electrocution, shock, and any consequence the switch was preventing", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA024', cat: 'Electrical', label: "Insulation failure", origin: "Vibration, thermal cycling, abrasion, ageing", harm: "Shock, electrocution, fire", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA025', cat: 'Electrical', label: "Liquid or wet location", origin: "Washdown, condensation, leak into an enclosure", harm: "Shock, electrocution, short circuit", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA026', cat: 'Electrical', label: "Overvoltage or overcurrent", origin: "Supply disturbance, fault condition, wrong protection", harm: "Fire, burn, equipment failure leading to a mechanical consequence", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA027', cat: 'Electrical', label: "Undervoltage", origin: "Supply dip, brownout, loss of a phase", harm: "Unpredictable machine operation, and any consequence that follows", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA028', cat: 'Electrical', label: "Short circuit, arcing or sparking", origin: "Damaged conductor, loose termination, foreign object", harm: "Burn, projection of molten particles, fire", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA029', cat: 'Electrical', label: "Electrical noise affecting a safety circuit", origin: "Drive switching, unshielded cabling, poor bonding", harm: "Loss or corruption of a safety function", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA030', cat: 'Fire or flammability', label: "Open flame", origin: "Burner, pilot, hot work", harm: "Burn, fire", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA031', cat: 'Fire or flammability', label: "Hot surface above the ignition temperature", origin: "Heater, exhaust, bearing running hot", harm: "Fire, burn", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA032', cat: 'Fire or flammability', label: "Sparks from a process", origin: "Grinding, cutting, impact between metals", harm: "Fire, burn, eye injury", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA033', cat: 'Fire or flammability', label: "Spontaneous combustion", origin: "Oily rags, self heating material, stored residue", harm: "Fire", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA034', cat: 'Fire or flammability', label: "Static electricity as an ignition source", origin: "Unbonded transfer, insulating material, powder flow", harm: "Explosion, fire", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA035', cat: 'Fire or flammability', label: "Combustible metal", origin: "Magnesium, titanium, aluminum fines", harm: "Fire that water will not extinguish, explosion", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA036', cat: 'Fire or flammability', label: "Smoke from a fire", origin: "Combustion products in an enclosed area", harm: "Breathing difficulties, suffocation, loss of visibility for escape", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA037', cat: 'Fire or flammability', label: "Implosion of an evacuated vessel", origin: "Vacuum vessel, collapsed duct", harm: "Impact, being thrown", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA038', cat: 'Material or substance', label: "Acute health effect from a chemical release", origin: "Ammonia, chlorine, refrigerant release", harm: "Poisoning, corrosion, breathing difficulties", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA039', cat: 'Material or substance', label: "Chronic health effect from repeated exposure", origin: "Long term contact with a process chemical", harm: "Cancer, sensitization, organ damage", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA040', cat: 'Material or substance', label: "Delayed effect of a chemical exposure", origin: "Substance whose harm appears hours or years later", harm: "Poisoning, cancer, mutation", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA041', cat: 'Material or substance', label: "Chemical splash or emission", origin: "Transfer, sampling, pressure release", harm: "Corrosion, damage to eyes and skin", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA042', cat: 'Material or substance', label: "Mixing of incompatible chemicals", origin: "Shared line, wrong connection, cleaning between products", harm: "Poisoning, fire, explosion", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA043', cat: 'Material or substance', label: "Metal removal fluid", origin: "Coolant mist, sump contact, tramp oil", harm: "Sensitization, breathing difficulties, infection", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA044', cat: 'Environmental', label: "Loss of power, control or lighting", origin: "Supply failure, control fault, lamp failure", harm: "Any consequence that follows from a machine or an escape route going dark", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA045', cat: 'Environmental', label: "Moving or overturning equipment nearby", origin: "Mobile plant, shared aisle, unsecured equipment", harm: "Impact, crushing, being run over", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA046', cat: 'Environmental', label: "Seismic event or lightning", origin: "Site location and exposure", harm: "Impact, crushing, fire", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA047', cat: 'Environmental', label: "High humidity", origin: "Process steam, washdown, climate", harm: "Shock through degraded insulation, slipping, corrosion of a protective measure", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA048', cat: 'Ergonomic', label: "Control or display that is hard to read or understand", origin: "Unlabelled control, foreign language, ambiguous symbol", harm: "Any consequence as a result of human error", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA049', cat: 'Ergonomic', label: "Language or communication difficulty", origin: "Instructions or warnings not in the reader\u2019s language", harm: "Any consequence as a result of a warning not being understood", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA050', cat: 'Ergonomic', label: "Poor access or clearance at the work position", origin: "Machine layout, guarding that obstructs the task", harm: "Musculoskeletal disorder, and any consequence of working in an awkward position", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA051', cat: 'Thermal', label: "Hot work environment", origin: "Process heat, poor ventilation, protective clothing", harm: "Dehydration, loss of awareness, heat stroke", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA052', cat: 'Thermal', label: "Cold work environment", origin: "Refrigerated area, cold store", harm: "Frostbite, loss of dexterity, discomfort", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA053', cat: 'Thermal', label: "Refrigeration plant", origin: "Refrigerant lines, evaporators, cold surfaces", harm: "Frostbite, suffocation on refrigerant release", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA054', cat: 'Noise', label: "Noise dose over the working day", origin: "Cumulative exposure across an eight hour shift", harm: "Permanent hearing loss, tinnitus, tiredness", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA055', cat: 'Radiation', label: "Laser radiation to the eye", origin: "Laser marking, measuring, cutting or alignment", harm: "Damage to eyes, blindness", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA056', cat: 'Radiation', label: "Laser generated air contaminants", origin: "Material vaporised by a laser process", harm: "Breathing difficulties, cancer, sensitization", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA057', cat: 'Radiation', label: "Ultraviolet skin exposure", origin: "Curing lamps, welding arc, sterilization lamps", harm: "Damage to skin, cancer", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA058', cat: 'Radiation', label: "Infrared radiation", origin: "Radiant heaters, furnaces, hot process", harm: "Burn, damage to eyes", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA059', cat: 'Radiation', label: "Intense visible light", origin: "Flash lamps, arc sources, high power illumination", harm: "Damage to eyes, loss of awareness", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA060', cat: 'Radiation', label: "Alpha, beta, electron, ion or neutron beams", origin: "Beam processing equipment, contained sources", harm: "Genetic mutation, effects on reproductive capability, burn", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA061', cat: 'Slip trip fall', label: "Debris on the walking surface", origin: "Product spillage, offcuts, packaging waste", harm: "Slipping, tripping and falling", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA062', cat: 'Slip trip fall', label: "Floor or wall opening", origin: "Pit, hatch, removed floor plate, unguarded opening", harm: "Falling, impact", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA063', cat: 'Slip trip fall', label: "Poor lighting on the access route", origin: "Lighting design, failed lamp, shadowing by the machine", harm: "Tripping and falling, and any consequence of not seeing a hazard", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA064', cat: 'Confined space', label: "Inadequate ventilation", origin: "Enclosure, still air, no extraction", harm: "Breathing difficulties, suffocation, poisoning", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA065', cat: 'Confined space', label: "Air contaminants or smoke in an enclosed area", origin: "Process emission, combustion, cleaning solvent", harm: "Breathing difficulties, poisoning", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA066', cat: 'Confined space', label: "Wrong airflow direction", origin: "Back draft, underpressure, recirculating air", harm: "Breathing difficulties, poisoning, spread of contamination", src: 'ANSI/RIA R15.306 assessment worksheet' },
 ];
 
 /* Materialised into the file on first use, so that an assessor's edits
@@ -3679,7 +3818,8 @@ function newDevice() {
 /* ---------- Record factories ---------- */
 function newRisk() {
   return {
-    uid: uid('r'), id: '', task: '', phase: 'Normal production', hazardType: 'Mechanical',
+    uid: uid('r'), id: '', task: '', steps: '', existingControls: '',
+    phase: 'Normal production', hazardType: 'Mechanical',
     images: [],
     hazard: '', hazardSource: '', harm: '', personnel: ['Operator'],
     s: 'S3', e: 'E2', a: 'A3',
@@ -3843,10 +3983,65 @@ function t2Key(s, e, a) { return s + '|' + e + '|' + (e === 'E0' ? '--' : a); }
 
 function riskLevel(s, e, a) {
   var cell = tables().t2[t2Key(s, e, a)];
-  return cell ? cell.r : '';
+  if (cell) return cell.r;
+  /* Table 2 groups avoidance where it cannot change the answer. For
+     S1/E2, S2/E1 and S3/E1 every avoidance rating lands on the same
+     level, and the A3 worksheet carries an explicit row for the
+     combination with no avoidance at all. Reporting "not determined"
+     for a row whose level the table already fixes is wrong, so the
+     level is derived when, and only when, all three ratings agree. */
+  if (!a && s && e) { return levelWithoutAvoidance(s, e); }
+  return '';
+}
+/* The level when avoidance is not scored, if the table makes avoidance
+   irrelevant for this severity and exposure. Otherwise ''. */
+function levelWithoutAvoidance(s, e) {
+  var t2 = tables().t2, seen = null;
+  for (var i = 0; i < AVO.length; i += 1) {
+    var cell = t2[t2Key(s, e, AVO[i].k)];
+    if (!cell) return '';
+    if (seen === null) { seen = cell.r; }
+    else if (seen !== cell.r) { return ''; }
+  }
+  return seen || '';
+}
+/* True when this severity and exposure fix the level whatever the
+   avoidance rating is. Used to say so rather than silently accept it. */
+function avoidanceIrrelevant(s, e) {
+  return !!levelWithoutAvoidance(s, e);
 }
 function plrFor(level) { var r = tables().t5[level]; return r ? r.pl : ''; }
 function catFor(level) { var r = tables().t5[level]; return r ? r.cat : ''; }
+
+/* ---------------------------------------------------------------------
+   Control reliability.
+
+   The American practice the A3 worksheet follows carries a fourth
+   column beside risk level, PL and category: whether the safety related
+   control system has to be control reliable. It is required from
+   MEDIUM upwards and not called for below that, which is the same
+   boundary at which Table 4 stops accepting a warning or an
+   administrative control as the primary measure.
+
+   This is a US term with no ISO 13849 equivalent. It is not a
+   substitute for a performance level: a circuit can be control
+   reliable and still fall short of PL d. Both are recorded, and the
+   requirement is stated wherever the PLr is stated.
+   --------------------------------------------------------------------- */
+var CONTROL_RELIABLE_FROM = 'MEDIUM';
+function controlReliableRequired(level) {
+  if (!level || LEVEL_RANK[level] === undefined) return false;
+  return LEVEL_RANK[level] >= LEVEL_RANK[CONTROL_RELIABLE_FROM];
+}
+function controlReliableText(level) {
+  return controlReliableRequired(level) ? 'Control reliable' : '';
+}
+/* The requirement for a row, taken from its initial level in the same
+   way the required PL is. */
+function requiredControlReliable(r) {
+  if (P.meta.method === 'ISO 13849-1') return false;
+  return controlReliableRequired(initialLevel(r));
+}
 function isAcceptable(level) { return ACCEPTABLE.indexOf(level) >= 0; }
 
 /* step through an ordered list, worst first */
@@ -4121,7 +4316,8 @@ function initialLevelText(r) {
   if (P.meta.method === 'ISO 13849-1') {
     if (!r.isoS) missing.push('severity'); if (!r.isoF) missing.push('frequency'); if (!r.isoP) missing.push('avoidance');
   } else {
-    if (!r.s) missing.push('severity'); if (!r.e) missing.push('exposure'); if (!r.a && r.e !== 'E0') missing.push('avoidance');
+    if (!r.s) missing.push('severity'); if (!r.e) missing.push('exposure');
+    if (!r.a && r.e !== 'E0' && !avoidanceIrrelevant(r.s, r.e)) { missing.push('avoidance'); }
   }
   return levelText('', { reason: missing.length ? missing.join(' and ') + ' not scored' : 'the factor combination is not in the lookup table' });
 }
@@ -5836,7 +6032,7 @@ function gallery(list, opts) {
    The mark-up editor.
 
    Drag on the photograph to draw an oval in the color in hand. Click
-   an existing one to select it, then relabel, recolour or remove it.
+   an existing one to select it, then relabel, recolor or remove it.
    Everything is worked out as a fraction of the displayed image, so the
    size of the window does not matter and the marks survive printing.
    --------------------------------------------------------------------- */
@@ -5962,7 +6158,7 @@ function markupForm(img, onDone) {
       Array.prototype.forEach.call(picker.querySelectorAll('.markpick'), function (n) {
         n.classList.toggle('on', n.getAttribute('data-kind') === kind);
       });
-      /* recolour whatever is selected too, which is what people expect
+      /* recolor whatever is selected too, which is what people expect
          after picking a color with something already chosen */
       if (selected) {
         marks.forEach(function (m) { if (m.uid === selected) { m.kind = kind; } });
@@ -6580,7 +6776,12 @@ function renderRisk() {
 
     tb.appendChild(el('tr', null, [
       el('td', { cls: 'num', text: r.id || '--' }),
-      el('td', null, [el('div', { text: r.task || '--' }), el('div', { cls: 'hint', text: r.phase + '  /  ' + personnelText(r) })]),
+      el('td', null, [
+        el('div', { text: r.task || '--' }),
+        r.steps ? el('div', { cls: 'hint', text: r.steps }) : null,
+        el('div', { cls: 'hint', text: r.phase + '  /  ' + personnelText(r) }),
+        r.existingControls ? el('div', { cls: 'hint', text: 'In place: ' + r.existingControls }) : null
+      ].filter(Boolean)),
       el('td', null, [
         el('div', { text: r.hazard || '--' }),
         el('div', { cls: 'hint', text: [r.hazardType, r.hazardSource, r.harm].filter(Boolean).join(' / ') }),
@@ -6598,7 +6799,11 @@ function renderRisk() {
         el('div', { cls: 'num', text: resTxt }), levelChip(res.level),
         res.scored ? null : el('div', { cls: 'hint', text: 'suggested, not scored' })
       ]),
-      el('td', null, [plChip(req), reqCat && reqCat !== '-' ? el('div', { cls: 'hint', text: 'Cat ' + reqCat }) : null]),
+      el('td', null, [
+        plChip(req),
+        reqCat && reqCat !== '-' ? el('div', { cls: 'hint', text: 'Cat ' + reqCat }) : null,
+        requiredControlReliable(r) ? el('div', { cls: 'hint', text: 'Control reliable' }) : null
+      ]),
       el('td', { cls: 'num', text: rowSfIds(r).join(', ') || '--' }),
       el('td', null, [
         el('div', null, el('span', { cls: 'chip ' + (r.status === 'Closed' || r.status === 'Verified' ? 'ok' : (r.status === 'Open' ? 'warn' : 'tag')), text: r.status })),
@@ -8933,9 +9138,18 @@ function renderReport() {
 
   sec('risk', function (H) {
     doc.appendChild(el('h3', { text: H }));
-    var rt = el('table', { cls: 'dt' });
+    var rt = el('table', { cls: 'dt ratbl' });
+    /* Nine columns on a letter page. Without explicit proportions the
+       browser gives each one its content width, which starves the
+       measures column: it carries the most text and gets the least
+       room. */
+    var rcg = el('colgroup');
+    ['8%', '14%', '12%', '11%', '10%', '20%', '10%', '9%', '6%'].forEach(function (w) {
+      rcg.appendChild(el('col', { style: { width: w } }));
+    });
+    rt.appendChild(rcg);
     var rh = el('tr');
-    ['ID', 'Task', 'Hazard', 'Initial', 'Measures', 'Residual', 'PLr / Cat', 'SF'].forEach(function (h) { rh.appendChild(el('th', { scope: 'col', text: h })); });
+    ['ID', 'Task', 'Hazard', 'Controls in place', 'Initial', 'Measures', 'Residual', 'PLr / Cat', 'SF'].forEach(function (h) { rh.appendChild(el('th', { scope: 'col', text: h })); });
     rt.appendChild(el('thead', null, rh));
     var rb = el('tbody');
     P.risks.forEach(function (r) {
@@ -8947,9 +9161,11 @@ function renderReport() {
         el('td', { cls: 'num', text: r.id }),
         el('td', null, [
           el('div', { text: r.task }),
+          r.steps ? el('div', { cls: 'hint', text: r.steps }) : null,
           el('div', { cls: 'hint', text: r.phase + '  /  ' + personnelText(r) })
-        ]),
+        ].filter(Boolean)),
         el('td', { text: r.hazard }),
+        el('td', { cls: 'hint', text: r.existingControls || 'not recorded' }),
         el('td', null, [
           levelChipOr(initialLevel(r), initialLevelText(r)),
           el('div', { cls: 'hint', text: iso ? nsTriple(sch, r.isoS, r.isoF, r.isoP) : nsTriple(sch, r.s, r.e, r.e === 'E0' ? '' : r.a) }),
@@ -8980,7 +9196,10 @@ function renderReport() {
             : null,
           r.resLevelOverride ? el('div', { cls: 'hint', text: 'overridden, table gives ' + (residualLevelComputed(r) || 'no value') }) : null
         ]),
-        el('td', { cls: 'num', text: (requiredPl(r) && requiredPl(r) !== '-' ? 'PL' + requiredPl(r) : '--') + (requiredCat(r) && requiredCat(r) !== '-' ? ' / ' + requiredCat(r) : '') }),
+        el('td', { cls: 'num' }, [
+          el('div', { text: (requiredPl(r) && requiredPl(r) !== '-' ? 'PL' + requiredPl(r) : '--') + (requiredCat(r) && requiredCat(r) !== '-' ? ' / ' + requiredCat(r) : '') }),
+          requiredControlReliable(r) ? el('div', { cls: 'hint', text: 'Control reliable' }) : null
+        ].filter(Boolean)),
         el('td', { cls: 'num', text: rowSfIds(r).join(', ') })
       ]));
     });
@@ -11284,6 +11503,14 @@ function riskForm(existing) {
       whoBox
     ]),
     fText(bag, 'task', 'Task', work, { ph: 'What is the person doing when the hazard is present' }),
+    fArea(bag, 'steps', 'Steps in the task', work, {
+      ph: 'Stop the conveyor. Open the gate. Reach in past the transfer plate. Clear the jam. Close the gate. Reset.',
+      help: 'The task broken into the steps the person performs. The step that reaches the hazard is usually one of several, and naming it is what makes the exposure rating defensible. The A3 worksheet carries this beside the task for the same reason.'
+    }),
+    fArea(bag, 'existingControls', 'Controls in place at the time of assessment', work, {
+      ph: 'None. Or: fixed guard over the drive end, no interlock on the access gate.',
+      help: 'What is fitted on the machine today. This is not scored: the initial risk is scored with no protective measure in place, per clause 6.4.1. It is recorded so a reader can see what was there beforehand, and so the risk reduction measures below read as what changed.'
+    }),
     row('g2', [
       fSel(bag, 'hazardType', 'Hazard type', work, HAZARD_TYPES, { onChange: function (ev) { drawScopeNote(ev.target.value); } }),
       fText(bag, 'hazardSource', 'Hazard source', work, { ph: 'Which element of the machine, e.g. infeed screw conveyor' })
@@ -11340,8 +11567,28 @@ function riskForm(existing) {
         ]),
         work.initLevelOverride && computed && work.initLevelOverride !== computed
           ? el('span', { text: 'Overridden. The table gives ' + computed + '.' })
-          : el('span', { text: 'This value sets the required performance level and structure category under Table 5, and the minimum measure under Table 4.' })
-      ])
+          : el('span', { text: 'This value sets the required performance level and structure category under Table 5, and the minimum measure under Table 4.' }),
+        /* What the level requires, stated where the level is stated. */
+        shown ? el('div', { cls: 'reqline' }, [
+          (function () {
+            var q = requiredPl(work);
+            return el('span', { cls: 'chip tag', text: q && q !== '-' ? 'Requires PL ' + q : 'No performance level required' });
+          }()),
+          (function () {
+            var c = requiredCat(work);
+            return c && c !== '-' ? el('span', { cls: 'chip tag', text: 'Category ' + c }) : null;
+          }()),
+          requiredControlReliable(work)
+            ? el('span', { cls: 'chip warn', text: 'Control reliable' })
+            : null
+        ].filter(Boolean)) : null,
+        /* Where the table fixes the level whatever the avoidance is,
+           say so rather than leaving the assessor to wonder why the
+           rating they are about to change makes no difference. */
+        (P.meta.method !== 'ISO 13849-1' && work.e !== 'E0' && avoidanceIrrelevant(work.s, work.e))
+          ? el('span', { text: 'Table 2 gives ' + levelWithoutAvoidance(work.s, work.e) + ' for ' + work.s + ' ' + work.e + ' at every avoidance rating, so the level is already fixed. Score avoidance anyway: it is part of the record and it carries into the residual score.' })
+          : null
+      ].filter(Boolean))
     ];
     var iSel = el('select', { cls: 'mono' });
     iSel.appendChild(el('option', { value: '', text: 'use the table value', selected: !work.initLevelOverride }));
@@ -13262,13 +13509,13 @@ function exportCsv() {
   rows.push([]);
   rows.push(['SECTION', 'Risk assessment']);
   rows.push(['Scoring scheme', activeScheme()]);
-  rows.push(['ID', 'Task', 'Phase', 'Hazard type', 'Governing other standard', 'Hazard', 'Hazard source', 'Harm', 'Person exposed',
+  rows.push(['ID', 'Task', 'Steps in the task', 'Controls in place', 'Phase', 'Hazard type', 'Governing other standard', 'Hazard', 'Hazard source', 'Harm', 'Person exposed',
     'Initial S', 'Initial E', 'Initial A', 'Initial factors', 'Initial level', 'Initial level from table', 'Initial level override reason',
     'Measures', 'Table 4 primary measure present',
     'Residual S', 'Residual E', 'Residual A', 'Residual factors', 'Residual level', 'Residual level from table', 'Residual level override reason',
     'Residual scored', 'Residual identical to initial', 'Basis for residual',
     'E0 claimed', 'E0 access gate', 'E0 performance gate',
-    'Acceptable risk', 'Required PLr', 'Required category', 'Safety functions', 'Status', 'Owner', 'Target date', 'Notes']);
+    'Acceptable risk', 'Required PLr', 'Required category', 'Control reliable required', 'Safety functions', 'Status', 'Owner', 'Target date', 'Notes']);
   P.risks.forEach(function (r) {
     var res = residualOf(r);
     var t4 = tableFour(r);
@@ -13281,7 +13528,7 @@ function exportCsv() {
       if (!g) return 'n/a';
       return (g.ok ? (g.soft ? 'pass, modeled only' : 'pass') : 'FAIL') + (g.note ? ': ' + g.note : '');
     }
-    rows.push([r.id, r.task, r.phase, r.hazardType, r.otherStandard || '', r.hazard, r.hazardSource, r.harm, personnelList(r).join('; '),
+    rows.push([r.id, r.task, r.steps || '', r.existingControls || '', r.phase, r.hazardType, r.otherStandard || '', r.hazard, r.hazardSource, r.harm, personnelList(r).join('; '),
       iso ? r.isoS : r.s, iso ? r.isoF : r.e, iso ? r.isoP : r.a,
       iso ? nsTriple(sch, r.isoS, r.isoF, r.isoP) : nsTriple(sch, r.s, r.e, r.e === 'E0' ? '' : r.a),
       initialLevelText(r), initialLevelComputed(r) || 'no value', r.initLevelWhy || '',
@@ -13297,7 +13544,8 @@ function exportCsv() {
       claim.claimed ? gate('PL') : 'n/a',
       residualLevel(r) ? (isAcceptable(residualLevel(r)) ? 'yes' : 'NO') : 'not determined',
       requiredPl(r) && requiredPl(r) !== '-' ? 'PL' + requiredPl(r) : '',
-      requiredCat(r) || '', rowSfIds(r).join(' '), r.status, r.owner, r.due, r.notes]);
+      requiredCat(r) || '', requiredControlReliable(r) ? 'yes' : 'no',
+      rowSfIds(r).join(' '), r.status, r.owner, r.due, r.notes]);
   });
   rows.push([]);
   rows.push(['SECTION', 'Safety functions']);

@@ -14,6 +14,7 @@
   --rule:#c4cbd1; --rule-2:#dde1e5;
   --accent:#6f5700; --accent-bg:#f8efcb; --accent-line:#c79f00;
   --focus:#0b5cad;
+  --info:#1f4e79; --info-bg:#e2edf7;
   --ok:#1d6b45; --ok-bg:#dff0e6;
   --warn:#8a5a00; --warn-bg:#fbeccd;
   --bad:#9c1f1f; --bad-bg:#f8dede;
@@ -37,6 +38,7 @@
   --rule:#3a4249; --rule-2:#2c3237;
   --accent:#e0b400; --accent-bg:#3a3110; --accent-line:#a88700;
   --focus:#6fb2f2;
+  --info:#8fc2ee; --info-bg:#16283a;
   --ok:#6fd39c; --ok-bg:#16321f;
   --warn:#e9b44c; --warn-bg:#3a2d10;
   --bad:#f08a8a; --bad-bg:#3a1717;
@@ -82,10 +84,34 @@ nav.steps{padding:8px}
 .step .num{font:600 10px/1 var(--mono);color:var(--ink-3);letter-spacing:.06em;min-width:20px}
 .step[aria-current="page"] .num{color:var(--accent)}
 .step .cnt{margin-left:auto;font:500 10px/1 var(--mono);color:var(--ink-3);background:var(--panel-2);padding:3px 5px;border-radius:2px}
-.rail-foot{margin-top:auto;padding:10px;border-top:1px solid var(--rule);display:grid;gap:6px}
+.rail-foot{margin-top:auto;border-top:1px solid var(--rule)}
+.railmenu-body{padding:10px;display:grid;gap:6px}
+/* On a wide screen the file actions are simply the foot of the rail, so
+   the disclosure is held open and its toggle is not shown. It only
+   becomes a disclosure where the screen is narrow enough that nine
+   stacked buttons would otherwise fill the first screen before any of
+   the assessment does. */
+.railmenu-toggle{display:none}
+.rail-foot[open] > .railmenu-toggle{list-style:none}
 .railfile{margin:4px 0 0;font:400 10.5px/1.35 var(--mono);color:var(--ink-3);word-break:break-all}
 .railfile.linked{color:var(--ok)}
 .railfile.dirty{color:var(--warn)}
+
+/* ---------- Moving from one step to the next ----------
+   The steps are numbered and they are meant to be worked in order, but
+   until now the only way forward was back to the rail. This puts the
+   next step at the end of the one in hand, which is where a reader is
+   when they finish it. */
+.stepnav{display:flex;gap:10px;align-items:stretch;margin:26px 0 0;
+  padding-top:16px;border-top:1px solid var(--rule)}
+.stepnav a,.stepnav button{flex:1 1 0;display:flex;flex-direction:column;gap:3px;
+  text-align:left;background:var(--panel);border:1px solid var(--rule);
+  padding:11px 13px;cursor:pointer;color:var(--ink);font:500 13px/1.3 var(--sans)}
+.stepnav button:hover{border-color:var(--ink);background:var(--panel-2)}
+.stepnav .dir{font:600 10px/1 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.stepnav .next{text-align:right;align-items:flex-end}
+.stepnav .spacer{flex:1 1 0}
+@media (max-width:620px){.stepnav{flex-direction:column}.stepnav .next{text-align:left;align-items:flex-start}}
 .pickgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:8px 16px}
 .pickrow{display:grid;grid-template-columns:auto 1fr;gap:8px;align-items:start;padding:6px 0;border-top:1px solid var(--rule-2)}
 /* the report picker is an ordered list rather than a set of choices, so
@@ -298,6 +324,30 @@ body.nohints .f .hint{display:none}
 /* ---------- Forms ---------- */
 label.f{display:block;margin-bottom:10px}
 label.f>span{display:block;font:600 9.5px/1 var(--sans);letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-bottom:5px}
+
+/* ---------- A field that is required, and one that is internal ----------
+   Two states worth seeing without reading: a field the file cannot be
+   issued without, and a field that is deliberately not in the report.
+   Both are tinted rather than annotated, so a half finished form can be
+   read at a glance from across a machine. The tint goes once the
+   required field is filled: an empty state that never clears is just
+   decoration. */
+/* The attention color, not the danger one. Red in this file already
+   means a blocking finding and it carries the top of the risk scale, so
+   a red field beside a red VERY HIGH banner would read as one thing
+   saying two. An unfilled field is work outstanding, which is what the
+   accent means everywhere else here. */
+/* The tint stays inside the field's own box. Bleeding it outwards with
+   a negative margin looked right in a single column and overlapped the
+   neighbour the moment the field sat in a two column grid. */
+label.f.req{background:var(--accent-bg);border-left:3px solid var(--accent-line);
+  padding:7px 9px}
+label.f.req>span{color:var(--accent)}
+label.f.req .reqmark{font-weight:600;letter-spacing:.06em}
+label.f.internal{background:var(--info-bg);border-left:3px solid var(--info);
+  padding:7px 9px}
+label.f.internal>span{color:var(--info)}
+label.f.internal .reqmark{font-weight:500;letter-spacing:.04em;text-transform:none}
 input,select,textarea{
   width:100%;font:13px/1.4 var(--sans);color:var(--ink);background:var(--panel);
   border:1px solid var(--rule);padding:6px 8px;border-radius:2px
@@ -481,13 +531,49 @@ table.mx select{padding:3px 5px;font-size:11.5px}
 @media (max-width:860px){
   .app{flex-direction:column}
   .rail{width:auto;flex:none;height:auto;position:static;border-right:0;border-bottom:1px solid var(--rule)}
-  nav.steps{display:flex;overflow-x:auto}
+  /* the steps scroll sideways, with a fade at the edge so it is visible
+     that there are more of them than the screen shows */
+  nav.steps{display:flex;overflow-x:auto;scroll-behavior:smooth;
+    -webkit-overflow-scrolling:touch;scrollbar-width:thin}
+  .railscroll{position:relative}
+  .railscroll::after{content:"";position:absolute;top:0;right:0;bottom:0;width:26px;
+    pointer-events:none;background:linear-gradient(to right,transparent,var(--panel))}
+  .railscroll.atend::after{opacity:0}
   .step{white-space:nowrap;border-left:0;border-bottom:3px solid transparent}
   .step[aria-current="page"]{border-left:0;border-bottom-color:var(--accent-line)}
-  .step .cnt{display:none}
+  /* the count is the whole point of the chip on a small screen: it says
+     which steps have anything in them, so it stays */
+  .step .cnt{margin-left:6px}
   .sheet{padding:14px}
   .titleblock{grid-template-columns:1fr 1fr}
   .tb-main{grid-column:1/-1;border-right:0;border-bottom:1px solid var(--ink)}
+
+  /* nine full width buttons ahead of the content is the wrong first
+     screen in the field, so they fold away behind one control */
+  .rail-foot{margin-top:0}
+  .railmenu-toggle{display:block;margin:0;padding:11px 14px;cursor:pointer;
+    font:600 12px/1.2 var(--sans);color:var(--ink-2);list-style:none;
+    display:flex;align-items:center;gap:8px;min-height:44px}
+  .railmenu-toggle::-webkit-details-marker{display:none}
+  .railmenu-toggle::before{content:"\203A";display:inline-block;transition:transform .12s;
+    font:700 15px/1 var(--sans);color:var(--ink-3)}
+  .rail-foot[open] > .railmenu-toggle::before{transform:rotate(90deg)}
+  .railmenu-toggle:hover{background:var(--panel-2);color:var(--ink)}
+  .rail-foot .btn{margin-bottom:6px}
+}
+
+/* A finger is not a mouse pointer. Where the pointer is coarse, every
+   control gets a target big enough to hit while wearing a glove on a
+   plant floor, which is what this is used on. */
+@media (pointer:coarse){
+  .btn,.btn.sm,.step,button.libitem,.rowacts button{min-height:44px}
+  /* the citation chips and the jump links inside a findings list sit in
+     running text, so they take padding rather than a height that would
+     break the line they are part of */
+  .refchip,.linkbtn{padding-top:11px;padding-bottom:11px;display:inline-block}
+  .rowacts{gap:8px}
+  input,select,textarea{min-height:44px}
+  .chk input[type="checkbox"],.chkrow input[type="checkbox"]{width:22px;height:22px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
@@ -584,6 +670,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
     <div class="rail-head">
       <p class="brand">Machine Safety<small id="railProject">Untitled project</small></p>
     </div>
+    <div class="railscroll" id="railScroll">
     <nav class="steps" id="nav" aria-label="Safety file sections">
       <button class="step" data-view="project" type="button"><span class="num">00</span> Scope</button>
       <button class="step" data-view="hz" type="button"><span class="num">01</span> Safety report <span class="cnt" data-cnt="hz">0</span></button>
@@ -596,7 +683,10 @@ table.mx select{padding:3px 5px;font-size:11.5px}
       <button class="step" data-view="tables" type="button"><span class="num">RF</span> Lookup tables</button>
       <button class="step" data-view="guide" type="button"><span class="num">?</span> How to use this</button>
     </nav>
-    <div class="rail-foot">
+    </div>
+    <details class="rail-foot" id="railMenu">
+      <summary class="railmenu-toggle">File and settings</summary>
+      <div class="railmenu-body">
       <button class="btn ghost sm" id="btnNew" type="button">New</button>
       <button class="btn ghost sm" id="btnSave" type="button">Save</button>
       <button class="btn ghost sm" id="btnSaveAs" type="button">Save as</button>
@@ -608,7 +698,8 @@ table.mx select{padding:3px 5px;font-size:11.5px}
       <button class="btn ghost sm" id="btnHints" type="button" aria-pressed="true">Hide hints</button>
       <button class="btn ghost sm" id="btnFindings" type="button" aria-pressed="true">Hide findings</button>
       <input type="file" id="fileJson" accept=".json,application/json" hidden>
-    </div>
+      </div>
+    </details>
   </div>
 
   <main id="main">
@@ -630,9 +721,9 @@ table.mx select{padding:3px 5px;font-size:11.5px}
         <p class="lede">Identify the machine, the boundaries of the assessment and the people accountable for it. These fields print into the title block and the signature page of every output.</p>
         <div class="card">
           <div class="grid g2">
-            <label class="f"><span>Project title</span><input id="p_title" data-meta="title"></label>
-            <label class="f"><span>Client / site</span><input id="p_client" data-meta="client"></label>
-            <label class="f"><span>Machine or cell ID</span><input id="p_machine" data-meta="machine" class="mono"></label>
+            <label class="f" data-req="1"><span>Project title</span><input id="p_title" data-meta="title"></label>
+            <label class="f" data-req="1"><span>Client / site</span><input id="p_client" data-meta="client"></label>
+            <label class="f" data-req="1"><span>Machine or cell ID</span><input id="p_machine" data-meta="machine" class="mono"></label>
             <label class="f"><span>Location</span><input id="p_location" data-meta="location"></label>
             <label class="f"><span>Revision</span><input id="p_rev" data-meta="rev" class="mono" placeholder="A"></label>
             <label class="f"><span>Revision date</span><input id="p_revDate" data-meta="revDate" type="date"></label>
@@ -643,6 +734,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
           </div>
           <label class="f"><span>General description of the application</span><textarea id="p_narrative" data-meta="narrative" placeholder="What the cell does, how product moves through it, and where people interact with it."></textarea></label>
           <label class="f"><span>Assessment team and roles</span><textarea id="p_team" data-meta="team" placeholder="Name, role, qualification. One per line."></textarea></label>
+          <label class="f internal"><span>Reviewer comments<span class="reqmark">  (excluded from the report)</span></span><textarea id="p_review" data-meta="reviewNotes" placeholder="Questions for the reviewer, things to check on the next visit, anything that should not reach the client."></textarea></label>
           <label class="f"><span>Scope, boundaries and limits of the assessment</span><textarea id="p_scope" data-meta="scope" placeholder="Physical boundaries, interfaces to adjacent equipment, lifecycle phases covered, what is explicitly excluded."></textarea></label>
           <label class="f"><span>Standards and documents applied</span><textarea id="p_stds" data-meta="standards"></textarea></label>
           <label class="f"><span>Assumptions and limitations</span><textarea id="p_assume" data-meta="assumptions"></textarea></label>
@@ -818,6 +910,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
         <h2 class="sec" id="h-tables">Lookup tables and method reference</h2>
         <div id="tablesBody"></div>
       </section>
+      <nav class="stepnav noprint" id="stepNav" aria-label="Move through the assessment"></nav>
     </div>
   </main>
 </div>
@@ -927,6 +1020,9 @@ function blankProject() {
     meta: {
       title: '', client: '', machine: '', location: '', rev: 'A', revDate: '',
       lead: '', reviewer: '', team: '', scope: '', assumptions: '',
+      /* Written for the reviewer, never for the client. Nothing in the
+         report reads this field, and a test holds that. */
+      reviewNotes: '',
       robotMake: '', robotDom: '', narrative: '', images: [],
       machinePlr: '', machinePlrBasis: '', machineCat: '',
       method: 'ANSI/RIA R15.306',
@@ -1272,6 +1368,7 @@ function migrateV7(base) {
   base.sfs.forEach(function (sf) { sf.ccfMeasures = sf.ccfMeasures || []; });
   if (base.meta.capCat4At100 === undefined) { base.meta.capCat4At100 = false; }
   if (base.meta.plRoute === undefined) { base.meta.plRoute = 'K1'; }
+  if (base.meta.reviewNotes === undefined) { base.meta.reviewNotes = ''; }
   if (base.reportSections === undefined) { base.reportSections = null; }
   if (base.hazardLib === undefined) { base.hazardLib = null; }
   if (base.measureLib === undefined) { base.measureLib = null; }
@@ -1343,6 +1440,7 @@ function normalize(base) {
   base.risks.forEach(function (r) {
     r.images = r.images || []; r.sfIds = r.sfIds || []; r.measures = r.measures || [];
     if (r.steps === undefined) { r.steps = ''; }
+    if (r.reviewNotes === undefined) { r.reviewNotes = ''; }
     if (r.existingControls === undefined) { r.existingControls = ''; }
     /* a file written before people could be listed carries a string */
     if (typeof r.personnel === 'string') { r.personnel = r.personnel.trim() ? [r.personnel.trim()] : []; }
@@ -2899,7 +2997,17 @@ var CHECK_DEFAULT = [
   { k: 'HEC_PROC', g: 'HEC', blocksE0: false, q: 'Do machine specific procedures exist for shutting down, isolating and securing energy?' },
   { k: 'HEC_ISO', g: 'HEC', blocksE0: false, q: 'Are all energy isolating devices accessible and capable of isolating the machine from its energy sources?' }
 ];
-var CHECK_ANSWERS = ['', 'Yes', 'No', 'N/A'];
+/* "N/A" says the question does not apply to this machine. "Not seen"
+   says it applies and could not be inspected, which is an open item
+   rather than an excused one. Scoring treats both as outside the
+   percentage, but only one of them leaves the question unanswered. */
+var CHECK_ANSWERS = ['', 'Yes', 'No', 'N/A', 'Not seen'];
+var ANSWER_HELP = {
+  'Yes': 'Observed to be the case.',
+  'No': 'Observed not to be the case. This is a finding.',
+  'N/A': 'The question does not apply to this machine.',
+  'Not seen': 'The question applies but could not be inspected: guarding in the way, machine running, area not accessible on the day.'
+};
 
 function checklist() {
   if (!Array.isArray(P.checklist) || !P.checklist.length) {
@@ -2948,7 +3056,7 @@ var FS_DEFAULT = [
   { k: 'FS_EST_GUARD', g: 'EST', kind: 'CATPL', q: 'Observed safeguarding system category and performance level' },
   { k: 'FS_COMPLY', g: 'EST', kind: 'ANS', q: 'Do the functional safety systems comply with category 3, PL d per ISO 13849?' }
 ];
-var FS_ANSWERS = ['', 'Yes', 'No', 'N/A'];
+var FS_ANSWERS = ['', 'Yes', 'No', 'N/A', 'Not seen'];
 var FS_CATS = ['', 'B', '1', '2', '3', '4', 'N/A'];
 var FS_PLS = ['', 'a', 'b', 'c', 'd', 'e', 'N/A'];
 
@@ -3026,12 +3134,25 @@ function guardingGate() {
   }
   var list = checklist().filter(function (c) { return c.blocksE0; });
   var no = list.filter(function (c) { return c.ans === 'No'; });
-  var blank = list.filter(function (c) { return c.ans === ''; });
+  /* An item that could not be inspected is as unverified as one nobody
+     answered, so it holds the gate in exactly the same way. */
+  var blank = list.filter(function (c) { return c.ans === '' || c.ans === 'Not seen'; });
   if (no.length) {
     return { ok: false, state: 'fail', why: 'the safeguarding checklist records "No" against ' + no.length + ' access prevention question' + (no.length === 1 ? '' : 's') + ', so guards do not prevent access', items: no };
   }
   if (blank.length) {
-    return { ok: false, state: 'unverified', why: 'the safeguarding checklist has ' + blank.length + ' access prevention question' + (blank.length === 1 ? '' : 's') + ' unanswered, so prevention of access is unverified', items: blank };
+    /* Unanswered and could-not-inspect hold the gate the same way but
+       are not the same state of the work, so they are counted apart. */
+    var unseen = blank.filter(function (c) { return c.ans === 'Not seen'; }).length;
+    var never = blank.length - unseen;
+    var parts = [];
+    if (never) { parts.push(never + ' access prevention question' + (never === 1 ? '' : 's') + ' unanswered'); }
+    if (unseen) { parts.push(unseen + ' recorded as not available to inspect'); }
+    return {
+      ok: false, state: 'unverified',
+      why: 'the safeguarding checklist has ' + parts.join(' and ') + ', so prevention of access is unverified',
+      items: blank
+    };
   }
   return { ok: true, state: 'pass', why: '', items: [] };
 }
@@ -3828,7 +3949,7 @@ function newRisk() {
     resWhy: '', otherStandard: '',
     initLevelOverride: '', initLevelWhy: '',
     resLevelOverride: '', resLevelWhy: '',
-    sfIds: [], status: 'Open', owner: '', due: '', notes: '',
+    sfIds: [], status: 'Open', owner: '', due: '', notes: '', reviewNotes: '',
     isoS: 'S2', isoF: 'F2', isoP: 'P2'
   };
 }
@@ -5399,7 +5520,19 @@ function findings() {
         add('warn', 'check', c.k, 'The checklist records "No" with no note. A failed item should say what was seen, so the corrective action can be written against it.', '');
       }
       if (c.ans === 'N/A' && !String(c.note || '').trim()) {
-        add('warn', 'check', c.k, 'The checklist records "N/A" with no note. State whether the item is not applicable or was not available to inspect.', '');
+        add('warn', 'check', c.k, 'The checklist records "N/A" with no note. State why the item does not apply to this machine.', '');
+      }
+      /* Not seen is an open item, not an excused one: the question
+         applies and the answer is still outstanding. It says so even
+         when a note explains why, because the note explains the gap
+         rather than closing it. */
+      if (c.ans === 'Not seen') {
+        add(c.blocksE0 ? 'bad' : 'warn', 'check', c.k,
+          'The checklist records "Not seen": the item applies but could not be inspected'
+          + (String(c.note || '').trim() ? ' (' + String(c.note).trim() + ')' : ', with no note saying why')
+          + '. It remains open until it is inspected.'
+          + (c.blocksE0 ? ' This is an access prevention question, so exposure prevented cannot be claimed while it stands.' : ''),
+          c.blocksE0 ? 'Table 1, E0' : '');
       }
     });
   }());
@@ -8177,7 +8310,7 @@ function hazardForm(existing) {
       fSel(bag, 'priority', 'Priority', work, HAZARD_PRIORITY.map(function (k) { return { k: k, label: k }; }), { help: 'How quickly it needs attention, as judged on the day. This is not a risk score: the scoring happens in the risk assessment.' }),
       fSel(bag, 'status', 'Status', work, HAZARD_STATUS.map(function (k) { return { k: k, label: k }; }), { help: 'Not a finding is for something recorded on the walk and then ruled out. It keeps the record of having looked.' })
     ]),
-    fText(bag, 'title', 'The hazard, in a line', work, { ph: 'Unguarded nip point at the infeed conveyor' }),
+    fText(bag, 'title', 'The hazard, in a line', work, { req: true, ph: 'Unguarded nip point at the infeed conveyor' }),
     hazardPickButton('title', 'hazardType', 'consequence'),
     row('g3', [
       fText(bag, 'area', 'Where on the machine', work, { ph: 'Infeed, drive end' }),
@@ -10150,6 +10283,89 @@ function renderChrome() {
     : 'Rows are scored with severity, exposure and avoidance. Table 2 gives the risk level, Table 4 sets which measures may carry the row, and Table 5 gives the minimum control system requirement. All are shown under Lookup tables.';
 }
 
+/* ---------------------------------------------------------------------
+   The rail at narrow widths.
+
+   Below 860px the steps become a horizontal strip. Two things follow
+   from that: the step in use has to be scrolled into view, or the
+   reader cannot see where they are; and the file actions have to fold
+   away, or nine buttons fill the screen before any of the assessment
+   does. On a wide screen the disclosure is simply held open, so it
+   reads as the foot of the rail it has always been.
+   --------------------------------------------------------------------- */
+var RAIL_WIDE = null;
+function syncRailMenu() {
+  var d = $('railMenu');
+  if (!d) return;
+  var wide = !window.matchMedia || window.matchMedia('(min-width:861px)').matches;
+  if (wide === RAIL_WIDE) return;
+  RAIL_WIDE = wide;
+  if (wide) { d.open = true; }
+  else { d.open = false; }
+}
+function scrollStepIntoView() {
+  var strip = $('nav');
+  if (!strip || strip.scrollWidth <= strip.clientWidth + 1) { markRailEnd(); return; }
+  var cur = strip.querySelector('.step[aria-current="page"]');
+  if (!cur || !cur.scrollIntoView) { markRailEnd(); return; }
+  try { cur.scrollIntoView({ block: 'nearest', inline: 'center' }); }
+  catch (e) { cur.scrollIntoView(); }
+  markRailEnd();
+}
+/* The fade at the right edge says there are more steps than fit. It is
+   removed once there is nothing further to scroll to, so it never
+   suggests content that is not there. */
+function markRailEnd() {
+  var strip = $('nav'), wrap = $('railScroll');
+  if (!strip || !wrap) return;
+  var more = strip.scrollWidth > strip.clientWidth + 1
+    && strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1;
+  wrap.classList.toggle('atend', !more);
+}
+
+/* The ordered steps. The lookup tables and the guide are reference
+   rather than steps, so they are not part of the sequence and get only
+   a way back to where the reader came from. */
+var STEP_ORDER = ['project', 'hz', 'risk', 'dev', 'sf', 'vv', 'check', 'report'];
+/* The step name is the button's own text, not its children: the number
+   and the count are elements inside it, and stripping them by string
+   match went wrong the moment a count digit also appeared in the
+   number, turning "03 Safety devices" into "03 0 Safety devices 3". */
+function stepLabel(v) {
+  var b = document.querySelector('#nav .step[data-view="' + v + '"]');
+  if (!b) return { num: '', text: v };
+  var num = b.querySelector('.num');
+  var text = '';
+  Array.prototype.forEach.call(b.childNodes, function (n) {
+    if (n.nodeType === 3) { text += n.nodeValue; }
+  });
+  return { num: num ? num.textContent.trim() : '', text: text.replace(/\s+/g, ' ').trim() };
+}
+function drawStepNav() {
+  var host = $('stepNav');
+  if (!host) return;
+  var i = STEP_ORDER.indexOf(VIEW);
+  if (i < 0) { put(host, []); host.hidden = true; return; }
+  host.hidden = false;
+  var kids = [];
+  function card(v, dir, cls) {
+    var l = stepLabel(v);
+    return el('button', {
+      cls: cls, type: 'button',
+      'aria-label': dir + ': ' + l.num + ' ' + l.text,
+      on: { click: function () { show(v); } }
+    }, [
+      el('span', { cls: 'dir', text: dir }),
+      el('span', { text: l.num + '  ' + l.text })
+    ]);
+  }
+  if (i > 0) { kids.push(card(STEP_ORDER[i - 1], 'Back to', 'prev')); }
+  else { kids.push(el('span', { cls: 'spacer' })); }
+  if (i < STEP_ORDER.length - 1) { kids.push(card(STEP_ORDER[i + 1], 'Next', 'next')); }
+  else { kids.push(el('span', { cls: 'spacer' })); }
+  put(host, kids);
+}
+
 function show(view) {
   VIEW = view;
   $$('.view').forEach(function (s) { s.hidden = (s.id !== 'v-' + view); });
@@ -10158,6 +10374,9 @@ function show(view) {
     else { b.removeAttribute('aria-current'); }
   });
   renderView();
+  drawStepNav();
+  syncRailMenu();
+  scrollStepIntoView();
   /* changing view does start at the top: that is a new page, not a
      re-render of the one in hand */
   scrollToY(0);
@@ -10999,6 +11218,7 @@ var FIELD_HELP = {
   reviewer: 'Who checked the assessment independently of whoever performed it.',
   team: 'Everyone who took part, with their role. An assessment done alone is worth saying so.',
   scope: 'What is inside the assessment boundary and what is outside it. The exclusions matter more than the inclusions: name the adjacent equipment that was not assessed.',
+  reviewNotes: 'Written for whoever reviews this file, not for the client. Questions to settle, things to check on the next visit, anything that should not reach the report. Nothing in the report reads this field.',
   assumptions: 'The conditions the assessment holds under. Speed, product, staffing, which procedures are assumed to be followed. If one of these turns out to be false, the assessment does not hold.',
   standards: 'The documents this was carried out against, with editions. An edition matters: the 2023 and 2015 editions of ISO 13849-1 differ.',
   narrative: 'What the machine does, in plain words. Written for someone who has never seen it.',
@@ -11297,6 +11517,54 @@ function fWrap(label, key, node, help) {
   registerField(key, node);
   return el('label', { cls: 'f' }, [fLabel(label, h, node), node]);
 }
+
+/* ---------------------------------------------------------------------
+   Field state.
+
+   A required field carries the state until it is filled, and says so in
+   its own label rather than only in the findings panel at the top of
+   the view. An internal field says that it is not in the report, in the
+   label, because the assessor is deciding what to write as they read
+   it.
+   --------------------------------------------------------------------- */
+function fieldClass(opts, value) {
+  opts = opts || {};
+  var c = 'f';
+  if (opts.internal) { return c + ' internal'; }
+  if (opts.req && !String(value === undefined || value === null ? '' : value).trim()) { c += ' req'; }
+  return c;
+}
+function fieldMark(opts) {
+  opts = opts || {};
+  if (opts.internal) { return el('span', { cls: 'reqmark', text: '  (excluded from the report)' }); }
+  if (opts.req) { return el('span', { cls: 'reqmark', text: '  (required)' }); }
+  return null;
+}
+/* The label, with the state said in it. fLabel builds the help marker,
+   so the mark is appended to what it returns. */
+function fLabelState(label, help, node, opts, value) {
+  var lab = fLabel(label, help, node);
+  var showMark = opts && (opts.internal || (opts.req && !String(value === undefined || value === null ? '' : value).trim()));
+  if (showMark) { lab.appendChild(fieldMark(opts)); }
+  return lab;
+}
+/* Redraw the state as the field is filled, without rebuilding the form
+   around it. */
+function watchFieldState(node, wrapper, opts, label, help) {
+  if (!opts || (!opts.req && !opts.internal) || opts.internal) return;
+  var sync = function () {
+    var filled = !!String(node.value || '').trim();
+    wrapper.className = filled ? 'f' : 'f req';
+    var mark = wrapper.querySelector('.reqmark');
+    if (filled && mark) { mark.parentNode.removeChild(mark); }
+    else if (!filled && !mark) {
+      var lab = wrapper.querySelector('.flab');
+      if (lab) { lab.appendChild(fieldMark(opts)); }
+    }
+  };
+  node.addEventListener('input', sync);
+  node.addEventListener('change', sync);
+}
 /* Any table a help text names, so the reader can see it rather than go
    looking. Longest citation first, so "Table K.1" is not read as
    "Table K". */
@@ -11333,7 +11601,9 @@ function fText(bag, key, label, obj, opts) {
   var h = helpFor(key, opts);
   registerField(key, i);
   bag.push(function () { obj[key] = i.value.trim(); });
-  return el('label', { cls: 'f' }, [fLabel(label, h, i), i]);
+  var w = el('label', { cls: fieldClass(opts, obj[key]) }, [fLabelState(label, h, i, opts, obj[key]), i]);
+  watchFieldState(i, w, opts, label, h);
+  return w;
 }
 function fArea(bag, key, label, obj, opts) {
   opts = opts || {};
@@ -11342,7 +11612,9 @@ function fArea(bag, key, label, obj, opts) {
   var h = helpFor(key, opts);
   registerField(key, i);
   bag.push(function () { obj[key] = i.value; });
-  return el('label', { cls: 'f' }, [fLabel(label, h, i), i]);
+  var w = el('label', { cls: fieldClass(opts, obj[key]) }, [fLabelState(label, h, i, opts, obj[key]), i]);
+  watchFieldState(i, w, opts, label, h);
+  return w;
 }
 function fSel(bag, key, label, obj, options, opts) {
   opts = opts || {};
@@ -11357,7 +11629,9 @@ function fSel(bag, key, label, obj, options, opts) {
   registerField(key, s);
   if (opts.onChange) s.addEventListener('change', opts.onChange);
   bag.push(function () { obj[key] = s.value; });
-  return el('label', { cls: 'f' }, [fLabel(label, h, s), s]);
+  var w = el('label', { cls: fieldClass(opts, obj[key]) }, [fLabelState(label, h, s, opts, obj[key]), s]);
+  watchFieldState(s, w, opts, label, h);
+  return w;
 }
 function fset(legend, kids) { return el('fieldset', null, [el('legend', { text: legend })].concat(kids)); }
 
@@ -11516,7 +11790,7 @@ function riskForm(existing) {
       fText(bag, 'hazardSource', 'Hazard source', work, { ph: 'Which element of the machine, e.g. infeed screw conveyor' })
     ]),
     scopeNote,
-    fText(bag, 'hazard', 'Hazard', work, { ph: 'Entanglement at the unguarded drive shaft' }),
+    fText(bag, 'hazard', 'Hazard', work, { req: true, ph: 'Entanglement at the unguarded drive shaft' }),
     hazardPickButton('hazard', 'hazardType', 'harm'),
     fText(bag, 'harm', 'Foreseeable harm', work, { ph: 'Degloving or amputation of the hand' })
   ]));
@@ -11979,7 +12253,11 @@ function riskForm(existing) {
       fText(bag, 'owner', 'Owner', work),
       fText(bag, 'due', 'Target date', work, { type: 'date' })
     ]),
-    fArea(bag, 'notes', 'Notes', work)
+    fArea(bag, 'notes', 'Notes', work),
+    fArea(bag, 'reviewNotes', 'Reviewer comments', work, {
+      internal: true,
+      help: 'Written for whoever reviews this file, not for the client. Nothing in the report reads this field.'
+    })
   ]));
 
   openDlg(isNew ? 'Add task and hazard pair' : 'Edit ' + (r.id || 'row'), body, function () {
@@ -14190,6 +14468,34 @@ function boot() {
       commit('Safeguarding checklist reset');
     }, 'Reset');
   });
+
+  /* Fields marked required in the markup get the same live state as the
+     ones the form builders make: tinted until filled, then plain. */
+  $$('label.f[data-req]').forEach(function (w) {
+    var node = w.querySelector('input,select,textarea');
+    if (!node) return;
+    var sync = function () {
+      var filled = !!String(node.value || '').trim();
+      w.classList.toggle('req', !filled);
+      var span = w.querySelector('span');
+      var mark = w.querySelector('.reqmark');
+      if (filled && mark) { mark.parentNode.removeChild(mark); }
+      else if (!filled && !mark && span) {
+        span.appendChild(el('span', { cls: 'reqmark', text: '  (required)' }));
+      }
+    };
+    node.addEventListener('input', sync);
+    node.addEventListener('change', sync);
+    sync();
+  });
+
+  /* the rail follows the viewport, not just the view */
+  syncRailMenu();
+  window.addEventListener('resize', function () { syncRailMenu(); markRailEnd(); });
+  (function () {
+    var strip = $('nav');
+    if (strip) { strip.addEventListener('scroll', markRailEnd, { passive: true }); }
+  }());
 
   $('dlgCancel').addEventListener('click', dismissDlg);
   $('dlgX').addEventListener('click', dismissDlg);

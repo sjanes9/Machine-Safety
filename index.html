@@ -4116,6 +4116,30 @@ function isCompliance(h) { return !!h && h.kind === 'compliance'; }
    than its kind, so an ordinary observation numbered COMP is treated the
    same as one made with the compliance button. */
 function isCompRef(h) { return !!h && /^COMP/i.test(String(h.id || '')); }
+
+/* Converting between the two kinds. The same record serves both, so a
+   conversion flips the kind and gives it a reference in the other
+   series. A reference that already matches the target series is kept, so
+   an observation someone had already numbered COMP keeps that number
+   when it becomes a compliance item, and nothing is renumbered that does
+   not have to be. Nothing else about the record is touched: the fields a
+   hazard carries and a compliance item does not are left in place, so
+   converting back restores them, and any linked risk rows are kept
+   rather than deleted. */
+function convertToCompliance(h) {
+  if (!h || isCompliance(h)) return;
+  var hadRows = hazardRisks(h).length;
+  if (!isCompRef(h)) { h.id = nextId('COMP-', complianceItems(), 2); }
+  h.kind = 'compliance';
+  commit(hazardLabel(h) + ' is now a compliance item'
+    + (hadRows ? '. Its ' + hadRows + ' linked risk ' + (hadRows === 1 ? 'row is' : 'rows are') + ' kept but not shown while it is a compliance item.' : '.'));
+}
+function convertToObservation(h) {
+  if (!h || !isCompliance(h)) return;
+  if (!/^HZ/i.test(String(h.id || ''))) { h.id = nextId('HZ-', hazardsOnly(), 2); }
+  delete h.kind;
+  commit(hazardLabel(h) + ' is now an observation. Raise a risk row to score it, or set it Not a finding if no score is needed.');
+}
 function complianceItems() { return (P.hazards || []).filter(isCompliance); }
 function hazardsOnly() { return (P.hazards || []).filter(function (h) { return !isCompliance(h); }); }
 function firstLine(t) {
@@ -8523,6 +8547,7 @@ function renderHazards() {
         el('span', { cls: 'chip tag', text: h.priority }),
         actBtn('Edit', function () { hazardForm(h); }),
         actBtn('Link or raise a risk row', function () { hazardRiskPicker(h); }),
+        actBtn('Make a compliance item', function () { convertToCompliance(h); }),
         actBtn('Delete', function () {
           confirmDelete(hazardLabel(h), function () {
             P.hazards = P.hazards.filter(function (x) { return x.uid !== h.uid; });
@@ -8575,6 +8600,7 @@ function renderHazards() {
         el('div', { cls: 'rowacts' }, [
           el('span', { cls: 'chip ' + hazardStatusTone(h), text: h.status || 'Closed' }),
           actBtn('Edit', function () { complianceForm(h); }),
+          actBtn('Make an observation', function () { convertToObservation(h); }),
           actBtn('Delete', function () {
             confirmDelete(hazardLabel(h), function () {
               P.hazards = P.hazards.filter(function (x) { return x.uid !== h.uid; });

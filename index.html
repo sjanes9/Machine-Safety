@@ -6423,7 +6423,7 @@ function gallery(list, opts) {
         var cap = el('input', { value: img.caption || '', placeholder: 'Caption', style: { border: 0, borderTop: '1px solid var(--rule-2)', fontSize: '11.5px', borderRadius: 0 } });
         cap.addEventListener('input', function () { img.caption = cap.value; if (opts.onChange) opts.onChange(); });
         fig.appendChild(cap);
-        var bar = el('div', { cls: 'noprint', style: { display: 'flex', gap: '4px', padding: '5px' } }, [
+        var bar = el('div', { cls: 'noprint', style: { display: 'flex', flexWrap: 'wrap', gap: '4px', padding: '5px' } }, [
           el('button', { cls: 'btn ghost sm', type: 'button', text: '\u2190', title: 'Move left', on: { click: function () { if (idx > 0) { list.splice(idx - 1, 0, list.splice(idx, 1)[0]); draw(); if (opts.onChange) opts.onChange(); } } } }),
           el('button', { cls: 'btn ghost sm', type: 'button', text: '\u2192', title: 'Move right', on: { click: function () { if (idx < list.length - 1) { list.splice(idx + 1, 0, list.splice(idx, 1)[0]); draw(); if (opts.onChange) opts.onChange(); } } } }),
           el('button', {

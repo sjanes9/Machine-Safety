@@ -1122,6 +1122,7 @@ function blankProject() {
     fsChecklist: null,     // functional safety onsite verification, same rule
     guardOpenings: [],     // ANSI B11.19 reach measurements
     reportSections: null,  // null means "every section"
+    compSummaryOnly: false, // print COMP items as a summary row only, no detail block
     sectionTitles: {},     // section key -> the heading this file prints for it
     muteField: false,      // field verification findings set aside for now
     signatures: [],        // e-signed approvals
@@ -1204,6 +1205,7 @@ function migrate(data) {
   base.fieldTests = Array.isArray(data.fieldTests) ? data.fieldTests : [];
   base.sistemaReports = Array.isArray(data.sistemaReports) ? data.sistemaReports : [];
   base.reportSections = Array.isArray(data.reportSections) ? data.reportSections : null;
+  base.compSummaryOnly = !!data.compSummaryOnly;
   /* Anything an assessor edits that belongs to the file rather than to
      the browser has to be carried here, or it is silently discarded on
      the next open. The hazard list, the measures list and the section
@@ -4110,6 +4112,10 @@ function hazardByUid(u) {
    plumbing, and is kept apart from hazards only by its kind. It is never
    scored and never raises a risk row or a finding. */
 function isCompliance(h) { return !!h && h.kind === 'compliance'; }
+/* A record documented as compliance, recognised by its reference rather
+   than its kind, so an ordinary observation numbered COMP is treated the
+   same as one made with the compliance button. */
+function isCompRef(h) { return !!h && /^COMP/i.test(String(h.id || '')); }
 function complianceItems() { return (P.hazards || []).filter(isCompliance); }
 function hazardsOnly() { return (P.hazards || []).filter(function (h) { return !isCompliance(h); }); }
 function firstLine(t) {
@@ -9857,6 +9863,25 @@ function renderReportPicker() {
   if (!host) return;
   var sel = reportSelection();
 
+  /* COMP items can run to dozens on a line with a lot of guarding that
+     was found correct. Documenting each one is the point, but the full
+     detail block for every one makes the report long. This prints them
+     as a summary row only, with the detail left out. */
+  var hasComp = (P.hazards || []).some(isCompRef);
+  var compToggle = null;
+  if (hasComp) {
+    var compCb = el('input', { type: 'checkbox' });
+    compCb.checked = !!P.compSummaryOnly;
+    compCb.addEventListener('change', function () {
+      P.compSummaryOnly = compCb.checked;
+      commit(compCb.checked ? 'COMP items set to summary only in the report' : 'COMP items show full detail in the report');
+    });
+    compToggle = el('label', { cls: 'chkrow noprint', style: { margin: '0 0 10px' } }, [
+      compCb,
+      el('span', { text: 'Compliance (COMP) items: show the summary row only, hide the detail blocks' })
+    ]);
+  }
+
   var presetSel = el('select', { cls: 'inp' });
   var match = reportPresetMatch();
   presetSel.appendChild(el('option', { value: '', text: match ? 'Custom selection' : 'Custom selection', selected: !match }));
@@ -10026,8 +10051,9 @@ function renderReportPicker() {
         ]),
         el('span', { cls: 'hint', style: { marginLeft: 'auto' }, text: sel.length + ' of ' + REPORT_SECTIONS.length + ' sections. Numbering follows what is included.' + (renamedSectionCount() ? '  ' + renamedSectionCount() + ' renamed.' : '') })
       ]),
+      compToggle,
       boxes
-    ])
+    ].filter(Boolean))
   ]);
 }
 
@@ -10201,7 +10227,9 @@ function renderReport() {
     ], hz);
     doc.appendChild(el('div', { cls: 'tw' }, [built.table]));
 
+    var hiddenComp = 0;
     hz.forEach(function (h) {
+      if (P.compSummaryOnly && isCompRef(h)) { hiddenComp += 1; return; }
       var block = el('section', { cls: 'recblock' });
       block.appendChild(el('h4', { text: hazardLabel(h) }));
       var facts = [
@@ -10221,6 +10249,9 @@ function renderReport() {
       else { block.appendChild(el('p', { cls: 'hint', text: 'No photograph was recorded for this observation.' })); }
       doc.appendChild(block);
     });
+    if (hiddenComp) {
+      doc.appendChild(el('p', { cls: 'wrap muted', text: 'Detail for ' + hiddenComp + ' item' + (hiddenComp === 1 ? '' : 's') + ' documented as in compliance is shown in the summary above only.' }));
+    }
   });
 
   sec('compliance', function (H) {
@@ -10243,6 +10274,10 @@ function renderReport() {
     ], items);
     doc.appendChild(el('div', { cls: 'tw' }, [built.table]));
 
+    if (P.compSummaryOnly) {
+      doc.appendChild(el('p', { cls: 'wrap muted', text: 'Detail is shown in the summary above only.' }));
+      return;
+    }
     items.forEach(function (h) {
       var block = el('section', { cls: 'recblock' });
       block.appendChild(el('h4', { text: hazardLabel(h) }));

@@ -234,13 +234,33 @@ dialog .dt td,dialog .dt th{word-break:break-word}
 .marklayer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .markstage{position:relative;display:inline-block;max-width:100%;line-height:0;touch-action:none;cursor:crosshair;background:#111;border:1px solid var(--rule)}
 .markstage>img{display:block;max-width:100%;max-height:56vh}
+/* The zoom frame. The stage keeps its own size, so every coordinate in
+   the editor stays a fraction of the picture whatever the zoom is; the
+   frame around it scrolls when the picture grows past the window. */
+.markzoom{overflow:auto;max-height:60vh;border:1px solid var(--rule-2);background:var(--panel-2);padding:2px}
+.markzoom.z1{overflow:visible;max-height:none;border:0;background:none;padding:0}
 .markghost{position:absolute;border:2px dashed;border-radius:50%;pointer-events:none}
+.markghost.rect{border-radius:0}
 
 /* ---------- Handles on the selected mark ----------
    Positioned in the stage's own pixels, so they stay square whatever
    shape the photograph is. They never take pointer events: the stage
    hit tests their positions itself, which keeps one gesture handler in
    charge of drawing, moving and resizing. */
+/* Rolled-up cards. The header stays, everything under it is put away.
+   This is how the screen is arranged at this moment and not anything
+   about the machine, so it is never written to the file, and it never
+   affects what prints. */
+.card.shut{padding-bottom:10px}
+.card.shut>.cardbody,.subcard.shut>.cardbody{display:none}
+.cardfold{min-width:74px}
+table.dt tr.shut .foldaway{display:none}
+@media print{.card>.cardbody,.subcard>.cardbody,table.dt tr .foldaway{display:block!important}
+  table.dt tr .foldaway{display:revert!important}}
+.stdlist{display:grid;gap:2px;max-height:300px;overflow:auto;border:1px solid var(--rule-2);padding:7px 9px;background:var(--panel)}
+.stdline{display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.45;padding:2px 0;cursor:pointer}
+.stdline input{margin-top:2px;flex:0 0 auto}
+.stdline:hover{background:var(--panel-2)}
 .markhandles{position:absolute;inset:0;pointer-events:none}
 .mkh{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;
   background:var(--panel);border:2px solid var(--ink);border-radius:2px;
@@ -344,8 +364,8 @@ body.nohints .f .hint{display:none}
 .stat.good{border-top-color:var(--ok)} .stat.good .v{color:var(--ok)}
 
 /* ---------- Forms ---------- */
-label.f{display:block;margin-bottom:10px}
-label.f>span{display:block;font:600 9.5px/1 var(--sans);letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-bottom:5px}
+label.f,div.f{display:block;margin-bottom:10px}
+label.f>span,.f>span.flab-plain{display:block;font:600 9.5px/1 var(--sans);letter-spacing:.11em;text-transform:uppercase;color:var(--ink-3);margin-bottom:5px}
 
 /* ---------- A field that is required, and one that is internal ----------
    Two states worth seeing without reading: a field the file cannot be
@@ -407,6 +427,14 @@ legend{font:600 9.5px/1 var(--sans);letter-spacing:.12em;text-transform:uppercas
 button.libitem{cursor:pointer}
 button.libitem:hover{border-color:var(--ink);background:var(--paper)}
 button.libitem:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+label.libitem{cursor:pointer;flex-direction:row;align-items:flex-start;gap:8px}
+label.libitem:hover{border-color:var(--ink);background:var(--paper)}
+label.libitem.on{border-color:var(--focus);background:var(--panel-2)}
+label.libitem>input{margin-top:3px;flex:0 0 auto}
+label.libitem>.libbody{display:flex;flex-direction:column;gap:2px;min-width:0}
+.pickbar{position:sticky;bottom:0;z-index:2;background:var(--panel);
+  border-top:1px solid var(--rule);padding:9px 0 2px;margin-top:10px;
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .libitem .libname{font-weight:600;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
 .libitem .hint{margin:0;font-size:11.5px}
 .libwrap.edit{grid-template-columns:1fr}
@@ -453,8 +481,8 @@ table.dt td.num,table.dt th.num{font-family:var(--mono);white-space:nowrap}
 table.dt td.num>div,table.dt td.num>p,table.dt td.num .hint{white-space:normal;font-family:var(--sans)}
 table.dt td.num>div:first-child{font-family:var(--mono)}
 table.dt.risk{table-layout:fixed;min-width:1000px}
-table.dt.risk col.c-id{width:66px}
-table.dt.risk col.c-task{width:15%}
+table.dt.risk col.c-id{width:92px}
+table.dt.risk col.c-task{width:13%}
 table.dt.risk col.c-haz{width:19%}
 table.dt.risk col.c-init{width:88px}
 table.dt.risk col.c-meas{width:24%}
@@ -478,9 +506,15 @@ table.dt.ratbl .chip,table.dt.ratbl .rl{white-space:normal;display:inline-block;
   max-width:100%;line-height:1.35}
 /* a row reference is read as one token, so it never splits */
 table.dt.ratbl td.num{overflow-wrap:normal;word-break:keep-all}
+/* A risk level wraps at a space and never inside a word. VERY HIGH
+   over two lines is still two words; NEGLIGIBLE over two lines is not
+   a word at all. The column below is sized to hold the longest level,
+   so the only break that can happen is the one at the space. */
+table.dt.ratbl .rl,table.dt .rl{white-space:normal;max-width:none;overflow-wrap:normal;word-break:keep-all;hyphens:none}
 table.dt.risk th{white-space:normal}
 table.dt.risk .chip{white-space:normal;display:inline-block;max-width:100%;line-height:1.35}
 .empty{padding:22px 14px;text-align:center;color:var(--ink-3);font-size:13px}
+.doc .muted{color:var(--ink-3);font-style:italic}
 .rowacts{display:flex;gap:5px;flex-wrap:wrap}
 
 /* ---------- Chips ---------- */
@@ -490,6 +524,11 @@ table.dt.risk .chip{white-space:normal;display:inline-block;max-width:100%;line-
    word-break:break-word on its cells, which was splitting a status chip
    into "chec" and "k" when the column was a couple of pixels short */
 table.dt .chip{white-space:normal;word-break:keep-all;overflow-wrap:normal}
+/* Short tokens that read as one thing: a reference, a status, a
+   category and performance level pair. Broken over two lines they read
+   as two separate values. */
+table.dt .chip.nw{white-space:nowrap}
+table.dt td.nw,table.dt th.nw,.doc .dt td.nw{white-space:nowrap}
 .chip.tag{background:var(--panel-2);color:var(--ink-2);border-color:var(--rule-2)}
 .chip.ok{background:var(--ok-bg);color:var(--ok)}
 .chip.warn{background:var(--warn-bg);color:var(--warn)}
@@ -537,7 +576,7 @@ dialog::backdrop{background:rgba(10,14,18,.55)}
 .doc{background:var(--panel);border:1px solid var(--rule);padding:26px 30px}
 .doc h3{font:600 11px/1 var(--sans);letter-spacing:.15em;text-transform:uppercase;margin:24px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--rule)}
 .doc h3:first-child{margin-top:0}
-.doc .kv{display:grid;grid-template-columns:170px 1fr;gap:3px 12px;font-size:12.5px;margin-bottom:3px}
+.doc .kv{display:grid;grid-template-columns:170px 1fr;gap:3px 12px;font-size:12.5px;margin-bottom:3px;align-items:center}
 .doc .kv dt{font-weight:600;color:var(--ink-3)}
 .doc .kv dd{margin:0;font-family:var(--mono)}
 .sigrow{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:26px}
@@ -631,7 +670,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
   .tw{overflow:visible!important;border:0;background:#fff}
 
   /* readable, and dark enough to photocopy */
-  .doc .kv{grid-template-columns:150px 1fr;font-size:9.2pt;margin-bottom:2px}
+  .doc .kv{grid-template-columns:150px 1fr;font-size:9.2pt;margin-bottom:2px;align-items:center}
   .doc .kv dt{color:#000;font-weight:600}
   .doc .kv dd{color:#111;font-family:var(--mono);font-size:8.8pt}
   .wrap,.doc p{color:#111}
@@ -656,9 +695,20 @@ table.mx select{padding:3px 5px;font-size:11.5px}
   /* break-word, never anywhere: `anywhere` splits "Mechanical" into
      "Mechan / ical" the moment a column is tight, which is how the
      first draft of this report read */
+  /* Hyphenation on top of it, because a column narrower than
+     "Troubleshooting" has to break the word somewhere, and a break
+     carrying a hyphen reads as a word continued rather than as a
+     typing error. The browser breaks at a syllable; break-word stays
+     as the fallback for anything it will not hyphenate. A reference,
+     a part number and anything else set in the mono face are never
+     hyphenated: a hyphen inside RA-001 would read as part of it. */
   table.dt td{padding:4pt 5pt;border-bottom:.5pt solid var(--rule-2);color:#111;
-    vertical-align:top;word-break:normal;overflow-wrap:break-word;hyphens:none}
+    vertical-align:top;word-break:normal;overflow-wrap:break-word;
+    -webkit-hyphens:auto;hyphens:auto}
+  table.dt td.num,table.dt td.mono,table.dt td .mono,table.dt td .chip,table.dt td .rl{
+    -webkit-hyphens:none;hyphens:none}
   table.dt th{word-break:normal;overflow-wrap:break-word}
+  table.dt td.nw,table.dt th.nw{white-space:nowrap}
   table.dt caption{font-weight:700;color:#000;text-align:left;padding:4pt 0;font-size:9pt}
   tr,.stat,.sigrow{break-inside:avoid;page-break-inside:avoid}
 
@@ -762,7 +812,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
           <label class="f"><span>Assessment team and roles</span><textarea id="p_team" data-meta="team" placeholder="Name, role, qualification. One per line."></textarea></label>
           <label class="f internal"><span>Reviewer comments<span class="reqmark">  (excluded from the report)</span></span><textarea id="p_review" data-meta="reviewNotes" placeholder="Questions for the reviewer, things to check on the next visit, anything that should not reach the client."></textarea></label>
           <label class="f"><span>Scope, boundaries and limits of the assessment</span><textarea id="p_scope" data-meta="scope" placeholder="Physical boundaries, interfaces to adjacent equipment, lifecycle phases covered, what is explicitly excluded."></textarea></label>
-          <label class="f"><span>Standards and documents applied</span><textarea id="p_stds" data-meta="standards"></textarea></label>
+          <div class="f"><span class="flab-plain" id="stdsLabel">Standards and documents applied</span><div id="stdsHost"></div></div>
           <label class="f"><span>Assumptions and limitations</span><textarea id="p_assume" data-meta="assumptions"></textarea></label>
         </div>
         <h2 class="sec">Photographs of the machine and cell</h2>
@@ -3638,7 +3688,7 @@ var HAZARD_LIBRARY = [
   { k: 'HA045', cat: 'Environmental', label: "Moving or overturning equipment nearby", origin: "Mobile plant, shared aisle, unsecured equipment", harm: "Impact, crushing, being run over", src: 'ANSI/RIA R15.306 assessment worksheet' },
   { k: 'HA046', cat: 'Environmental', label: "Seismic event or lightning", origin: "Site location and exposure", harm: "Impact, crushing, fire", src: 'ANSI/RIA R15.306 assessment worksheet' },
   { k: 'HA047', cat: 'Environmental', label: "High humidity", origin: "Process steam, washdown, climate", harm: "Shock through degraded insulation, slipping, corrosion of a protective measure", src: 'ANSI/RIA R15.306 assessment worksheet' },
-  { k: 'HA048', cat: 'Ergonomic', label: "Control or display that is hard to read or understand", origin: "Unlabelled control, foreign language, ambiguous symbol", harm: "Any consequence as a result of human error", src: 'ANSI/RIA R15.306 assessment worksheet' },
+  { k: 'HA048', cat: 'Ergonomic', label: "Control or display that is hard to read or understand", origin: "Unlabeled control, foreign language, ambiguous symbol", harm: "Any consequence as a result of human error", src: 'ANSI/RIA R15.306 assessment worksheet' },
   { k: 'HA049', cat: 'Ergonomic', label: "Language or communication difficulty", origin: "Instructions or warnings not in the reader\u2019s language", harm: "Any consequence as a result of a warning not being understood", src: 'ANSI/RIA R15.306 assessment worksheet' },
   { k: 'HA050', cat: 'Ergonomic', label: "Poor access or clearance at the work position", origin: "Machine layout, guarding that obstructs the task", harm: "Musculoskeletal disorder, and any consequence of working in an awkward position", src: 'ANSI/RIA R15.306 assessment worksheet' },
   { k: 'HA051', cat: 'Thermal', label: "Hot work environment", origin: "Process heat, poor ventilation, protective clothing", harm: "Dehydration, loss of awareness, heat stroke", src: 'ANSI/RIA R15.306 assessment worksheet' },
@@ -5285,7 +5335,7 @@ function vvCoverage(sfId) {
 /* ---------- Gap analysis ---------- */
 function findings() {
   var out = [];
-  function add(sev, where, id, msg, ref, field) {
+  function add(sev, where, id, msg, ref, field, grp) {
     /* A device that came from a manufacturer library carries whatever
        the manufacturer published. Completeness findings against it are
        noise, and noise trains people to ignore the panel. */
@@ -5296,7 +5346,7 @@ function findings() {
        rather than news. Muting sets them aside; it never hides them
        from the report, which says plainly that they were muted. */
     if (P.muteField && isFieldFinding({ ref: ref, msg: msg })) { return; }
-    out.push({ sev: sev, where: where, id: id, msg: msg, ref: ref || '', field: field || '' });
+    out.push({ sev: sev, where: where, id: id, msg: msg, ref: ref || '', field: field || '', grp: grp || '' });
   }
 
   P.risks.forEach(function (r) {
@@ -5433,7 +5483,7 @@ function findings() {
       var st = fieldStateForDevice(d.uid);
       var dl2 = d.tag || d.name || 'a device';
       if (st.k === 'none' && anySf && sfsUsingDevice(d.uid).length) {
-        add('warn', 'dev', d.uid, dl2 + ' has no field procedure. A performance level determined on paper is not evidence that the installed device does what the paper says.', 'field verification');
+        add('warn', 'dev', d.uid, dl2 + ' has no field procedure. A performance level determined from schematics and datasheets is not evidence that the installed device performs as determined.', 'field verification');
       }
       if (st.k === 'fail') {
         add('bad', 'dev', d.uid, dl2 + ' failed field verification. The installation does not do what the analysis says it does, so every performance level and category resting on it is unsupported.', 'field verification');
@@ -5448,10 +5498,10 @@ function findings() {
       }
       var ts = fieldTestState(t);
       if (ts.k === 'empty') {
-        add('warn', 'field', t.uid, tl + ' has no steps, so it proves nothing.', 'field verification');
+        add('warn', 'field', t.uid, tl + ' has no steps recorded, so it establishes nothing about the installation.', 'field verification');
       }
       if (ts.k === 'pass' && !String(t.testedBy || '').trim()) {
-        add('warn', 'field', t.uid, tl + ' has passed with nobody named against it. A verdict with no name behind it cannot be questioned later.', '4.6');
+        add('warn', 'field', t.uid, tl + ' is recorded as passed with no tester named. A verdict with no name against it cannot be reviewed.', '4.6');
       }
       (t.steps || []).forEach(function (stp, i) {
         if (stp.verdict === 'Fail' && !String(stp.result || '').trim()) {
@@ -5477,15 +5527,25 @@ function findings() {
       add('warn', 'hz', h.uid, lbl + ' is still open with no recommendation recorded.', '', 'recommendation');
     }
     if (hazardOpen(h) && h.priority === 'Immediate' && !h.owner) {
-      add('bad', 'hz', h.uid, lbl + ' is marked immediate and has nobody named against the action.', '', 'owner');
+      add('bad', 'hz', h.uid, lbl + ' is marked immediate with no action owner named.', '', 'owner');
     }
     if (h.status === 'Accepted as is' && !String(h.notes || '').trim()) {
       add('warn', 'hz', h.uid, lbl + ' is accepted as is with no note giving the reason. Accepting a hazard is a decision, and a decision needs its basis written down.', '', 'notes');
     }
-    if (!hazardRisks(h).length && h.status !== 'Not a finding') {
-      add('warn', 'hz', h.uid, lbl + ' has no risk assessment row raised from it, so it has never been scored. Raise a row, or record it as not a finding.', '6.7 step 1');
-    }
   });
+  (function () {
+    /* One line for the set. Nine observations each getting the same
+       sentence about the same thing is nine lines a reader has to read
+       before finding out they all say one thing. */
+    var un = hazardsUnscored();
+    if (!un.length) return;
+    var refs = un.map(function (h) { return h.id || h.title || 'unreferenced'; }).join(', ');
+    add('warn', 'hz', un.length === 1 ? un[0].uid : '',
+      un.length === 1
+        ? (hazardLabel(un[0]) + ' has no risk assessment row raised from it, so it has never been scored. Raise a row, or set the status to Not a finding or Closed.')
+        : (un.length + ' observations have no risk assessment row raised from them, so they have never been scored: ' + refs + '. Raise a row against each, or set the status to Not a finding or Closed.'),
+      '6.7 step 1', '', 'unscored');
+  }());
   (function () {
     /* A photograph is what lets someone check an observation months
        later. Worth saying once: on a walkdown of any size, one finding
@@ -5552,10 +5612,10 @@ function findings() {
     }
     checklist().forEach(function (c) {
       if (c.ans === 'No' && !String(c.note || '').trim()) {
-        add('warn', 'check', c.k, 'The checklist records "No" with no note. A failed item should say what was seen, so the corrective action can be written against it.', '');
+        add('warn', 'check', c.k, 'The safeguarding checklist records "No" against "' + c.q + '" with no note. A failed item should say what was seen, so the corrective action can be written against it.', '');
       }
       if (c.ans === 'N/A' && !String(c.note || '').trim()) {
-        add('warn', 'check', c.k, 'The checklist records "N/A" with no note. State why the item does not apply to this machine.', '');
+        add('warn', 'check', c.k, 'The safeguarding checklist records "N/A" against "' + c.q + '" with no note. State why the item does not apply to this machine.', '');
       }
       /* Not seen is an open item, not an excused one: the question
          applies and the answer is still outstanding. It says so even
@@ -5684,7 +5744,7 @@ function findings() {
     }
 
     if (d.prov === 'OBSERVED' && !String(d.provBy || '').trim()) {
-      add('warn', 'dev', d.uid, dlbl + ' is marked field verified but nobody is named against the observation.', 'provenance', 'provBy');
+      add('warn', 'dev', d.uid, dlbl + ' is marked field verified with no observer named.', 'provenance', 'provBy');
     }
   });
 
@@ -5758,7 +5818,7 @@ function findings() {
     }());
 
     if (!(sf.images || []).length && !String(sf.drawingRef || '').trim()) {
-      add('warn', 'sf', sf.id, lbl + ' has no simplified circuit attached and no drawing reference. A reviewer has nothing to hold against the panel.', '', 'drawingRef');
+      add('warn', 'sf', sf.id, lbl + ' has no simplified circuit attached and no drawing reference. Neither provides a basis for reviewing the installed circuit.', '', 'drawingRef');
     }
 
     /* ISO 13855. A running-on time with no distance against it is half a
@@ -6028,12 +6088,25 @@ function markLine(k) {
   for (var i = 0; i < MARK_LINES.length; i += 1) { if (MARK_LINES[i].k === k) return MARK_LINES[i]; }
   return MARK_LINES[0];
 }
+/* The outline. A ring reads as "look here"; a box reads as "this
+   whole thing", which is what a panel, a guard section or a label
+   needs. Both are held as a center and two radii, so one set of
+   handles, one hit test and one clamp serve both. */
+var MARK_SHAPES = [
+  { k: 'ellipse', label: 'Oval' },
+  { k: 'rect', label: 'Rectangle' }
+];
+function markShape(k) {
+  for (var i = 0; i < MARK_SHAPES.length; i += 1) { if (MARK_SHAPES[i].k === k) return MARK_SHAPES[i]; }
+  return MARK_SHAPES[0];
+}
 /* cx, cy, rx and ry are fractions of the image, 0 to 1 */
-function newMark(kind, cx, cy, rx, ry, line) {
+function newMark(kind, cx, cy, rx, ry, line, shape) {
   return {
     uid: uid('mk'), kind: kind || 'problem', label: '',
     cx: cx, cy: cy, rx: rx, ry: ry,
-    line: markLine(line).k
+    line: markLine(line).k,
+    shape: markShape(shape).k
   };
 }
 /* The four points a resize handle sits on, in fractions of the image.
@@ -6046,11 +6119,13 @@ function markHandles(m) {
     { h: 'sw', x: m.cx - m.rx, y: m.cy + m.ry }
   ];
 }
-/* Is this point inside the ring? Normalized distance from the center,
-   so it is the ellipse that is tested and not its bounding box. */
+/* Is this point inside the mark? A box is tested against its edges and
+   a ring against the normalized distance from its center, so it is the
+   ellipse that is tested and not its bounding box. */
 function markHit(m, x, y) {
   var rx = Math.max(m.rx, 0.004), ry = Math.max(m.ry, 0.004);
   var dx = (x - m.cx) / rx, dy = (y - m.cy) / ry;
+  if (markShape(m.shape).k === 'rect') { return Math.abs(dx) <= 1 && Math.abs(dy) <= 1; }
   return (dx * dx + dy * dy) <= 1;
 }
 /* The two edits a drag can make, as functions rather than arithmetic
@@ -6117,6 +6192,39 @@ function markLayer(img, opts) {
   svg.setAttribute('class', 'marklayer');
   marks.forEach(function (m) {
     var d = markKind(m.kind);
+    var isRect = markShape(m.shape).k === 'rect';
+    /* One geometry, two outlines. A box is written as a rect from the
+       same center and radii the oval uses, so moving, resizing and
+       hit testing are the same arithmetic for both. */
+    function outline(fill, stroke, base) {
+      var rx = Math.max(m.rx, 0.005), ry = Math.max(m.ry, 0.005);
+      var e = document.createElementNS('http://www.w3.org/2000/svg', isRect ? 'rect' : 'ellipse');
+      if (isRect) {
+        e.setAttribute('x', String((m.cx - rx) * 1000));
+        e.setAttribute('y', String((m.cy - ry) * 1000));
+        e.setAttribute('width', String(rx * 2000));
+        e.setAttribute('height', String(ry * 2000));
+      } else {
+        e.setAttribute('cx', String(m.cx * 1000));
+        e.setAttribute('cy', String(m.cy * 1000));
+        e.setAttribute('rx', String(rx * 1000));
+        e.setAttribute('ry', String(ry * 1000));
+      }
+      e.setAttribute('fill', fill);
+      if (fill !== 'none') { e.setAttribute('fill-opacity', '0.07'); }
+      e.setAttribute('stroke', stroke);
+      if (stroke !== 'none') {
+        /* The width is a screen measurement, not a picture one, so the
+           same number drawn on a 170 pixel tile and on a full width
+           view gives two different looking lines. The base is recorded
+           here and fitMarkStroke scales it to whatever the layer has
+           actually been laid out at. */
+        e.setAttribute('data-sw', String(base));
+        e.setAttribute('stroke-width', String(base));
+        e.setAttribute('vector-effect', 'non-scaling-stroke');
+      }
+      return e;
+    }
     /* a white backing stroke, because a colored line on a photograph
        of a dark panel is invisible without one */
     /* The dash belongs to the mark now, so selection cannot be shown
@@ -6125,32 +6233,19 @@ function markLayer(img, opts) {
        translucent wash inside the ring, and by the handles the editor
        puts on top. */
     if (opts.selected === m.uid) {
-      var sel = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
-      sel.setAttribute('cx', String(m.cx * 1000));
-      sel.setAttribute('cy', String(m.cy * 1000));
-      sel.setAttribute('rx', String(Math.max(m.rx, 0.005) * 1000));
-      sel.setAttribute('ry', String(Math.max(m.ry, 0.005) * 1000));
-      sel.setAttribute('fill', d.color);
       /* A hint, not a veil: the point of a mark is to show what is
          underneath it, so the wash stays light enough to read through. */
-      sel.setAttribute('fill-opacity', '0.07');
-      sel.setAttribute('stroke', 'none');
-      svg.appendChild(sel);
+      svg.appendChild(outline(d.color, 'none', 0));
     }
     ['#ffffff', d.color].forEach(function (col, i) {
-      var e = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
-      e.setAttribute('cx', String(m.cx * 1000));
-      e.setAttribute('cy', String(m.cy * 1000));
-      e.setAttribute('rx', String(Math.max(m.rx, 0.005) * 1000));
-      e.setAttribute('ry', String(Math.max(m.ry, 0.005) * 1000));
-      e.setAttribute('fill', 'none');
-      e.setAttribute('stroke', col);
-      e.setAttribute('stroke-width', i === 0 ? '10' : '6');
-      e.setAttribute('vector-effect', 'non-scaling-stroke');
+      var e = outline('none', col, i === 0 ? 10 : 6);
       /* Only the colored stroke is dashed. The white backing stays
          continuous, so the ring still reads as a ring against a light
          background instead of breaking up into unrelated marks. */
-      if (i === 1 && m.line === 'dashed') { e.setAttribute('stroke-dasharray', '20 14'); }
+      if (i === 1 && m.line === 'dashed') {
+        e.setAttribute('data-dash', '20 14');
+        e.setAttribute('stroke-dasharray', '20 14');
+      }
       svg.appendChild(e);
     });
     if (m.label) {
@@ -6168,7 +6263,49 @@ function markLayer(img, opts) {
       svg.appendChild(t);
     }
   });
+  watchMarkStroke(svg);
   return svg;
+}
+
+/* The width a mark was drawn to look right at. A line that is six
+   screen pixels wide reads as a note on a full width photograph and as
+   a blot on a thumbnail of the same picture, which is why the stroke is
+   scaled to the width the layer ends up with rather than fixed. */
+var MARK_REF_W = 760;
+function markStrokeRatio(w) {
+  if (!w) return 1;
+  return Math.min(2.2, Math.max(0.3, w / MARK_REF_W));
+}
+function fitMarkStroke(svg) {
+  if (!svg) return;
+  var w = svg.clientWidth || (svg.getBoundingClientRect ? svg.getBoundingClientRect().width : 0);
+  if (!w) return;
+  var k = markStrokeRatio(w);
+  Array.prototype.forEach.call(svg.querySelectorAll('[data-sw]'), function (n) {
+    var base = parseFloat(n.getAttribute('data-sw')) || 0;
+    n.setAttribute('stroke-width', String(Math.max(0.6, base * k)));
+    var dash = n.getAttribute('data-dash');
+    if (dash) {
+      n.setAttribute('stroke-dasharray', dash.split(' ').map(function (v) {
+        return String(Math.max(1, parseFloat(v) * k));
+      }).join(' '));
+    }
+  });
+}
+/* Fit it now in case it is already laid out, and again whenever the
+   box it sits in changes: a tile in a grid that reflows, a photograph
+   opened in the lightbox, the markup editor zoomed. */
+function watchMarkStroke(svg) {
+  fitMarkStroke(svg);
+  if (typeof requestAnimationFrame === 'function') {
+    requestAnimationFrame(function () { fitMarkStroke(svg); });
+  }
+  if (typeof ResizeObserver === 'function') {
+    try {
+      var ro = new ResizeObserver(function () { fitMarkStroke(svg); });
+      ro.observe(svg);
+    } catch (e) { /* older engine: the two passes above carry it */ }
+  }
 }
 /* The key to the colors, printed wherever marked photographs are. */
 function markLegend(images) {
@@ -6332,10 +6469,31 @@ function gallery(list, opts) {
         });
       }
 
-      var input = el('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true });
+      /* Not the hidden attribute. An input with display none is a file
+         picker several engines refuse to open from script, which is how
+         an add photo button comes to do nothing at all. Clipped to a
+         pixel it is still laid out, so the picker opens everywhere. */
+      var input = el('input', {
+        type: 'file', accept: 'image/*', multiple: true,
+        'aria-hidden': 'true', tabindex: '-1',
+        style: { position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px', border: 0, opacity: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)', pointerEvents: 'none' }
+      });
       input.addEventListener('change', function (ev) {
         addFiles(ev.target.files);
         ev.target.value = '';
+      });
+      /* showPicker is the supported way to ask for the dialog and says
+         plainly when it is refused; click is the fallback. */
+      function openPicker() {
+        try {
+          if (typeof input.showPicker === 'function') { input.showPicker(); return; }
+        } catch (e) { /* needs a user gesture, or not supported: fall through */ }
+        try { input.click(); } catch (e2) { say('This browser would not open the file picker. Drag the photos onto the box instead, or paste them.'); }
+      }
+      var pickBtn = el('button', {
+        cls: 'btn ghost sm noprint', type: 'button',
+        text: list.length ? 'Add more photos' : 'Add photos',
+        on: { click: function (ev) { ev.stopPropagation(); openPicker(); } }
       });
       var drop = el('div', {
         cls: 'noprint dropzone',
@@ -6344,7 +6502,8 @@ function gallery(list, opts) {
         role: 'button',
         style: { marginTop: list.length ? '10px' : '0', border: '1px dashed var(--rule)', padding: '14px', textAlign: 'center', fontSize: '12.5px', color: 'var(--ink-3)', cursor: 'pointer' }
       }, [
-        el('span', { text: list.length ? 'Add more photos, drop them here, or paste a screenshot' : 'Add photos, drop them here, or paste a screenshot' })
+        el('div', {}, [pickBtn]),
+        el('span', { style: { display: 'block', marginTop: '6px' }, text: 'or drop them here, or paste a screenshot' })
       ]);
       /* The zone carries its own intake, so the document level paste
          handler has something to hand the files to. */
@@ -6362,9 +6521,12 @@ function gallery(list, opts) {
         addFiles(files, true);
       });
       drop.addEventListener('keydown', function (ev) {
-        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); input.click(); }
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openPicker(); }
       });
-      drop.addEventListener('click', function () { input.click(); });
+      drop.addEventListener('click', function (ev) {
+        if (ev.target === pickBtn || (pickBtn.contains && pickBtn.contains(ev.target))) return;
+        openPicker();
+      });
       drop.addEventListener('dragover', function (ev) { ev.preventDefault(); drop.style.borderColor = 'var(--focus)'; });
       drop.addEventListener('dragleave', function () { drop.style.borderColor = 'var(--rule)'; });
       drop.addEventListener('drop', function (ev) {
@@ -6396,11 +6558,44 @@ function markupForm(img, onDone) {
   var marks = JSON.parse(JSON.stringify(imageMarks(img)));
   var kind = 'problem';
   var lineKind = 'solid';
+  var shapeKind = 'ellipse';
   var selected = '';
 
   var stage = el('div', { cls: 'markstage' });
   var pic = el('img', { src: img.data, alt: img.caption || img.name });
   stage.appendChild(pic);
+  /* The picture is enlarged by giving the stage a width and letting the
+     frame around it scroll. Everything in the editor is measured from
+     the picture's own box, so nothing else has to know about the zoom:
+     a mark put down at four times size lands in the same place on the
+     printed page as one put down at fit. */
+  var zoomWrap = el('div', { cls: 'markzoom z1' }, [stage]);
+  var ZOOMS = [0.5, 0.75, 1, 1.5, 2, 3];
+  var zoomAt = 2;
+  var zoomLabel = el('span', { cls: 'hint', style: { minWidth: '52px', textAlign: 'center' } });
+  function applyZoom() {
+    var z = ZOOMS[zoomAt];
+    zoomLabel.textContent = Math.round(z * 100) + ' %';
+    zoomWrap.classList.toggle('z1', z === 1);
+    if (z === 1) {
+      stage.style.width = '';
+      stage.style.maxWidth = '';
+      pic.style.width = '';
+      pic.style.maxHeight = '';
+    } else {
+      var avail = zoomWrap.clientWidth || 600;
+      stage.style.width = Math.round(avail * z) + 'px';
+      stage.style.maxWidth = 'none';
+      pic.style.width = '100%';
+      pic.style.maxHeight = 'none';
+    }
+    if (layer) { fitMarkStroke(layer); }
+    drawHandles();
+  }
+  function stepZoom(d) {
+    zoomAt = Math.min(ZOOMS.length - 1, Math.max(0, zoomAt + d));
+    applyZoom();
+  }
   var layer = null;
   var listHost = el('div');
 
@@ -6476,6 +6671,13 @@ function markupForm(img, onDone) {
         lsel.appendChild(o);
       });
       lsel.addEventListener('change', function () { m.line = lsel.value; draw(); });
+      var ssel = el('select', { cls: 'inp' });
+      MARK_SHAPES.forEach(function (x) {
+        var o = el('option', { value: x.k, text: x.label });
+        if (x.k === markShape(m.shape).k) { o.selected = true; }
+        ssel.appendChild(o);
+      });
+      ssel.addEventListener('change', function () { m.shape = ssel.value; draw(); });
       kids.push(el('div', { cls: 'subcard' + (selected === m.uid ? ' sel' : '') }, [
         el('div', { cls: 'cardhead' }, [
           el('div', {}, [
@@ -6494,7 +6696,8 @@ function markupForm(img, onDone) {
             }, 'danger')
           ])
         ]),
-        row('g3', [ksel, lsel, lab])
+        row('g3', [ksel, ssel, lsel]),
+        lab
       ]));
     });
     put(listHost, kids);
@@ -6564,7 +6767,10 @@ function markupForm(img, onDone) {
       return;
     }
     mode = 'draw'; start = p; act = null; origin = null;
-    ghost = el('div', { cls: 'markghost', style: { borderColor: markKind(kind).color } });
+    ghost = el('div', {
+      cls: 'markghost' + (shapeKind === 'rect' ? ' rect' : ''),
+      style: { borderColor: markKind(kind).color }
+    });
     stage.appendChild(ghost);
   });
 
@@ -6604,7 +6810,7 @@ function markupForm(img, onDone) {
     /* a click rather than a drag: put down a ring of a usable size
        where they clicked, so the tool is never silent */
     if (rx < 0.012 || ry < 0.012) { rx = 0.09; ry = 0.09; }
-    var m = clampMark(newMark(kind, began.x, began.y, rx, ry, lineKind));
+    var m = clampMark(newMark(kind, began.x, began.y, rx, ry, lineKind, shapeKind));
     marks.push(m);
     selected = m.uid;
     draw();
@@ -6655,11 +6861,39 @@ function markupForm(img, onDone) {
     return b;
   }));
 
+  var shapePicker = el('div', { cls: 'btnbar' }, MARK_SHAPES.map(function (d) {
+    var b = el('button', {
+      cls: 'btn ghost sm markpick' + (d.k === shapeKind ? ' on' : ''), type: 'button',
+      'data-shape': d.k, text: d.label
+    });
+    b.addEventListener('click', function () {
+      shapeKind = d.k;
+      Array.prototype.forEach.call(shapePicker.querySelectorAll('.markpick'), function (n) {
+        n.classList.toggle('on', n.getAttribute('data-shape') === shapeKind);
+      });
+      /* as with the color and the line, a shape chosen while something
+         is selected applies to it */
+      if (selected) {
+        marks.forEach(function (m) { if (m.uid === selected) { m.shape = shapeKind; } });
+        draw();
+      }
+    });
+    return b;
+  }));
+
+  var zoomBar = el('div', { cls: 'btnbar' }, [
+    el('button', { cls: 'btn ghost sm', type: 'button', text: '\u2212', title: 'Contract', on: { click: function () { stepZoom(-1); } } }),
+    zoomLabel,
+    el('button', { cls: 'btn ghost sm', type: 'button', text: '+', title: 'Expand', on: { click: function () { stepZoom(1); } } }),
+    el('button', { cls: 'btn ghost sm', type: 'button', text: 'Fit', on: { click: function () { zoomAt = 2; applyZoom(); } } })
+  ]);
+
   var body = [
-    el('p', { cls: 'hint', text: 'Drag a ring around what the reader should look at, or click once for a ring of a standard size. Drag a ring to move it, or drag a corner handle to resize it. Marks sit on top of the photograph rather than in it, so the original is never altered.' }),
+    el('p', { cls: 'hint', text: 'Drag a ring or a box around what the reader should look at, or click once for one of a standard size. Drag it to move it, or drag a corner handle to resize it. Expand the picture to place a small mark accurately. Marks sit on top of the photograph rather than in it, so the original is never altered.' }),
     picker,
-    linePicker,
-    stage,
+    row('g2', [shapePicker, linePicker]),
+    zoomBar,
+    zoomWrap,
     el('div', { cls: 'btnbar' }, [
       el('button', {
         cls: 'btn ghost sm', type: 'button', text: 'Remove all marks',
@@ -6670,6 +6904,8 @@ function markupForm(img, onDone) {
   ];
 
   draw();
+  applyZoom();
+  if (typeof requestAnimationFrame === 'function') { requestAnimationFrame(applyZoom); }
   openDlg('Mark up the photograph', body, function () {
     img.marks = marks;
     if (onDone) { onDone(); }
@@ -6888,7 +7124,7 @@ function roleGuess(rec) {
 }
 
 /* A publisher's "name" field is not always a name. Rockwell, for one,
-   carries the licence notice for the whole library in it, repeated on
+   carries the license notice for the whole library in it, repeated on
    every device. Anything long, multi-line or carrying a URL is prose
    rather than a label, so it is kept as a note and the part number
    becomes the name. */
@@ -7143,7 +7379,14 @@ function findingsSummary(list) {
 }
 
 function findingsBox(scope) {
-  var list = findings().filter(function (f) { return !scope || f.where === scope; });
+  var list = findings().filter(function (f) {
+    if (scope && f.where !== scope) return false;
+    /* The safety report view already carries a panel for the unscored
+       observations, with the two buttons that clear one. Repeating it
+       here in different words made the same point twice on one screen. */
+    if (scope === 'hz' && f.grp === 'unscored') return false;
+    return true;
+  });
   if (!list.length) {
     return el('div', { cls: 'notice ok' }, [el('strong', { text: 'No open findings' }), el('span', { text: 'Every check in this section passes against the data entered so far.' })]);
   }
@@ -7201,6 +7444,69 @@ function actBtn(label, fn, cls) {
   return el('button', { cls: 'btn ' + (cls || 'ghost') + ' sm noprint', type: 'button', text: label, on: { click: fn } });
 }
 
+/* ---------------------------------------------------------------------
+   Rolled up cards.
+
+   A walkdown of any size puts twenty observations on one screen, each
+   several hundred pixels tall, and finding the one you want means
+   scrolling past all of it. Rolling a card up leaves its header: the
+   reference, the title, the status and the controls, which is enough to
+   find it by and enough to act on it from.
+
+   Which cards are rolled up is how the screen is arranged at this
+   moment, not anything about the machine, so it is held in memory and
+   never written to the file. It also never affects the report: the
+   print rules put every body back.
+   --------------------------------------------------------------------- */
+var CARD_SHUT = {};
+function cardShut(key) { return !!CARD_SHUT[key]; }
+function setCardShut(key, shut) {
+  if (shut) { CARD_SHUT[key] = 1; } else { delete CARD_SHUT[key]; }
+}
+/* Called once a card is fully built, because the body is whatever ended
+   up below the header. */
+function collapsible(card, key) {
+  if (!card || !key) return card;
+  var head = card.firstChild;
+  if (!head || head.nodeType !== 1) return card;
+  var body = el('div', { cls: 'cardbody' });
+  while (head.nextSibling) { body.appendChild(head.nextSibling); }
+  card.appendChild(body);
+  var btn = el('button', {
+    cls: 'btn ghost sm cardfold noprint', type: 'button',
+    title: 'Roll this card up to its header, or open it again'
+  });
+  function apply() {
+    var shut = cardShut(key);
+    card.classList.toggle('shut', shut);
+    btn.textContent = shut ? 'Expand' : 'Collapse';
+    btn.setAttribute('aria-expanded', shut ? 'false' : 'true');
+  }
+  btn.addEventListener('click', function () { setCardShut(key, !cardShut(key)); apply(); });
+  var acts = head.querySelector ? head.querySelector('.rowacts') : null;
+  if (acts) { acts.insertBefore(btn, acts.firstChild); } else { head.appendChild(btn); }
+  apply();
+  return card;
+}
+/* One control for a whole list, because rolling twenty cards up one at
+   a time is the problem rather than the cure. */
+function foldAllBar(keys, redraw) {
+  if (!keys.length) return null;
+  var allShut = keys.every(cardShut);
+  return el('div', { cls: 'btnbar noprint' }, [
+    el('button', {
+      cls: 'btn ghost sm', type: 'button',
+      text: allShut ? 'Expand all' : 'Collapse all',
+      on: {
+        click: function () {
+          keys.forEach(function (k) { setCardShut(k, !allShut); });
+          redraw();
+        }
+      }
+    })
+  ]);
+}
+
 /* ---------- 01 Risk ---------- */
 function renderRisk() {
   var acceptable = 0, notAcceptable = 0, unscored = 0;
@@ -7252,9 +7558,9 @@ function renderRisk() {
       var orphan = d && !d.primary && t4.needsPrimary && !t4.hasPrimary;
       mList.appendChild(el('div', { style: { marginBottom: '3px' } }, [
         el('span', { cls: 'chip ' + (orphan ? 'bad' : 'tag'), text: d ? (d.tier + '. ' + d.label) : m.k }),
-        m.desc ? el('div', { cls: 'hint', text: m.desc }) : null,
+        m.desc ? el('div', { cls: 'hint foldaway', text: m.desc }) : null,
         (m.images && m.images.length)
-          ? el('div', { cls: 'mshots' }, m.images.slice(0, 3).map(function (im) {
+          ? el('div', { cls: 'mshots foldaway' }, m.images.slice(0, 3).map(function (im) {
               return markedImage(im, { width: '104px', display: 'block' });
             }))
           : null
@@ -7262,20 +7568,34 @@ function renderRisk() {
     });
     if (!(r.measures || []).length) mList.appendChild(el('span', { cls: 'chip bad', text: 'none recorded' }));
 
-    tb.appendChild(el('tr', null, [
-      el('td', { cls: 'num', text: r.id || '--' }),
+    var tr = el('tr');
+    if (cardShut('ra:' + r.uid)) { tr.classList.add('shut'); }
+    var foldBtn = el('button', {
+      cls: 'btn ghost sm noprint', type: 'button', style: { marginTop: '4px' },
+      text: cardShut('ra:' + r.uid) ? 'Expand' : 'Collapse',
+      title: 'Roll this row down to its headline, or open it again',
+      on: {
+        click: function () {
+          setCardShut('ra:' + r.uid, !cardShut('ra:' + r.uid));
+          tr.classList.toggle('shut', cardShut('ra:' + r.uid));
+          foldBtn.textContent = cardShut('ra:' + r.uid) ? 'Expand' : 'Collapse';
+        }
+      }
+    });
+    put(tr, [
+      el('td', { cls: 'num nw' }, [el('div', { text: r.id || '--' }), foldBtn]),
       el('td', null, [
         el('div', { text: r.task || '--' }),
-        r.steps ? el('div', { cls: 'hint', text: r.steps }) : null,
-        el('div', { cls: 'hint', text: r.phase + '  /  ' + personnelText(r) }),
-        r.existingControls ? el('div', { cls: 'hint', text: 'In place: ' + r.existingControls }) : null
+        r.steps ? el('div', { cls: 'hint foldaway', text: r.steps }) : null,
+        el('div', { cls: 'hint foldaway', text: r.phase + '  /  ' + personnelText(r) }),
+        r.existingControls ? el('div', { cls: 'hint foldaway', text: 'In place: ' + r.existingControls }) : null
       ].filter(Boolean)),
       el('td', null, [
         el('div', { text: r.hazard || '--' }),
-        el('div', { cls: 'hint', text: [r.hazardType, r.hazardSource, r.harm].filter(Boolean).join(' / ') }),
+        el('div', { cls: 'hint foldaway', text: [r.hazardType, r.hazardSource, r.harm].filter(Boolean).join(' / ') }),
         (r.images && r.images.length)
           ? el('button', {
-              cls: 'btn ghost sm noprint', type: 'button', style: { marginTop: '4px' },
+              cls: 'btn ghost sm noprint foldaway', type: 'button', style: { marginTop: '4px' },
               text: r.images.length + ' photo' + (r.images.length === 1 ? '' : 's'),
               on: { click: function () { lightbox(r.images[0]); } }
             })
@@ -7285,25 +7605,28 @@ function renderRisk() {
       el('td', null, mList),
       el('td', null, [
         el('div', { cls: 'num', text: resTxt }), levelChip(res.level),
-        res.scored ? null : el('div', { cls: 'hint', text: 'suggested, not scored' })
+        res.scored ? null : el('div', { cls: 'hint foldaway', text: 'suggested, not scored' })
       ]),
       el('td', null, [
         plChip(req),
-        reqCat && reqCat !== '-' ? el('div', { cls: 'hint', text: 'Cat ' + reqCat }) : null,
-        requiredControlReliable(r) ? el('div', { cls: 'hint', text: 'Control reliable' }) : null
+        reqCat && reqCat !== '-' ? el('div', { cls: 'hint foldaway', text: 'Cat ' + reqCat }) : null,
+        requiredControlReliable(r) ? el('div', { cls: 'hint foldaway', text: 'Control reliable' }) : null
       ]),
       el('td', { cls: 'num', text: rowSfIds(r).join(', ') || '--' }),
       el('td', null, [
-        el('div', null, el('span', { cls: 'chip ' + (r.status === 'Closed' || r.status === 'Verified' ? 'ok' : (r.status === 'Open' ? 'warn' : 'tag')), text: r.status })),
-        el('div', { cls: 'rowacts', style: { marginTop: '5px' } }, [
+        el('div', null, el('span', { cls: 'chip nw ' + (r.status === 'Closed' || r.status === 'Verified' ? 'ok' : (r.status === 'Open' ? 'warn' : 'tag')), text: r.status })),
+        el('div', { cls: 'rowacts foldaway', style: { marginTop: '5px' } }, [
           actBtn('Edit', function () { riskForm(r); }),
           actBtn('Copy', function () { var c = JSON.parse(JSON.stringify(r)); c.uid = uid('r'); c.id = nextId('RA-', P.risks, 3); P.risks.push(c); commit('Row copied as ' + c.id); }),
           actBtn('Delete', function () { confirmDelete('risk row ' + (r.id || ''), function () { P.risks = P.risks.filter(function (x) { return x.uid !== r.uid; }); commit('Row deleted'); }); }, 'danger')
         ])
       ])
-    ]));
+    ]);
+    tb.appendChild(tr);
   });
   tbl.appendChild(tb);
+  var raFold = foldAllBar(P.risks.map(function (x) { return 'ra:' + x.uid; }), renderRisk);
+  if (raFold) { wrap.appendChild(raFold); }
   wrap.appendChild(tbl);
 }
 /* ---------- 03 Safety functions ---------- */
@@ -7357,6 +7680,8 @@ function renderFieldTests() {
   /* grouped by device, so a tester works down one piece of hardware */
   var byDevice = {};
   list.forEach(function (t) { (byDevice[t.deviceUid] || (byDevice[t.deviceUid] = [])).push(t); });
+  var ftFold = foldAllBar(list.map(function (t) { return 'ft:' + t.uid; }), renderFieldTests);
+  if (ftFold) { host.appendChild(ftFold); }
 
   Object.keys(byDevice).forEach(function (u) {
     var dv = deviceByUid(u);
@@ -7446,10 +7771,10 @@ function renderFieldTests() {
       });
       tbl.appendChild(tb);
       sub.appendChild(el('div', { cls: 'tw' }, tbl));
-      card.appendChild(sub);
+      card.appendChild(collapsible(sub, 'ft:' + t.uid));
     });
 
-    host.appendChild(card);
+    host.appendChild(collapsible(card, 'dv:' + u));
   });
 }
 
@@ -8011,10 +8336,19 @@ function hazardStatusTone(h) {
   return h.status === 'In progress' ? 'warn' : 'bad';
 }
 
+/* Statuses that close an observation out without it needing a score.
+   Not a finding is something ruled out on the walk. Closed is something
+   recorded as correct, or already put right: either way there is no
+   residual risk left to rate, and asking for a risk row against it is
+   asking for a row with nothing in it. */
+var HAZARD_NO_SCORE = ['Not a finding', 'Closed'];
+function hazardNeedsScore(h) {
+  return HAZARD_NO_SCORE.indexOf(h.status) < 0;
+}
 /* The observations that have not reached the risk assessment yet. */
 function hazardsUnscored() {
   return (P.hazards || []).filter(function (h) {
-    return !hazardRisks(h).length && h.status !== 'Not a finding';
+    return !hazardRisks(h).length && hazardNeedsScore(h);
   });
 }
 /* "Not scored yet" is a number whose meaning is not obvious from its
@@ -8024,8 +8358,7 @@ function unscoredNotice() {
   if (!open.length) return [];
   var box = el('div', { cls: 'notice warn', id: 'hzUnscored' }, [
     el('strong', { text: open.length === 1 ? 'One observation has not been scored yet' : open.length + ' observations have not been scored yet' }),
-    el('span', { text: 'An observation records what was seen. It carries no risk rating: the rating is worked out on a row in the risk assessment, using severity, exposure and avoidance. Until a row exists the hazard is recorded but not assessed, and it appears in neither the risk assessment, Table 4, nor any performance level requirement.' }),
-    el('span', { text: 'To clear one, use Link or raise a risk row on the observation. Creating a row copies the hazard, the area, the phase, the harm and the photographs across, leaving the task and the scoring to be entered. An observation that does not require scoring is set to Not a finding instead.' })
+    el('span', { text: 'An observation records what was seen; the risk rating is worked out on a row in the risk assessment. Until a row exists the hazard appears in neither the risk assessment, Table 4, nor any performance level requirement. Raise a row below, or set the status to Not a finding or Closed where no score is needed.' })
   ]);
   var ul = el('ul');
   open.forEach(function (h) {
@@ -8035,13 +8368,25 @@ function unscoredNotice() {
         cls: 'linkbtn noprint', type: 'button', text: 'raise a risk row',
         on: { click: function () { riskFromHazard(h); } }
       }),
-      el('span', { text: '  or  ' }),
+      el('span', { text: ',  ' }),
       el('button', {
         cls: 'linkbtn noprint', type: 'button', text: 'mark it not a finding',
         on: {
           click: function () {
             h.status = 'Not a finding';
             commit(hazardLabel(h) + ' recorded as not a finding');
+          }
+        }
+      }),
+      el('span', { text: '  or  ' }),
+      /* An observation of something found to be correct, or of something
+         already put right, has no residual risk left to rate. */
+      el('button', {
+        cls: 'linkbtn noprint', type: 'button', text: 'close it',
+        on: {
+          click: function () {
+            h.status = 'Closed';
+            commit(hazardLabel(h) + ' closed');
           }
         }
       })
@@ -8072,13 +8417,13 @@ function renderHazards() {
     statCard('No photo yet', noPhoto,
       noPhoto
         ? (noPhoto === 1 ? '1 observation still needs a photo' : noPhoto + ' observations still need a photo')
-        : 'all of them have a photo',
+        : null,
       noPhoto ? 'alert' : 'good',
       { help: 'How many observations have no photograph attached. Photographs are added from the observation form or the photo strip on its card. A photograph is what allows an observation to be checked months later without returning to the machine.' }),
     statCard('Not scored yet', unlinked,
       unlinked
         ? (unlinked === 1 ? '1 observation has no risk assessment row' : unlinked + ' observations have no risk assessment row')
-        : 'every observation has a risk row',
+        : null,
       unlinked ? 'alert' : 'good',
       {
         help: 'An observation records what was seen. It does not carry a risk rating. The rating is worked out on a row in the risk assessment, so each observation needs at least one row linked to it. Use "Link or raise a risk row" on the observation, or mark it "Not a finding" where scoring is not required.',
@@ -8089,6 +8434,8 @@ function renderHazards() {
   put($('hzGaps'), findingsBox('hz'));
 
   var host = clear($('hzList'));
+  var foldBar = foldAllBar(list.map(function (h) { return 'hz:' + h.uid; }), renderHazards);
+  if (foldBar) { host.appendChild(foldBar); }
   if (!list.length) {
     host.appendChild(el('div', { cls: 'card empty', text: 'No observations yet. Add one for each hazard found on the walkdown: what it is, where it is, a photograph of it, and what should be done. The risk assessment rows can be raised from these afterwards.' }));
     return;
@@ -8148,7 +8495,7 @@ function renderHazards() {
     }
     card.appendChild(el('div', { cls: 'noprint' }, [el('h4', { cls: 'subhead', text: 'Risk assessment rows raised from this' })].concat(linkKids)));
 
-    host.appendChild(card);
+    host.appendChild(collapsible(card, 'hz:' + h.uid));
   });
 }
 
@@ -8242,6 +8589,18 @@ function hazardRiskPicker(h) {
 function measureLibPicker(mk, onPick) {
   var d = measureByKey(mk);
   var host = el('div');
+  var chosen = {};
+  var barHost = el('div');
+  function chosenList() {
+    return Object.keys(chosen).map(function (k) { return chosen[k]; });
+  }
+  function drawBar() {
+    var list = chosenList();
+    put(barHost, [pickBar(list.length, 'one or more measures', function () {
+      dismissDlg();
+      onPick(chosenList());
+    }, function () { chosen = {}; paint(); drawBar(); })]);
+  }
   var q = el('input', { type: 'search', placeholder: 'Search this tier' });
   var allBox = el('input', { type: 'checkbox' });
   var listHost = el('div');
@@ -8269,14 +8628,14 @@ function measureLibPicker(mk, onPick) {
       ]));
       var wrap = el('div', { cls: 'libwrap' });
       byTier[def.k].forEach(function (e) {
-        wrap.appendChild(el('button', {
-          cls: 'libitem', type: 'button',
-          on: { click: function () { dismissDlg(); onPick(e); } }
-        }, [
+        wrap.appendChild(pickItem(!!chosen[e.k], e.label, [
           el('span', { cls: 'libname', text: e.label }),
           e.detail ? el('span', { cls: 'hint', text: e.detail }) : null,
           e.src ? el('span', { cls: 'hint', text: e.src }) : null
-        ]));
+        ], function (on) {
+          if (on) { chosen[e.k] = e; } else { delete chosen[e.k]; }
+          drawBar();
+        }));
       });
       kids.push(wrap);
     });
@@ -8287,7 +8646,7 @@ function measureLibPicker(mk, onPick) {
   paint();
 
   put(host, [
-    el('p', { cls: 'hint', text: 'The examples listed under this tier of the ANSI/RIA R15.306 Table 3 hierarchy. Selecting one fills the description, which remains editable.' }),
+    el('p', { cls: 'hint', text: 'The examples listed under this tier of the ANSI/RIA R15.306 Table 3 hierarchy. Tick as many as apply; they are written into the description together and remain editable.' }),
     d && !d.primary ? el('div', { cls: 'notice warn' }, [
       el('strong', { text: d.label + ' is a supporting measure' }),
       el('span', { text: 'Table 4 permits it alongside a primary measure but not in place of one at a medium or higher initial rating. At a low or negligible rating it may carry the row on its own.' })
@@ -8296,8 +8655,10 @@ function measureLibPicker(mk, onPick) {
       el('label', { cls: 'f', style: { marginBottom: 0 } }, [el('span', { text: 'Search' }), q]),
       el('label', { cls: 'chkrow', style: { marginBottom: 0 } }, [allBox, el('span', { text: 'Show every tier, not only this one' })])
     ]),
-    listHost
+    listHost,
+    barHost
   ]);
+  drawBar();
 
   var body = [
     el('div', { cls: 'rowacts', style: { marginBottom: '10px' } }, [
@@ -8419,6 +8780,18 @@ function measureLibManager(after) {
    --------------------------------------------------------------------- */
 function hazardLibPicker(onPick) {
   var host = el('div');
+  var chosen = {};
+  var barHost = el('div');
+  function chosenList() {
+    return Object.keys(chosen).map(function (k) { return chosen[k]; });
+  }
+  function drawBar() {
+    var list = chosenList();
+    put(barHost, [pickBar(list.length, 'one or more hazards', function () {
+      dismissDlg();
+      onPick(chosenList());
+    }, function () { chosen = {}; paint(); drawBar(); })]);
+  }
   var q = el('input', { type: 'search', placeholder: 'Search the list: nip, crush, arc flash, overreach' });
   var catSel = el('select');
   catSel.appendChild(el('option', { value: '', text: 'Every category' }));
@@ -8450,16 +8823,14 @@ function hazardLibPicker(onPick) {
       kids.push(el('h4', { cls: 'libcat', text: c + (OUT_OF_SCOPE_TYPES.indexOf(c) >= 0 ? '   outside this methodology' : '') }));
       var wrap = el('div', { cls: 'libwrap' });
       byCat[c].forEach(function (e) {
-        wrap.appendChild(el('button', {
-          cls: 'libitem', type: 'button',
-          /* Back first, then fill: the field registry belongs to the
-             form underneath, and it is only restored on the way back. */
-          on: { click: function () { dismissDlg(); onPick(e); } }
-        }, [
+        wrap.appendChild(pickItem(!!chosen[e.k], e.label, [
           el('span', { cls: 'libname', text: e.label }),
           e.harm ? el('span', { cls: 'hint', text: 'Harm: ' + e.harm }) : null,
           e.origin ? el('span', { cls: 'hint', text: 'Typically from: ' + e.origin }) : null
-        ]));
+        ], function (on) {
+          if (on) { chosen[e.k] = e; } else { delete chosen[e.k]; }
+          drawBar();
+        }));
       });
       kids.push(wrap);
     });
@@ -8470,13 +8841,15 @@ function hazardLibPicker(onPick) {
   paint();
 
   put(host, [
-    el('p', { cls: 'hint', text: 'Selecting an entry fills the hazard field. The wording is a starting point and should be edited to match this machine. The list does not restrict what can be recorded, and any hazard missing from it can be added.' }),
+    el('p', { cls: 'hint', text: 'Tick every hazard that applies. More than one is normal: a single task often meets a nip, a crush and an entanglement at once, and they are written into the field together. The wording is a starting point and should be edited to match this machine. The list does not restrict what can be recorded, and any hazard missing from it can be added.' }),
     row('g2', [
       el('label', { cls: 'f', style: { marginBottom: 0 } }, [el('span', { text: 'Search' }), q]),
       el('label', { cls: 'f', style: { marginBottom: 0 } }, [el('span', { text: 'Category' }), catSel])
     ]),
-    listHost
+    listHost,
+    barHost
   ]);
+  drawBar();
 
   /* Pushed, not opened: the form underneath must still be there, with
      whatever was typed into it, when this closes. */
@@ -8492,6 +8865,70 @@ function hazardLibPicker(onPick) {
   else { openDlg('Potential hazards', body, null, 'Close'); }
   /* Picking is the action; there is nothing to save. */
   $('dlgOk').style.display = 'none';
+}
+
+/* ---------------------------------------------------------------------
+   Lists that are ticked rather than clicked.
+
+   Several hazards reach one task and several measures answer one
+   hazard, so a list that closes itself on the first choice makes the
+   assessor reopen it once per entry. These lists tick instead, and the
+   bar at the foot says how many are held and takes them all at once.
+   --------------------------------------------------------------------- */
+/* Several entries written into one field. Joined with a separator the
+   reader will read as a list, deduplicated, and left editable: an
+   assessor almost always trims them afterwards. */
+function joinUnique(parts, sep) {
+  var seen = {}, out = [];
+  (parts || []).forEach(function (x) {
+    var v = String(x || '').trim().replace(/[.;,]+$/, '');
+    if (!v) return;
+    var key = v.toLowerCase();
+    if (seen[key]) return;
+    seen[key] = 1; out.push(v);
+  });
+  return out.join(sep);
+}
+function hazardsLabel(list) {
+  return joinUnique((list || []).map(function (e) { return e.label; }), ', ');
+}
+function hazardsHarm(list) {
+  return joinUnique((list || []).map(function (e) { return e.harm; }), ', ');
+}
+function uniqueCats(list) {
+  var seen = {}, out = [];
+  (list || []).forEach(function (e) { if (e.cat && !seen[e.cat]) { seen[e.cat] = 1; out.push(e.cat); } });
+  return out;
+}
+function measuresDescription(list) {
+  return joinUnique((list || []).map(function (e) {
+    return e.label + (e.detail ? '. ' + e.detail : '');
+  }), '; ');
+}
+function pickItem(on, label, kids, onToggle) {
+  var cb = el('input', { type: 'checkbox' });
+  cb.checked = !!on;
+  var wrap = el('label', { cls: 'libitem' + (on ? ' on' : '') }, [
+    cb, el('span', { cls: 'libbody' }, kids)
+  ]);
+  cb.addEventListener('change', function () {
+    wrap.classList.toggle('on', cb.checked);
+    onToggle(cb.checked);
+  });
+  return wrap;
+}
+function pickBar(count, label, onUse, onClear) {
+  var use = el('button', {
+    cls: 'btn sm', type: 'button',
+    text: count ? ('Use the ' + count + ' selected') : ('Select ' + label + ' to use'),
+    on: { click: onUse }
+  });
+  if (!count) { use.disabled = true; }
+  return el('div', { cls: 'pickbar noprint' }, [
+    use,
+    count ? el('button', { cls: 'btn ghost sm', type: 'button', text: 'Clear the selection', on: { click: onClear } }) : null,
+    el('span', { cls: 'hint', text: count ? (count + ' held. Keep searching and ticking; nothing is used until the button above is pressed.') : 'Tick as many as apply.' })
+  ]);
 }
 
 /* One entry, added or edited. Editing a built-in entry is allowed: the
@@ -8663,7 +9100,7 @@ function hazardForm(existing) {
     row('g3', [
       fText(bag, 'id', 'Reference', work, { mono: true, help: 'The number this observation is known by. It appears on the photographs in the report and on any risk row raised from it.' }),
       fSel(bag, 'priority', 'Priority', work, HAZARD_PRIORITY.map(function (k) { return { k: k, label: k }; }), { help: 'How quickly it needs attention, as judged on the day. This is not a risk score: the scoring happens in the risk assessment.' }),
-      fSel(bag, 'status', 'Status', work, HAZARD_STATUS.map(function (k) { return { k: k, label: k }; }), { help: 'Not a finding is for something recorded on the walk and then ruled out. It keeps the record of having looked.' })
+      fSel(bag, 'status', 'Status', work, HAZARD_STATUS.map(function (k) { return { k: k, label: k }; }), { help: 'Not a finding is for something recorded on the walk and then ruled out. It keeps the record of having looked. Closed is for something already put right, or recorded as correct on the machine. Neither needs a risk assessment row raised against it; every other status does.' })
     ]),
     fText(bag, 'title', 'The hazard, in a line', work, { req: true, ph: 'Unguarded nip point at the infeed conveyor' }),
     hazardPickButton('title', 'hazardType', 'consequence'),
@@ -8835,6 +9272,8 @@ function renderSf() {
   put($('sfGaps'), findingsBox('sf'));
 
   var host = clear($('sfList'));
+  var sfFold = foldAllBar(P.sfs.map(function (x) { return 'sf:' + x.uid; }), renderSf);
+  if (sfFold) { host.appendChild(sfFold); }
   if (!P.sfs.length) {
     host.appendChild(el('div', { cls: 'card empty', text: 'No safety functions yet. A safety function is what the machine does to keep someone safe, written in plain words, for example stop the conveyor when the gate opens. Add one, then assign the devices that carry it out.' }));
     return;
@@ -9008,7 +9447,7 @@ function renderSf() {
     });
     card.appendChild(covRow);
     if (catOk === false) { card.appendChild(el('p', { cls: 'hint', text: 'Structure category shortfall against Table 5.' })); }
-    host.appendChild(card);
+    host.appendChild(collapsible(card, 'sf:' + sf.uid));
   });
 }
 
@@ -9028,6 +9467,8 @@ function renderVv() {
   put($('vvGaps'), findingsBox('vv'));
 
   var host = clear($('vvList'));
+  var vvFold = foldAllBar(P.tests.map(function (x) { return 'vv:' + x.uid; }), renderVv);
+  if (vvFold) { host.appendChild(vvFold); }
   if (!P.tests.length) {
     host.appendChild(el('div', { cls: 'card empty', text: 'No test records yet. Generate baseline records to get an inspection, a functional test, a measurement and a fault injection test for every safety function, then edit the detail.' }));
     return;
@@ -9072,10 +9513,16 @@ function renderVv() {
       }));
     });
     card.appendChild(bar);
-    host.appendChild(card);
+    host.appendChild(collapsible(card, 'vv:' + t.uid));
   });
 }
 /* ---------- 04 Report ---------- */
+/* A heading with nothing underneath it reads as a printing fault. A
+   section that is required by the method and has no entries says so,
+   because the absence is itself a result a reader needs. */
+function emptySection(text) {
+  return el('p', { cls: 'wrap muted', text: text });
+}
 function dl(pairs) {
   var d = el('dl', { cls: 'kv' });
   pairs.forEach(function (p) { if (p[1]) { d.appendChild(el('dt', { text: p[0] })); d.appendChild(el('dd', { cls: 'wrap', text: p[1] })); } });
@@ -9106,7 +9553,7 @@ var REPORT_SECTIONS = [
   { k: 'risk', label: 'Risk assessment', help: 'One row per task and hazard pair, with initial score, measures and residual score.' },
   { k: 'devices', label: 'Safety device schedule', help: 'Every device with its safety values, provenance and the functions it serves.' },
   { k: 'sfperf', label: 'Safety function performance', help: 'Required against achieved performance level and structure category.' },
-  { k: 'spec', label: 'Safety function specification completeness', help: 'The SISTEMA documentation fields, and which are blank.', empty: function () { return !P.sfs.length; } },
+  { k: 'spec', label: 'Safety function specification', help: 'The SISTEMA documentation fields, and which are blank.', empty: function () { return !P.sfs.length; } },
   { k: 'fschecklist', label: 'Functional safety onsite verification', help: 'The summary sheet read off the installed control system, with the observed category and performance level.' },
   { k: 'checklist', label: 'Safeguarding checklist', help: 'The onsite guarding record and the compliance score.' },
   { k: 'provenance', label: 'Provenance of the determinations', help: 'What is modeled, what is field verified, and what contradicts the model.' },
@@ -9580,18 +10027,18 @@ function renderReport() {
     /* A summary table first, so a reader can find an observation, then
        the entries in full with their photographs. */
     var built = compactTable([
-      { label: 'Ref', always: true, value: function (h) { return h.id; }, cell: function (h) { return el('td', { cls: 'mono', text: h.id || '' }); } },
+      { label: 'Ref', always: true, value: function (h) { return h.id; }, cell: function (h) { return el('td', { cls: 'mono nw', text: h.id || '' }); } },
       { label: 'Hazard', always: true, value: function (h) { return h.title; } },
       { label: 'Where', value: function (h) { return h.area; } },
       { label: 'Phase', value: function (h) { return h.phase; } },
       { label: 'Type', value: function (h) { return h.hazardType; } },
       {
         label: 'Priority', always: true, value: function (h) { return h.priority; },
-        cell: function (h) { return el('td', null, el('span', { cls: 'chip ' + (h.priority === 'Immediate' ? 'bad' : 'tag'), text: h.priority || '' })); }
+        cell: function (h) { return el('td', null, el('span', { cls: 'chip nw ' + (h.priority === 'Immediate' ? 'bad' : 'tag'), text: h.priority || '' })); }
       },
       {
         label: 'Status', always: true, value: function (h) { return h.status; },
-        cell: function (h) { return el('td', null, el('span', { cls: 'chip ' + hazardStatusTone(h), text: h.status || '' })); }
+        cell: function (h) { return el('td', null, el('span', { cls: 'chip nw ' + hazardStatusTone(h), text: h.status || '' })); }
       },
       { label: 'Owner', value: function (h) { return h.owner; } },
       { label: 'Due', value: function (h) { return h.due; } },
@@ -9626,18 +10073,22 @@ function renderReport() {
 
   sec('risk', function (H) {
     doc.appendChild(el('h3', { text: H }));
+    if (!P.risks.length) {
+      doc.appendChild(emptySection('No task and hazard pair has been assessed on this file.'));
+      return;
+    }
     var rt = el('table', { cls: 'dt ratbl' });
     /* Nine columns on a letter page. Without explicit proportions the
        browser gives each one its content width, which starves the
        measures column: it carries the most text and gets the least
        room. */
     var rcg = el('colgroup');
-    ['8%', '14%', '12%', '11%', '10%', '20%', '10%', '9%', '6%'].forEach(function (w) {
+    ['8%', '15%', '12%', '10%', '9%', '14%', '14%', '10%', '8%'].forEach(function (w) {
       rcg.appendChild(el('col', { style: { width: w } }));
     });
     rt.appendChild(rcg);
     var rh = el('tr');
-    ['ID', 'Task', 'Hazard', 'Controls in place', 'Initial', 'Measures', 'Residual', 'PLr / Cat', 'SF'].forEach(function (h) { rh.appendChild(el('th', { scope: 'col', text: h })); });
+    ['ID', 'Task', 'Hazard', 'In place', 'Initial', 'Measures', 'Residual', 'PLr / Cat', 'SF'].forEach(function (h) { rh.appendChild(el('th', { scope: 'col', text: h })); });
     rt.appendChild(el('thead', null, rh));
     var rb = el('tbody');
     P.risks.forEach(function (r) {
@@ -9646,7 +10097,7 @@ function renderReport() {
       var iso = P.meta.method === 'ISO 13849-1';
       var dl2 = residualDelta(r);
       rb.appendChild(el('tr', null, [
-        el('td', { cls: 'num', text: r.id }),
+        el('td', { cls: 'num nw', text: r.id }),
         el('td', null, [
           el('div', { text: r.task }),
           r.steps ? el('div', { cls: 'hint', text: r.steps }) : null,
@@ -9688,7 +10139,7 @@ function renderReport() {
           el('div', { text: (requiredPl(r) && requiredPl(r) !== '-' ? 'PL' + requiredPl(r) : '--') + (requiredCat(r) && requiredCat(r) !== '-' ? ' / ' + requiredCat(r) : '') }),
           requiredControlReliable(r) ? el('div', { cls: 'hint', text: 'Control reliable' }) : null
         ].filter(Boolean)),
-        el('td', { cls: 'num', text: rowSfIds(r).join(', ') })
+        el('td', { cls: 'num nw', text: rowSfIds(r).join(', ') })
       ]));
     });
     rt.appendChild(rb);
@@ -9697,7 +10148,7 @@ function renderReport() {
 
   sec('devices', function (H) {
     doc.appendChild(el('h3', { text: H }));
-    if (!P.devices.length) { doc.appendChild(el('p', { cls: 'hint', text: 'No devices recorded.' })); }
+    if (!P.devices.length) { doc.appendChild(emptySection('No safety device has been recorded on this file.')); }
     else {
       var dt = el('table', { cls: 'dt' });
       var dh = el('tr');
@@ -9724,6 +10175,10 @@ function renderReport() {
 
   sec('sfperf', function (H) {
     doc.appendChild(el('h3', { text: H }));
+    if (!P.sfs.length) {
+      doc.appendChild(emptySection('No safety function has been specified on this file.'));
+      return;
+    }
     var st = el('table', { cls: 'dt' });
     var sh = el('tr');
     ['ID', 'Function', 'Stop cat', 'Cat / MTTFd / DC', 'PL required', 'PL achieved', '6.8.2 a', '6.8.2 b', 'Result'].forEach(function (h) { sh.appendChild(el('th', { scope: 'col', text: h })); });
@@ -9820,7 +10275,7 @@ function renderReport() {
         fb.appendChild(el('tr', null, [
           el('td', { text: c.q }),
           el('td', { cls: 'num' }, el('span', {
-            cls: 'chip ' + (c.ans === 'Yes' ? 'ok' : (c.ans === 'No' ? 'bad' : 'tag')),
+            cls: 'chip ' + (c.kind === 'CATPL' ? 'nw ' : '') + (c.ans === 'Yes' ? 'ok' : (c.ans === 'No' ? 'bad' : 'tag')),
             text: val
           })),
           el('td', { text: c.note || '' })
@@ -9944,7 +10399,7 @@ function renderReport() {
 
   sec('field', function (H) {
     doc.appendChild(el('h3', { text: H }));
-    doc.appendChild(el('p', { cls: 'wrap', text: 'Proving of the installed hardware, device by device. A performance level determined on paper states what the design should achieve. These records state what the installed machine did. Each step carries its own verdict, because a device wired single channel passes an actuation test and fails the channel tests.' }));
+    doc.appendChild(el('p', { cls: 'wrap', text: 'Proving of the installed hardware, device by device. A performance level determined from schematics and datasheets states what the design should achieve. These records state what the installed machine did. Each step carries its own verdict, because a device wired single channel passes an actuation test and fails the channel tests.' }));
     (P.fieldTests || []).forEach(function (t) {
       var dv = deviceByUid(t.deviceUid);
       var ts = fieldTestState(t);
@@ -9992,11 +10447,13 @@ function renderReport() {
         el('td', { cls: 'num', text: t.id }), el('td', { cls: 'num', text: t.sfId }),
         el('td', { text: VV_KINDS[mm.kind] || '' }), el('td', { text: mm.label }),
         el('td', { text: t.acceptance }), el('td', { text: t.actual }),
-        el('td', null, el('span', { cls: 'chip ' + (t.verdict === 'Pass' ? 'ok' : (t.verdict === 'Fail' ? 'bad' : 'tag')), text: t.verdict })),
-        el('td', { text: t.testedBy }), el('td', { cls: 'num', text: t.date })
+        el('td', null, el('span', { cls: 'chip nw ' + (t.verdict === 'Pass' ? 'ok' : (t.verdict === 'Fail' ? 'bad' : 'tag')), text: t.verdict })),
+        el('td', { text: t.testedBy }), el('td', { cls: 'num nw', text: t.date })
       ]));
     });
     vt.appendChild(vb);
+    if (P.tests.length) { doc.appendChild(el('div', { cls: 'tw' }, [vt])); }
+    else { doc.appendChild(emptySection('No verification or validation record has been entered against this file.')); }
   });
 
   sec('findings', function (H) {
@@ -10008,7 +10465,7 @@ function renderReport() {
       P.muteField = muted;
       doc.appendChild(el('div', { cls: 'notice warn' }, [
         el('strong', { text: 'Field verification findings were muted on this file' }),
-        el('span', { text: hidden.length + ' finding' + (hidden.length === 1 ? '' : 's') + ' about proving the installed hardware were set aside rather than answered, and are listed below for completeness.' }),
+        el('span', { text: hidden.length + ' finding' + (hidden.length === 1 ? '' : 's') + ' concerning verification of the installed hardware ' + (hidden.length === 1 ? 'was' : 'were') + ' set aside rather than answered, and ' + (hidden.length === 1 ? 'is' : 'are') + ' listed below for completeness.' }),
         el('ul', {}, hidden.slice(0, 40).map(function (x) { return el('li', { text: x.msg }); }))
       ]));
     }
@@ -10749,7 +11206,139 @@ function renderView() {
   else if (VIEW === 'report') renderReport();
   else if (VIEW === 'tables') renderTables();
 }
+/* ---------------------------------------------------------------------
+   Standards applied.
+
+   A free text box meant every report carried the same nine documents
+   whether or not they bore on the machine, because deleting lines from
+   a block of text is more work than leaving them. A list that is ticked
+   says what was actually assessed against, which is the point of the
+   section. The stored value is still one document per line, so an older
+   file opens with its own list intact and anything typed by hand that
+   is not in the library below is kept and shown ticked.
+   --------------------------------------------------------------------- */
+var STANDARD_LIBRARY = [
+  { s: 'ANSI/RIA R15.06-2012 industrial robots and robot systems, safety requirements', on: true },
+  { s: 'ANSI/RIA R15.306-2016 task based risk assessment methodology', on: true },
+  { s: 'ANSI/RIA R15.406-2014 safeguarding', on: true },
+  { s: 'ANSI/RIA R15.08-1-2020 industrial mobile robots, safety requirements' },
+  { s: 'ISO 10218-1 and ISO 10218-2 robots and robotic devices, safety requirements' },
+  { s: 'ANSI B11.0-2015 safety of machinery', on: true },
+  { s: 'ANSI/ISO 12100:2012 risk assessment and risk reduction', on: true },
+  { s: 'ANSI B11.19-2019 performance requirements for safeguarding', on: true },
+  { s: 'ANSI B11.20-2017 integrated manufacturing systems' },
+  { s: 'ANSI B11.26-2018 functional safety for equipment' },
+  { s: 'ISO 13849-1:2023 and ISO 13849-2:2012 safety related parts of control systems', on: true },
+  { s: 'ISO 13855:2010 positioning of safeguards with respect to approach speeds' },
+  { s: 'ISO 13857:2019 safety distances to prevent hazard zones being reached' },
+  { s: 'ISO 14119:2013 interlocking devices associated with guards' },
+  { s: 'ISO 13850:2015 emergency stop function' },
+  { s: 'IEC 62061:2021 functional safety of safety related electrical control systems' },
+  { s: 'NFPA 79 electrical standard for industrial machinery', on: true },
+  { s: 'IEC 60204-1 safety of machinery, electrical equipment of machines', on: true },
+  { s: 'NFPA 70E electrical safety in the workplace' },
+  { s: 'ANSI Z535.4 product safety signs and labels' },
+  { s: 'OSHA 29 CFR 1910.147 control of hazardous energy, lockout tagout' },
+  { s: 'OSHA 29 CFR 1910.212 general requirements for all machines' },
+  { s: 'OSHA 29 CFR 1910.219 mechanical power transmission apparatus' },
+  { s: 'OSHA 29 CFR 1910.146 permit required confined spaces' }
+];
+function standardsList() {
+  return String(P.meta.standards || '').split('\n')
+    .map(function (x) { return x.trim(); })
+    .filter(Boolean);
+}
+function setStandardsList(arr) {
+  var seen = {}, out = [];
+  arr.forEach(function (x) {
+    var v = String(x || '').trim();
+    if (!v || seen[v]) return;
+    seen[v] = 1; out.push(v);
+  });
+  P.meta.standards = out.join('\n');
+  return out;
+}
+/* Library entries first, in the order the library lists them, then
+   anything typed by hand. A report reads better when the documents come
+   out in a settled order rather than the order they were ticked in. */
+function standardsOrdered(chosen) {
+  var want = {};
+  chosen.forEach(function (x) { want[x] = 1; });
+  var out = STANDARD_LIBRARY.filter(function (d) { return want[d.s]; }).map(function (d) { return d.s; });
+  var known = {};
+  STANDARD_LIBRARY.forEach(function (d) { known[d.s] = 1; });
+  chosen.forEach(function (x) { if (!known[x]) out.push(x); });
+  return out;
+}
+function standardsDefault() {
+  return STANDARD_LIBRARY.filter(function (d) { return d.on; }).map(function (d) { return d.s; });
+}
+function drawStandards() {
+  var host = $('stdsHost');
+  if (!host) return;
+  var chosen = standardsList();
+  var has = {};
+  chosen.forEach(function (x) { has[x] = 1; });
+  var known = {};
+  STANDARD_LIBRARY.forEach(function (d) { known[d.s] = 1; });
+  var custom = chosen.filter(function (x) { return !known[x]; });
+
+  function commitList(arr) {
+    setStandardsList(standardsOrdered(arr));
+    saveLocalSoon();
+    drawStandards();
+  }
+  function line(text, on, onToggle, extra) {
+    var cb = el('input', { type: 'checkbox' });
+    cb.checked = !!on;
+    cb.addEventListener('change', function () { onToggle(cb.checked); });
+    return el('label', { cls: 'stdline' }, [cb, el('span', { text: text })].concat(extra || []));
+  }
+  var rows = STANDARD_LIBRARY.map(function (d) {
+    return line(d.s, has[d.s], function (on) {
+      var next = chosen.filter(function (x) { return x !== d.s; });
+      if (on) { next.push(d.s); }
+      commitList(next);
+    });
+  });
+  custom.forEach(function (x) {
+    rows.push(line(x, true, function () {
+      commitList(chosen.filter(function (y) { return y !== x; }));
+    }, [el('span', { cls: 'chip tag', text: 'added here' })]));
+  });
+
+  var addInput = el('input', { cls: 'inp', placeholder: 'Another document, with its edition' });
+  function addCustom() {
+    var v = addInput.value.trim();
+    if (!v) return;
+    addInput.value = '';
+    commitList(chosen.concat([v]));
+  }
+  addInput.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Enter') { ev.preventDefault(); addCustom(); }
+  });
+
+  put(host, [
+    el('p', { cls: 'hint', text: 'Tick only the documents this assessment was actually carried out against. They print in this order under Standards applied.' }),
+    el('div', { cls: 'stdlist' }, rows),
+    el('div', { cls: 'btnbar noprint' }, [
+      addInput,
+      el('button', { cls: 'btn ghost sm', type: 'button', text: 'Add', on: { click: addCustom } }),
+      el('button', {
+        cls: 'btn ghost sm', type: 'button', text: 'Select none',
+        on: { click: function () { commitList([]); } }
+      }),
+      el('button', {
+        cls: 'btn ghost sm', type: 'button', text: 'Back to the usual set',
+        on: { click: function () { commitList(standardsDefault().concat(custom)); } }
+      })
+    ]),
+    el('p', { cls: 'hint', text: chosen.length ? (chosen.length + ' document' + (chosen.length === 1 ? '' : 's') + ' selected') : 'Nothing selected. The standards section will not print.' })
+  ]);
+}
+
 function renderProject() {
+  drawStandards();
   put($('scopeImages'), gallery(P.meta.images, {
     editable: true,
     onChange: function () { saveLocalSoon(); updateImgUsage(); }
@@ -11747,16 +12336,21 @@ function hazardPickButton(labelKey, typeKey, harmKey) {
       cls: 'btn ghost sm', type: 'button', text: 'Pick from the hazard list',
       on: {
         click: function () {
-          hazardLibPicker(function (e) {
-            setFieldValue(labelKey, e.label);
-            if (typeKey) { setFieldValue(typeKey, e.cat); }
-            if (harmKey && e.harm) { setFieldValue(harmKey, e.harm, true); }
-            say('Filled from the hazard list. Edit the wording to match this machine.');
+          hazardLibPicker(function (picked) {
+            if (!picked || !picked.length) return;
+            setFieldValue(labelKey, hazardsLabel(picked));
+            if (typeKey) { setFieldValue(typeKey, picked[0].cat); }
+            var harm = hazardsHarm(picked);
+            if (harmKey && harm) { setFieldValue(harmKey, harm, true); }
+            say(picked.length === 1
+              ? 'Filled from the hazard list. Edit the wording to match this machine.'
+              : picked.length + ' hazards written into the field. Edit the wording to match this machine.'
+                + (uniqueCats(picked).length > 1 ? ' They span ' + uniqueCats(picked).length + ' categories; the hazard type was set from the first.' : ''));
           });
         }
       }
     }),
-    el('span', { cls: 'hint', text: 'Eighty potential hazards by category, searchable and editable. The list does not restrict what can be entered in the field.' })
+    el('span', { cls: 'hint', text: 'Potential hazards by category, searchable, editable, and selected several at a time. The list does not restrict what can be entered in the field.' })
   ]);
 }
 
@@ -12276,13 +12870,17 @@ function riskForm(existing) {
           cls: 'btn ghost sm', type: 'button', text: 'Pick from the measures list',
           on: {
             click: function () {
-              measureLibPicker(m.k, function (e) {
-                m.desc = e.label + (e.detail ? '. ' + e.detail : '');
-                m.k = e.m;
-                var sr = measureLibSrpcs(e);
+              measureLibPicker(m.k, function (picked) {
+                if (!picked || !picked.length) return;
+                m.desc = measuresDescription(picked);
+                m.k = picked[0].m;
+                var sr = '';
+                picked.forEach(function (e) { sr = sr || measureLibSrpcs(e); });
                 if (sr && !m.srpcs) { m.srpcs = sr; }
                 drawMeasures();
-                say('Filled from the measures list. Edit the wording to match this machine.');
+                say(picked.length === 1
+                  ? 'Filled from the measures list. Edit the wording to match this machine.'
+                  : picked.length + ' measures written into the description. Edit the wording to match this machine.');
               });
             }
           }
@@ -14585,6 +15183,7 @@ function fillMetaInputs() {
     var k = n.getAttribute('data-meta');
     n.value = P.meta[k] === undefined || P.meta[k] === null ? '' : P.meta[k];
   });
+  drawStandards();
   renderChrome();
 }
 

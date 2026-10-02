@@ -872,6 +872,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
         <p class="lede">One entry per hazard observed on the machine, with the photographs that show it and a note of what should be done. This is the record of what was seen, written standing at the equipment. Scoring it comes next: a row in the risk assessment can be raised from any entry here, and one observation may raise several rows or none.</p>
         <div class="btnbar noprint">
           <button class="btn" id="btnAddHz" type="button">Add an observation</button>
+          <button class="btn ghost" id="btnAddComp" type="button">Document a compliance item</button>
         </div>
         <div class="grid g4" id="hzStats"></div>
         <div id="hzExplain"></div>
@@ -1092,9 +1093,9 @@ function debounce(fn, ms) {
 }
 
 /* ---------- 20.2 Schema and state ---------- */
-var SCHEMA = 14;
-var STORE_KEY = 'safetyFile.v14';
-var LEGACY_KEYS = ['safetyFile.v12', 'safetyFile.v11', 'safetyFile.v10', 'safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
+var SCHEMA = 15;
+var STORE_KEY = 'safetyFile.v15';
+var LEGACY_KEYS = ['safetyFile.v14', 'safetyFile.v13', 'safetyFile.v12', 'safetyFile.v11', 'safetyFile.v10', 'safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
 
 function blankProject() {
   return {
@@ -1225,6 +1226,7 @@ function migrate(data) {
   if (v < 12) { migrateV11(base); }
   if (v < 13) { migrateV12(base); }
   if (v < 14) { migrateV13(base); }
+  if (v < 15) { migrateV14(base); }
   normalize(base);
   return base;
 }
@@ -1237,6 +1239,21 @@ function migrate(data) {
    suggestion back, which is right for new work but would be a rude
    surprise on a file that was already complete, so infer what the file
    already tells us and leave only the genuinely ambiguous ones blank. */
+/* v14 -> v15. Compliance items are documented in the same list as
+   observations, and a dedicated report section prints them. A file
+   written before this feature has a report section order that predates
+   the section, so slot it in right after the hazards section rather than
+   leaving the new section unavailable on an old file. Observations
+   written before this have no kind, which reads as a hazard, so nothing
+   has to be done to them. */
+function migrateV14(base) {
+  if (Array.isArray(base.reportSections) && base.reportSections.indexOf('compliance') < 0) {
+    var i = base.reportSections.indexOf('hazards');
+    if (i >= 0) { base.reportSections.splice(i + 1, 0, 'compliance'); }
+    else { base.reportSections.push('compliance'); }
+  }
+}
+
 function migrateV13(base) {
   var words = /interlock|gate switch|guard switch|light curtain|door switch|safety mat|scanner|two hand|safety rated/i;
   (base.risks || []).forEach(function (r) {
@@ -4070,12 +4087,39 @@ function newHazard() {
     riskUids: []             /* risk rows raised from this observation */
   };
 }
+/* A compliance item reuses the observation record so every shared piece
+   of machinery keeps working. The fields a hazard needs but a compliance
+   item does not are blanked rather than removed, so nothing downstream
+   has to test for their absence. The status defaults to Closed, which is
+   exempt from scoring and reads green. */
+function newCompliance() {
+  return Object.assign(newHazard(), {
+    kind: 'compliance',
+    status: 'Closed',
+    priority: '', phase: '', hazardType: ''
+  });
+}
 function hazardByUid(u) {
   for (var i = 0; i < (P.hazards || []).length; i += 1) { if (P.hazards[i].uid === u) return P.hazards[i]; }
   return null;
 }
+/* A compliance item is a positive observation: something found to be
+   correct on the machine, documented so the file records what was right
+   as well as what was not. It shares the observation record and list, so
+   it inherits the photographs, the markups, the collapse and the report
+   plumbing, and is kept apart from hazards only by its kind. It is never
+   scored and never raises a risk row or a finding. */
+function isCompliance(h) { return !!h && h.kind === 'compliance'; }
+function complianceItems() { return (P.hazards || []).filter(isCompliance); }
+function hazardsOnly() { return (P.hazards || []).filter(function (h) { return !isCompliance(h); }); }
+function firstLine(t) {
+  var v = String(t || '').split('\n')[0].trim();
+  return v.length > 64 ? v.slice(0, 61).replace(/\s+\S*$/, '') + '\u2026' : v;
+}
 function hazardLabel(h) {
-  return (h.id ? h.id + '  ' : '') + (h.title || 'Untitled observation');
+  var fallback = isCompliance(h) ? 'Compliance item' : 'Untitled observation';
+  var name = h.title || (isCompliance(h) ? firstLine(h.observed) : '') || fallback;
+  return (h.id ? h.id + '  ' : '') + name;
 }
 /* Rows still present in the risk assessment. A deleted row leaves the
    link behind rather than silently rewriting the observation. */
@@ -5522,6 +5566,10 @@ function findings() {
 
   /* ---------- 1c. the walkdown record ---------- */
   (P.hazards || []).forEach(function (h) {
+    /* A compliance item documents something that is already right. It
+       carries no recommendation, no risk row and no owner, so none of
+       the checks below apply to it. */
+    if (isCompliance(h)) { return; }
     var lbl = hazardLabel(h);
     if (!h.id) {
       add('warn', 'hz', h.uid, lbl + ' has no reference. An observation without a number cannot be referred to from a risk row, a report or a corrective action.', '');
@@ -5556,7 +5604,7 @@ function findings() {
     /* A photograph is what lets someone check an observation months
        later. Worth saying once: on a walkdown of any size, one finding
        per unphotographed hazard buries everything else in the panel. */
-    var noPic = (P.hazards || []).filter(function (h) { return !(h.images || []).length; });
+    var noPic = (P.hazards || []).filter(function (h) { return !isCompliance(h) && !(h.images || []).length; });
     if (!noPic.length) return;
     if (noPic.length === 1) {
       add('warn', 'hz', noPic[0].uid, hazardLabel(noPic[0]) + ' has no photograph. A photograph is what lets someone check the observation months later without going back to the machine.', '');
@@ -8354,7 +8402,7 @@ function hazardNeedsScore(h) {
 /* The observations that have not reached the risk assessment yet. */
 function hazardsUnscored() {
   return (P.hazards || []).filter(function (h) {
-    return !hazardRisks(h).length && hazardNeedsScore(h);
+    return !isCompliance(h) && !hazardRisks(h).length && hazardNeedsScore(h);
   });
 }
 /* "Not scored yet" is a number whose meaning is not obvious from its
@@ -8411,7 +8459,9 @@ function showUnscored() {
 }
 
 function renderHazards() {
-  var list = P.hazards || [];
+  var all = P.hazards || [];
+  var list = all.filter(function (h) { return !isCompliance(h); });
+  var comp = all.filter(isCompliance);
   var open = list.filter(hazardOpen).length;
   var immediate = list.filter(function (h) { return h.priority === 'Immediate' && hazardOpen(h); }).length;
   var noPhoto = list.filter(function (h) { return !(h.images || []).length; }).length;
@@ -8434,16 +8484,22 @@ function renderHazards() {
       {
         help: 'An observation records what was seen. It does not carry a risk rating. The rating is worked out on a row in the risk assessment, so each observation needs at least one row linked to it. Use "Link or raise a risk row" on the observation, or mark it "Not a finding" where scoring is not required.',
         action: unlinked ? { label: 'Show me which', fn: function () { showUnscored(); } } : null
-      })
+      }),
+    statCard('Compliant items', comp.length,
+      comp.length
+        ? (comp.length === 1 ? '1 item documented as in compliance' : comp.length + ' items documented as in compliance')
+        : 'none documented yet',
+      comp.length ? 'good' : '',
+      { help: 'Positive findings: things observed to be correct on the machine, documented with the "Document a compliance item" button so the file records what was right as well as what was not. These are never scored and raise no risk rows or findings.' })
   ]);
   put($('hzExplain'), unscoredNotice());
   put($('hzGaps'), findingsBox('hz'));
 
   var host = clear($('hzList'));
-  var foldBar = foldAllBar(list.map(function (h) { return 'hz:' + h.uid; }), renderHazards);
+  var foldBar = foldAllBar(all.map(function (h) { return (isCompliance(h) ? 'cp:' : 'hz:') + h.uid; }), renderHazards);
   if (foldBar) { host.appendChild(foldBar); }
-  if (!list.length) {
-    host.appendChild(el('div', { cls: 'card empty', text: 'No observations yet. Add one for each hazard found on the walkdown: what it is, where it is, a photograph of it, and what should be done. The risk assessment rows can be raised from these afterwards.' }));
+  if (!all.length) {
+    host.appendChild(el('div', { cls: 'card empty', text: 'No observations yet. Add one for each hazard found on the walkdown: what it is, where it is, a photograph of it, and what should be done. The risk assessment rows can be raised from these afterwards. Use "Document a compliance item" to record something found to be correct.' }));
     return;
   }
 
@@ -8503,6 +8559,39 @@ function renderHazards() {
 
     host.appendChild(collapsible(card, 'hz:' + h.uid));
   });
+
+  if (comp.length) {
+    host.appendChild(el('h2', { cls: 'sec', text: 'Documented as in compliance' }));
+    comp.forEach(function (h) {
+      var card = el('div', { cls: 'card', 'data-rowid': h.id || h.uid });
+      card.appendChild(el('div', { cls: 'cardhead' }, [
+        el('div', {}, [ el('h3', { text: hazardLabel(h) }) ]),
+        el('div', { cls: 'rowacts' }, [
+          el('span', { cls: 'chip ' + hazardStatusTone(h), text: h.status || 'Closed' }),
+          actBtn('Edit', function () { complianceForm(h); }),
+          actBtn('Delete', function () {
+            confirmDelete(hazardLabel(h), function () {
+              P.hazards = P.hazards.filter(function (x) { return x.uid !== h.uid; });
+              commit('Compliance item deleted');
+            });
+          }, 'danger')
+        ])
+      ]));
+      var facts = [];
+      if (h.area) facts.push(['Where on the machine', h.area]);
+      if (h.observed) facts.push(['What was observed', h.observed]);
+      if (h.observedBy || h.observedDate) facts.push(['Who saw it', [h.observedBy, h.observedDate].filter(Boolean).join(' on ')]);
+      if (h.notes) facts.push(['Notes', h.notes]);
+      if (facts.length) { card.appendChild(dl(facts)); }
+      else { card.appendChild(el('p', { cls: 'hint', text: 'Nothing written down yet. Edit the item and record what is in compliance.' })); }
+      card.appendChild(el('h4', { cls: 'subhead', text: 'Photographs' }));
+      card.appendChild(gallery(h.images, {
+        editable: true,
+        onChange: function () { saveLocalSoon(); if (typeof updateImgUsage === 'function') updateImgUsage(); }
+      }));
+      host.appendChild(collapsible(card, 'cp:' + h.uid));
+    });
+  }
 }
 
 /* Both directions of the link are the same question asked from two
@@ -9098,7 +9187,7 @@ function hazardFromRisk(r, chosen, redraw) {
 function hazardForm(existing) {
   var isNew = !existing;
   var work = existing ? JSON.parse(JSON.stringify(existing)) : newHazard();
-  if (isNew && !work.id) { work.id = nextId('HZ-', P.hazards || [], 2); }
+  if (isNew && !work.id) { work.id = nextId('HZ-', hazardsOnly(), 2); }
   var bag = [];
   var body = [];
 
@@ -9154,6 +9243,62 @@ function hazardForm(existing) {
       }
     }
     commit(isNew ? 'Observation added' : 'Observation updated');
+    return true;
+  });
+}
+
+/* ---------------------------------------------------------------------
+   Documenting a compliance item.
+
+   A lighter form than the observation: it records what was found to be
+   correct, where, who saw it and the photographs, and nothing about
+   harm, scoring or corrective action, because there is none. The record
+   is an observation with kind "compliance", so it rides the same list,
+   the same photographs and markups, the same collapse and the same
+   report plumbing.
+   --------------------------------------------------------------------- */
+function complianceForm(existing) {
+  var isNew = !existing;
+  var work = existing ? JSON.parse(JSON.stringify(existing)) : newCompliance();
+  if (isNew && !work.id) { work.id = nextId('COMP-', complianceItems(), 2); }
+  var bag = [];
+  var body = [];
+
+  body.push(fset('What was found to be in compliance', [
+    row('g2', [
+      fText(bag, 'id', 'Reference', work, { mono: true, help: 'The number this compliance item is known by. It starts with COMP and appears on the photographs and in the report.' }),
+      fSel(bag, 'status', 'Status', work, HAZARD_STATUS.map(function (k) { return { k: k, label: k }; }), { help: 'Closed is the usual status for something documented as correct. The other values are available for an item that still needs confirming or periodic review.' })
+    ]),
+    fText(bag, 'area', 'Where on the machine', work, { ph: 'Operator station, drive end' }),
+    fArea(bag, 'observed', 'What was observed', work, { ph: 'What was seen, and why it is compliant. For example: emergency stop pushbutton on a yellow background per NFPA 79.' })
+  ]));
+
+  body.push(fset('Who saw it', [
+    row('g2', [
+      fText(bag, 'observedBy', 'Observed by', work),
+      fText(bag, 'observedDate', 'Date observed', work, { type: 'date' })
+    ]),
+    fArea(bag, 'notes', 'Notes', work, { ph: 'Anything a reader would need that does not belong in the fields above.' })
+  ]));
+
+  var imgHost = el('div');
+  put(imgHost, gallery(work.images, { editable: true, onChange: function () { /* held until save */ } }));
+  body.push(fset('Photographs', [
+    el('p', { cls: 'hint', text: 'A photograph of the compliant condition is the evidence it was in place. Photographs are kept inside the file itself and shrunk on the way in.' }),
+    imgHost
+  ]));
+
+  openDlg(isNew ? 'Document a compliance item' : 'Edit compliance item', body, function () {
+    bag.forEach(function (fn) { fn(); });
+    work.kind = 'compliance';
+    P.hazards = P.hazards || [];
+    if (isNew) { P.hazards.push(work); }
+    else {
+      for (var i = 0; i < P.hazards.length; i += 1) {
+        if (P.hazards[i].uid === work.uid) { P.hazards[i] = work; }
+      }
+    }
+    commit(isNew ? 'Compliance item documented' : 'Compliance item updated');
     return true;
   });
 }
@@ -9555,7 +9700,8 @@ var REPORT_SECTIONS = [
   { k: 'standards', label: 'Standards applied', help: 'The documents the assessment was carried out against.', empty: function () { return !P.meta.standards; } },
   { k: 'assumptions', label: 'Assumptions and limitations', help: 'The conditions the assessment holds under.', empty: function () { return !P.meta.assumptions; } },
   { k: 'legend', label: 'Legend for photographic notes', help: 'The key to the colored rings drawn on the photographs. Prints only when a photograph carries one.', empty: function () { return !marksUsed(allImages()).length; } },
-  { k: 'hazards', label: 'Safety report: hazards found', help: 'The walkdown record. Each observation with its photographs, the recommendation and who owns it.', empty: function () { return !(P.hazards || []).length; } },
+  { k: 'hazards', label: 'Safety report: hazards found', help: 'The walkdown record. Each observation with its photographs, the recommendation and who owns it.', empty: function () { return !hazardsOnly().length; } },
+  { k: 'compliance', label: 'Items documented as in compliance', help: 'Conditions observed to be correct on the machine, with their photographs. Prints only when a compliance item has been documented.', empty: function () { return !complianceItems().length; } },
   { k: 'risk', label: 'Risk assessment', help: 'One row per task and hazard pair, with initial score, measures and residual score.' },
   { k: 'devices', label: 'Safety device schedule', help: 'Every device with its safety values, provenance and the functions it serves.' },
   { k: 'sfperf', label: 'Safety function performance', help: 'Required against achieved performance level and structure category.' },
@@ -10022,7 +10168,7 @@ function renderReport() {
 
   sec('hazards', function (H) {
     doc.appendChild(el('h3', { text: H }));
-    var hz = P.hazards || [];
+    var hz = hazardsOnly();
     var openCount = hz.filter(hazardOpen).length;
     doc.appendChild(dl([
       ['Observations recorded', String(hz.length)],
@@ -10073,6 +10219,42 @@ function renderReport() {
       block.appendChild(dl(facts));
       if ((h.images || []).length) { block.appendChild(gallery(h.images, { editable: false })); }
       else { block.appendChild(el('p', { cls: 'hint', text: 'No photograph was recorded for this observation.' })); }
+      doc.appendChild(block);
+    });
+  });
+
+  sec('compliance', function (H) {
+    doc.appendChild(el('h3', { text: H }));
+    var items = complianceItems();
+    if (!items.length) {
+      doc.appendChild(emptySection('No compliance item has been documented on this file.'));
+      return;
+    }
+    doc.appendChild(el('p', { cls: 'wrap', text: 'Conditions observed to be correct on the machine, documented so the record shows what was in compliance as well as what was not. These are not hazards and are not scored.' }));
+    var built = compactTable([
+      { label: 'Ref', always: true, value: function (h) { return h.id; }, cell: function (h) { return el('td', { cls: 'mono nw', text: h.id || '' }); } },
+      { label: 'What was observed', always: true, value: function (h) { return h.observed || h.title; } },
+      { label: 'Where', value: function (h) { return h.area; } },
+      {
+        label: 'Status', always: true, value: function (h) { return h.status; },
+        cell: function (h) { return el('td', null, el('span', { cls: 'chip nw ' + hazardStatusTone(h), text: h.status || '' })); }
+      },
+      { label: 'Observed by', value: function (h) { return [h.observedBy, h.observedDate].filter(Boolean).join(' on '); } }
+    ], items);
+    doc.appendChild(el('div', { cls: 'tw' }, [built.table]));
+
+    items.forEach(function (h) {
+      var block = el('section', { cls: 'recblock' });
+      block.appendChild(el('h4', { text: hazardLabel(h) }));
+      var facts = [
+        ['Where on the machine', h.area],
+        ['What was observed', h.observed],
+        ['Status', h.status],
+        ['Who saw it', [h.observedBy, h.observedDate].filter(Boolean).join(' on ')],
+        ['Notes', h.notes]
+      ].filter(function (x) { return x[1]; });
+      block.appendChild(dl(facts));
+      if ((h.images || []).length) { block.appendChild(gallery(h.images, { editable: false })); }
       doc.appendChild(block);
     });
   });
@@ -15364,6 +15546,7 @@ function boot() {
 
   /* section actions */
   $('btnAddHz').addEventListener('click', function () { hazardForm(null); });
+  $('btnAddComp').addEventListener('click', function () { complianceForm(null); });
   $('btnFsReset').addEventListener('click', function () {
     confirmDelete('every answer on the functional safety checklist', function () {
       P.fsChecklist = null;

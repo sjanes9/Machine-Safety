@@ -570,7 +570,7 @@ dialog::backdrop{background:rgba(10,14,18,.55)}
 .dlg-h{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1.5px solid var(--ink);background:var(--panel-2)}
 .dlg-h h2{margin:0;font:600 13px/1.2 var(--sans);letter-spacing:.06em;text-transform:uppercase}
 .dlg-b{padding:16px;max-height:66vh;overflow:auto}
-.dlg-f{display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid var(--rule);background:var(--panel-2)}
+.dlg-f{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--rule);background:var(--panel-2)}
 .x{margin-left:auto;background:none;border:0;font-size:19px;line-height:1;color:var(--ink-3);padding:2px 6px}
 
 /* ---------- Live region ---------- */
@@ -873,6 +873,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
         <div class="btnbar noprint">
           <button class="btn" id="btnAddHz" type="button">Add an observation</button>
           <button class="btn ghost" id="btnAddComp" type="button">Document a compliance item</button>
+          <button class="btn ghost" id="btnAddPolicy" type="button">Document a policy update</button>
         </div>
         <div class="grid g4" id="hzStats"></div>
         <div id="hzExplain"></div>
@@ -1006,6 +1007,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
     <div class="dlg-b" id="dlgBody"></div>
     <div class="dlg-f">
       <button class="btn ghost" type="button" id="dlgCancel">Cancel</button>
+      <button class="btn ghost" type="button" id="dlgClear" style="display:none">Clear Selected</button>
       <button class="btn" type="submit" id="dlgOk">Save</button>
     </div>
   </form>
@@ -1093,9 +1095,9 @@ function debounce(fn, ms) {
 }
 
 /* ---------- 20.2 Schema and state ---------- */
-var SCHEMA = 15;
-var STORE_KEY = 'safetyFile.v15';
-var LEGACY_KEYS = ['safetyFile.v14', 'safetyFile.v13', 'safetyFile.v12', 'safetyFile.v11', 'safetyFile.v10', 'safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
+var SCHEMA = 16;
+var STORE_KEY = 'safetyFile.v16';
+var LEGACY_KEYS = ['safetyFile.v15', 'safetyFile.v14', 'safetyFile.v13', 'safetyFile.v12', 'safetyFile.v11', 'safetyFile.v10', 'safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
 
 function blankProject() {
   return {
@@ -1118,6 +1120,7 @@ function blankProject() {
     tests: [],
     hazardLib: null,       // null means "use the shipped hazard list"
     measureLib: null,      // null means "use the shipped measures list"
+    riskReductionLib: null, // null means "use the shipped risk reduction list"
     checklist: null,       // null means "use shipped question set"
     fsChecklist: null,     // functional safety onsite verification, same rule
     guardOpenings: [],     // ANSI B11.19 reach measurements
@@ -1213,6 +1216,7 @@ function migrate(data) {
      assessment, so they must. */
   base.hazardLib = Array.isArray(data.hazardLib) ? data.hazardLib : null;
   base.measureLib = Array.isArray(data.measureLib) ? data.measureLib : null;
+  base.riskReductionLib = Array.isArray(data.riskReductionLib) ? data.riskReductionLib : null;
   base.sectionTitles = (data.sectionTitles && typeof data.sectionTitles === 'object' && !Array.isArray(data.sectionTitles))
     ? data.sectionTitles : {};
   base.muteField = !!data.muteField;
@@ -1229,6 +1233,7 @@ function migrate(data) {
   if (v < 13) { migrateV12(base); }
   if (v < 14) { migrateV13(base); }
   if (v < 15) { migrateV14(base); }
+  if (v < 16) { migrateV15(base); }
   normalize(base);
   return base;
 }
@@ -1248,6 +1253,18 @@ function migrate(data) {
    leaving the new section unavailable on an old file. Observations
    written before this have no kind, which reads as a hazard, so nothing
    has to be done to them. */
+/* v15 -> v16. Policy updates are documented in the same list as
+   observations, and a report section prints them. Slot that section in
+   right after the compliance section on a file written before it. */
+function migrateV15(base) {
+  if (Array.isArray(base.reportSections) && base.reportSections.indexOf('policy') < 0) {
+    var i = base.reportSections.indexOf('compliance');
+    if (i < 0) { i = base.reportSections.indexOf('hazards'); }
+    if (i >= 0) { base.reportSections.splice(i + 1, 0, 'policy'); }
+    else { base.reportSections.push('policy'); }
+  }
+}
+
 function migrateV14(base) {
   if (Array.isArray(base.reportSections) && base.reportSections.indexOf('compliance') < 0) {
     var i = base.reportSections.indexOf('hazards');
@@ -3785,6 +3802,128 @@ function hazardLibReset() {
   return hazardLib();
 }
 
+/* =====================================================================
+   Risk reduction measures library.
+
+   A pick list of risk reduction measures, grouped into the ANSI/ISO
+   hierarchy, used the same way as the hazard list: searchable, ticked
+   several at a time, editable, and carried in the saved file. It fills
+   the measures field on an observation and the measure description on a
+   risk assessment row. Source: the firm's risk reduction measures list.
+   ===================================================================== */
+var RISK_REDUCTION_TYPES = [
+  'Engineering and safeguarding',
+  'Awareness devices',
+  'Complementary equipment and measures',
+  'Information for use',
+  'Administrative and organizational',
+  'Training',
+  'Personal protective equipment'
+];
+var RISK_REDUCTION_LIBRARY = [
+  { k: 'RR001', cat: "Engineering and safeguarding", label: "Area scanner with applied safety distance" },
+  { k: 'RR002', cat: "Engineering and safeguarding", label: "Light curtain installed with applied safety distance" },
+  { k: 'RR003', cat: "Engineering and safeguarding", label: "Interlocked enabling device" },
+  { k: 'RR004', cat: "Engineering and safeguarding", label: "Robot limited to manual reduced speed" },
+  { k: 'RR005', cat: "Engineering and safeguarding", label: "Utilize safety-rated safety axis" },
+  { k: 'RR006', cat: "Engineering and safeguarding", label: "Safety fence" },
+  { k: 'RR007', cat: "Engineering and safeguarding", label: "Safety mat" },
+  { k: 'RR008', cat: "Engineering and safeguarding", label: "Safe-distance safeguarding" },
+  { k: 'RR009', cat: "Engineering and safeguarding", label: "Safe-holding safeguarding" },
+  { k: 'RR010', cat: "Engineering and safeguarding", label: "Safe-opening safeguarding" },
+  { k: 'RR011', cat: "Engineering and safeguarding", label: "Safe-location safeguarding" },
+  { k: 'RR012', cat: "Awareness devices", label: "Awareness barriers" },
+  { k: 'RR013', cat: "Awareness devices", label: "Awareness signals" },
+  { k: 'RR014', cat: "Awareness devices", label: "Awareness (safety) signs" },
+  { k: 'RR015', cat: "Complementary equipment and measures", label: "Emergency stop devices (palm / push buttons or rope / cable pulls)" },
+  { k: 'RR016', cat: "Complementary equipment and measures", label: "Safety blocks, locking pins, limiting / blocking pins" },
+  { k: 'RR017', cat: "Complementary equipment and measures", label: "Slide locks" },
+  { k: 'RR018', cat: "Complementary equipment and measures", label: "Blocking / rigging" },
+  { k: 'RR019', cat: "Complementary equipment and measures", label: "Install hard stops" },
+  { k: 'RR020', cat: "Complementary equipment and measures", label: "Workholding equipment" },
+  { k: 'RR021', cat: "Complementary equipment and measures", label: "Stopping performance monitor" },
+  { k: 'RR022', cat: "Complementary equipment and measures", label: "Process malfunction detection and monitoring equipment" },
+  { k: 'RR023', cat: "Complementary equipment and measures", label: "Hand tools" },
+  { k: 'RR024', cat: "Complementary equipment and measures", label: "Safety interface (safety relay) modules" },
+  { k: 'RR025', cat: "Complementary equipment and measures", label: "Safety PES / PLC, safety controllers (including safety-bus systems)" },
+  { k: 'RR026', cat: "Complementary equipment and measures", label: "Shields" },
+  { k: 'RR027', cat: "Complementary equipment and measures", label: "Enabling devices" },
+  { k: 'RR028', cat: "Complementary equipment and measures", label: "Hold-to-run controls" },
+  { k: 'RR029', cat: "Complementary equipment and measures", label: "Measures for the escape and rescue of trapped persons" },
+  { k: 'RR030', cat: "Complementary equipment and measures", label: "Measures for isolation and energy dissipation" },
+  { k: 'RR031', cat: "Complementary equipment and measures", label: "Install lift assist" },
+  { k: 'RR032', cat: "Complementary equipment and measures", label: "Provisions for easy and safe handling of machines and heavy component parts" },
+  { k: 'RR033', cat: "Complementary equipment and measures", label: "Measures for safe access to machinery" },
+  { k: 'RR034', cat: "Complementary equipment and measures", label: "Install tie-off points" },
+  { k: 'RR035', cat: "Information for use", label: "Signage / awareness means" },
+  { k: 'RR036', cat: "Information for use", label: "Instructions / manuals" },
+  { k: 'RR037', cat: "Administrative and organizational", label: "Alternative method to lockout" },
+  { k: 'RR038', cat: "Administrative and organizational", label: "Lockout (zero energy)" },
+  { k: 'RR039', cat: "Administrative and organizational", label: "Lockout (situational)" },
+  { k: 'RR040', cat: "Administrative and organizational", label: "Current operating procedures" },
+  { k: 'RR041', cat: "Administrative and organizational", label: "Safe work procedures" },
+  { k: 'RR042', cat: "Administrative and organizational", label: "Supervision" },
+  { k: 'RR043', cat: "Administrative and organizational", label: "Permit-to-work systems" },
+  { k: 'RR044', cat: "Administrative and organizational", label: "Policy update" },
+  { k: 'RR045', cat: "Training", label: "Associate training" },
+  { k: 'RR046', cat: "Training", label: "Training" },
+  { k: 'RR047', cat: "Personal protective equipment", label: "Personal protective equipment (as required)" },
+  { k: 'RR048', cat: "Personal protective equipment", label: "Safety glasses with side shields" },
+  { k: 'RR049', cat: "Personal protective equipment", label: "Face shield" },
+  { k: 'RR050', cat: "Personal protective equipment", label: "Cut-resistant gloves and sleeves" },
+  { k: 'RR051', cat: "Personal protective equipment", label: "Hard hat" },
+  { k: 'RR052', cat: "Personal protective equipment", label: "Bump cap" },
+  { k: 'RR053', cat: "Personal protective equipment", label: "Safety harness" },
+  { k: 'RR054', cat: "Personal protective equipment", label: "Wear NFPA 70E required apparel" },
+];
+function rrLib() {
+  if (!Array.isArray(P.riskReductionLib) || !P.riskReductionLib.length) {
+    P.riskReductionLib = RISK_REDUCTION_LIBRARY.map(function (e) {
+      return { k: e.k, cat: e.cat, label: e.label };
+    });
+  }
+  return P.riskReductionLib;
+}
+function rrLibItem(k) {
+  var list = rrLib();
+  for (var i = 0; i < list.length; i += 1) { if (list[i].k === k) return list[i]; }
+  return null;
+}
+function rrLibByCat(cat) {
+  return rrLib().filter(function (e) { return e.cat === cat; });
+}
+function rrLibSearch(q) {
+  var needle = String(q || '').trim().toLowerCase();
+  if (!needle) return rrLib();
+  return rrLib().filter(function (e) {
+    return (e.cat + ' ' + e.label).toLowerCase().indexOf(needle) >= 0;
+  });
+}
+function newRrEntry(cat) {
+  var n = 1, list = rrLib(), used = {};
+  list.forEach(function (e) { used[e.k] = 1; });
+  while (used['RU' + n]) { n += 1; }
+  return { k: 'RU' + n, cat: cat || RISK_REDUCTION_TYPES[0], label: '' };
+}
+function rrLibIsCustom(e) {
+  for (var i = 0; i < RISK_REDUCTION_LIBRARY.length; i += 1) {
+    var b = RISK_REDUCTION_LIBRARY[i];
+    if (b.k !== e.k) continue;
+    return !(b.label === e.label && b.cat === e.cat);
+  }
+  return true;
+}
+function rrLibReset() {
+  P.riskReductionLib = null;
+  return rrLib();
+}
+/* Several measures written into one field, joined so the reader reads a
+   list, deduplicated, and left editable. */
+function rrMeasuresText(list) {
+  return joinUnique((list || []).map(function (e) { return e.label; }), '; ');
+}
+
+
 /* Clause 1.1 limitations: for these the applicable risk reduction measure
    is compliance with the other regulation or standard. */
 var OUT_OF_SCOPE_TYPES = ['Electrical', 'Slip trip fall', 'Working at height', 'Confined space', 'Welding arc flash or radiation', 'Fire or flammability', 'Material or substance'];
@@ -4101,6 +4240,13 @@ function newCompliance() {
     priority: '', phase: '', hazardType: ''
   });
 }
+function newPolicy() {
+  return Object.assign(newHazard(), {
+    kind: 'policy',
+    status: 'Open',
+    priority: '', phase: '', hazardType: ''
+  });
+}
 function hazardByUid(u) {
   for (var i = 0; i < (P.hazards || []).length; i += 1) { if (P.hazards[i].uid === u) return P.hazards[i]; }
   return null;
@@ -4111,44 +4257,64 @@ function hazardByUid(u) {
    it inherits the photographs, the markups, the collapse and the report
    plumbing, and is kept apart from hazards only by its kind. It is never
    scored and never raises a risk row or a finding. */
-function isCompliance(h) { return !!h && h.kind === 'compliance'; }
+var RECORD_KINDS = {
+  hazard: { prefix: 'HZ-', label: 'observation', article: 'an' },
+  compliance: { prefix: 'COMP-', label: 'compliance item', article: 'a' },
+  policy: { prefix: 'POL-', label: 'policy update', article: 'a' }
+};
+function recordKind(h) { return (h && h.kind) || 'hazard'; }
+function isCompliance(h) { return recordKind(h) === 'compliance'; }
+/* A policy update documents a procedure or policy that needs changing,
+   or one that was changed. Like a compliance item it shares the
+   observation record and list, is never scored, and raises no findings;
+   it is kept apart only by its kind and its POL reference. */
+function isPolicy(h) { return recordKind(h) === 'policy'; }
+function complianceItems() { return (P.hazards || []).filter(isCompliance); }
+function policyItems() { return (P.hazards || []).filter(isPolicy); }
+function kindItems(kind) { return (P.hazards || []).filter(function (h) { return recordKind(h) === kind; }); }
+function hazardsOnly() { return (P.hazards || []).filter(function (h) { return recordKind(h) === 'hazard'; }); }
 /* A record documented as compliance, recognised by its reference rather
    than its kind, so an ordinary observation numbered COMP is treated the
    same as one made with the compliance button. */
 function isCompRef(h) { return !!h && /^COMP/i.test(String(h.id || '')); }
+function isPolRef(h) { return !!h && /^POL/i.test(String(h.id || '')); }
 
-/* Converting between the two kinds. The same record serves both, so a
-   conversion flips the kind and gives it a reference in the other
+/* Converting between the kinds. The same record serves all three, so a
+   conversion flips the kind and gives it a reference in the target
    series. A reference that already matches the target series is kept, so
-   an observation someone had already numbered COMP keeps that number
-   when it becomes a compliance item, and nothing is renumbered that does
-   not have to be. Nothing else about the record is touched: the fields a
-   hazard carries and a compliance item does not are left in place, so
-   converting back restores them, and any linked risk rows are kept
-   rather than deleted. */
-function convertToCompliance(h) {
-  if (!h || isCompliance(h)) return;
+   nothing is renumbered that does not have to be. Nothing else about the
+   record is touched, so converting back restores it, and any linked risk
+   rows are kept rather than deleted. */
+function convertKind(h, target) {
+  if (!h) return;
+  var cur = recordKind(h);
+  if (cur === target) return;
+  var def = RECORD_KINDS[target] || RECORD_KINDS.hazard;
   var hadRows = hazardRisks(h).length;
-  if (!isCompRef(h)) { h.id = nextId('COMP-', complianceItems(), 2); }
-  h.kind = 'compliance';
-  commit(hazardLabel(h) + ' is now a compliance item'
-    + (hadRows ? '. Its ' + hadRows + ' linked risk ' + (hadRows === 1 ? 'row is' : 'rows are') + ' kept but not shown while it is a compliance item.' : '.'));
+  var pfx = def.prefix.replace(/-$/, '');
+  if (!new RegExp('^' + pfx, 'i').test(String(h.id || ''))) {
+    h.id = nextId(def.prefix, kindItems(target).filter(function (x) { return x.uid !== h.uid; }), 2);
+  }
+  if (target === 'hazard') { delete h.kind; } else { h.kind = target; }
+  var msg = hazardLabel(h) + ' is now ' + def.article + ' ' + def.label;
+  if (target === 'hazard') {
+    msg += '. Raise a risk row to score it, or set it Not a finding if no score is needed.';
+  } else if (hadRows) {
+    msg += '. Its ' + hadRows + ' linked risk ' + (hadRows === 1 ? 'row is' : 'rows are') + ' kept but not shown while it is ' + def.article + ' ' + def.label + '.';
+  } else { msg += '.'; }
+  commit(msg);
 }
-function convertToObservation(h) {
-  if (!h || !isCompliance(h)) return;
-  if (!/^HZ/i.test(String(h.id || ''))) { h.id = nextId('HZ-', hazardsOnly(), 2); }
-  delete h.kind;
-  commit(hazardLabel(h) + ' is now an observation. Raise a risk row to score it, or set it Not a finding if no score is needed.');
-}
-function complianceItems() { return (P.hazards || []).filter(isCompliance); }
-function hazardsOnly() { return (P.hazards || []).filter(function (h) { return !isCompliance(h); }); }
+function convertToCompliance(h) { convertKind(h, 'compliance'); }
+function convertToObservation(h) { convertKind(h, 'hazard'); }
+function convertToPolicy(h) { convertKind(h, 'policy'); }
 function firstLine(t) {
   var v = String(t || '').split('\n')[0].trim();
   return v.length > 64 ? v.slice(0, 61).replace(/\s+\S*$/, '') + '\u2026' : v;
 }
 function hazardLabel(h) {
-  var fallback = isCompliance(h) ? 'Compliance item' : 'Untitled observation';
-  var name = h.title || (isCompliance(h) ? firstLine(h.observed) : '') || fallback;
+  var special = isCompliance(h) || isPolicy(h);
+  var fallback = isPolicy(h) ? 'Policy update' : (isCompliance(h) ? 'Compliance item' : 'Untitled observation');
+  var name = h.title || (special ? firstLine(h.observed) : '') || fallback;
   return (h.id ? h.id + '  ' : '') + name;
 }
 /* Rows still present in the risk assessment. A deleted row leaves the
@@ -5599,7 +5765,7 @@ function findings() {
     /* A compliance item documents something that is already right. It
        carries no recommendation, no risk row and no owner, so none of
        the checks below apply to it. */
-    if (isCompliance(h)) { return; }
+    if (isCompliance(h) || isPolicy(h)) { return; }
     var lbl = hazardLabel(h);
     if (!h.id) {
       add('warn', 'hz', h.uid, lbl + ' has no reference. An observation without a number cannot be referred to from a risk row, a report or a corrective action.', '');
@@ -5634,7 +5800,7 @@ function findings() {
     /* A photograph is what lets someone check an observation months
        later. Worth saying once: on a walkdown of any size, one finding
        per unphotographed hazard buries everything else in the panel. */
-    var noPic = (P.hazards || []).filter(function (h) { return !isCompliance(h) && !(h.images || []).length; });
+    var noPic = (P.hazards || []).filter(function (h) { return recordKind(h) === 'hazard' && !(h.images || []).length; });
     if (!noPic.length) return;
     if (noPic.length === 1) {
       add('warn', 'hz', noPic[0].uid, hazardLabel(noPic[0]) + ' has no photograph. A photograph is what lets someone check the observation months later without going back to the machine.', '');
@@ -8432,7 +8598,7 @@ function hazardNeedsScore(h) {
 /* The observations that have not reached the risk assessment yet. */
 function hazardsUnscored() {
   return (P.hazards || []).filter(function (h) {
-    return !isCompliance(h) && !hazardRisks(h).length && hazardNeedsScore(h);
+    return recordKind(h) === 'hazard' && !hazardRisks(h).length && hazardNeedsScore(h);
   });
 }
 /* "Not scored yet" is a number whose meaning is not obvious from its
@@ -8490,8 +8656,9 @@ function showUnscored() {
 
 function renderHazards() {
   var all = P.hazards || [];
-  var list = all.filter(function (h) { return !isCompliance(h); });
+  var list = all.filter(function (h) { return recordKind(h) === 'hazard'; });
   var comp = all.filter(isCompliance);
+  var policy = all.filter(isPolicy);
   var open = list.filter(hazardOpen).length;
   var immediate = list.filter(function (h) { return h.priority === 'Immediate' && hazardOpen(h); }).length;
   var noPhoto = list.filter(function (h) { return !(h.images || []).length; }).length;
@@ -8520,13 +8687,19 @@ function renderHazards() {
         ? (comp.length === 1 ? '1 item documented as in compliance' : comp.length + ' items documented as in compliance')
         : 'none documented yet',
       comp.length ? 'good' : '',
-      { help: 'Positive findings: things observed to be correct on the machine, documented with the "Document a compliance item" button so the file records what was right as well as what was not. These are never scored and raise no risk rows or findings.' })
+      { help: 'Positive findings: things observed to be correct on the machine, documented with the "Document a compliance item" button so the file records what was right as well as what was not. These are never scored and raise no risk rows or findings.' }),
+    statCard('Policy updates', policy.length,
+      policy.length
+        ? (policy.length === 1 ? '1 policy update documented' : policy.length + ' policy updates documented')
+        : 'none documented yet',
+      policy.length ? 'alert' : '',
+      { help: 'Procedures or policies that need updating, or that were updated, documented with the "Document a policy update" button. These are never scored and raise no risk rows or findings.' })
   ]);
   put($('hzExplain'), unscoredNotice());
   put($('hzGaps'), findingsBox('hz'));
 
   var host = clear($('hzList'));
-  var foldBar = foldAllBar(all.map(function (h) { return (isCompliance(h) ? 'cp:' : 'hz:') + h.uid; }), renderHazards);
+  var foldBar = foldAllBar(all.map(function (h) { return (isPolicy(h) ? 'po:' : isCompliance(h) ? 'cp:' : 'hz:') + h.uid; }), renderHazards);
   if (foldBar) { host.appendChild(foldBar); }
   if (!all.length) {
     host.appendChild(el('div', { cls: 'card empty', text: 'No observations yet. Add one for each hazard found on the walkdown: what it is, where it is, a photograph of it, and what should be done. The risk assessment rows can be raised from these afterwards. Use "Document a compliance item" to record something found to be correct.' }));
@@ -8548,6 +8721,7 @@ function renderHazards() {
         actBtn('Edit', function () { hazardForm(h); }),
         actBtn('Link or raise a risk row', function () { hazardRiskPicker(h); }),
         actBtn('Make a compliance item', function () { convertToCompliance(h); }),
+        actBtn('Make a policy update', function () { convertToPolicy(h); }),
         actBtn('Delete', function () {
           confirmDelete(hazardLabel(h), function () {
             P.hazards = P.hazards.filter(function (x) { return x.uid !== h.uid; });
@@ -8561,7 +8735,7 @@ function renderHazards() {
     if (h.observed) facts.push(['What was observed', h.observed]);
     if (h.existing) facts.push(['Safeguarding in place at the time', h.existing]);
     if (h.consequence) facts.push(['Possible harm', h.consequence]);
-    if (h.recommendation) facts.push(['Recommendation', h.recommendation]);
+    if (h.recommendation) facts.push(['Risk reduction measures', h.recommendation]);
     if (h.owner || h.due) facts.push(['Action', [h.owner, h.due].filter(Boolean).join(', due ')]);
     if (h.observedBy || h.observedDate) facts.push(['Observed by', [h.observedBy, h.observedDate].filter(Boolean).join(' on ')]);
     if (h.notes) facts.push(['Notes', h.notes]);
@@ -8601,6 +8775,7 @@ function renderHazards() {
           el('span', { cls: 'chip ' + hazardStatusTone(h), text: h.status || 'Closed' }),
           actBtn('Edit', function () { complianceForm(h); }),
           actBtn('Make an observation', function () { convertToObservation(h); }),
+          actBtn('Make a policy update', function () { convertToPolicy(h); }),
           actBtn('Delete', function () {
             confirmDelete(hazardLabel(h), function () {
               P.hazards = P.hazards.filter(function (x) { return x.uid !== h.uid; });
@@ -8622,6 +8797,42 @@ function renderHazards() {
         onChange: function () { saveLocalSoon(); if (typeof updateImgUsage === 'function') updateImgUsage(); }
       }));
       host.appendChild(collapsible(card, 'cp:' + h.uid));
+    });
+  }
+
+  if (policy.length) {
+    host.appendChild(el('h2', { cls: 'sec', text: 'Policy updates' }));
+    policy.forEach(function (h) {
+      var card = el('div', { cls: 'card', 'data-rowid': h.id || h.uid });
+      card.appendChild(el('div', { cls: 'cardhead' }, [
+        el('div', {}, [ el('h3', { text: hazardLabel(h) }) ]),
+        el('div', { cls: 'rowacts' }, [
+          el('span', { cls: 'chip ' + hazardStatusTone(h), text: h.status || 'Open' }),
+          actBtn('Edit', function () { policyForm(h); }),
+          actBtn('Make an observation', function () { convertToObservation(h); }),
+          actBtn('Make a compliance item', function () { convertToCompliance(h); }),
+          actBtn('Delete', function () {
+            confirmDelete(hazardLabel(h), function () {
+              P.hazards = P.hazards.filter(function (x) { return x.uid !== h.uid; });
+              commit('Policy update deleted');
+            });
+          }, 'danger')
+        ])
+      ]));
+      var facts = [];
+      if (h.area) facts.push(['Where on the machine', h.area]);
+      if (h.observed) facts.push(['What was observed', h.observed]);
+      if (h.recommendation) facts.push(['Recommended policy update', h.recommendation]);
+      if (h.observedBy || h.observedDate) facts.push(['Who saw it', [h.observedBy, h.observedDate].filter(Boolean).join(' on ')]);
+      if (h.notes) facts.push(['Notes', h.notes]);
+      if (facts.length) { card.appendChild(dl(facts)); }
+      else { card.appendChild(el('p', { cls: 'hint', text: 'Nothing written down yet. Edit the item and record the policy that needs updating.' })); }
+      card.appendChild(el('h4', { cls: 'subhead', text: 'Photographs' }));
+      card.appendChild(gallery(h.images, {
+        editable: true,
+        onChange: function () { saveLocalSoon(); if (typeof updateImgUsage === 'function') updateImgUsage(); }
+      }));
+      host.appendChild(collapsible(card, 'po:' + h.uid));
     });
   }
 }
@@ -8717,18 +8928,17 @@ function measureLibPicker(mk, onPick) {
   var d = measureByKey(mk);
   var host = el('div');
   var chosen = {};
-  var barHost = el('div');
   function chosenList() {
     return Object.keys(chosen).map(function (k) { return chosen[k]; });
   }
   function drawBar() {
-    var list = chosenList();
-    put(barHost, [pickBar(list.length, 'one or more measures', function () {
+    dlgPickerFooter(chosenList().length, 'one or more measures', function () {
       dismissDlg();
       onPick(chosenList());
-    }, function () { chosen = {}; paint(); drawBar(); })]);
+    }, function () { chosen = {}; paint(); drawBar(); });
   }
   var q = el('input', { type: 'search', placeholder: 'Search this tier' });
+  q.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); } });
   var allBox = el('input', { type: 'checkbox' });
   var listHost = el('div');
 
@@ -8782,10 +8992,8 @@ function measureLibPicker(mk, onPick) {
       el('label', { cls: 'f', style: { marginBottom: 0 } }, [el('span', { text: 'Search' }), q]),
       el('label', { cls: 'chkrow', style: { marginBottom: 0 } }, [allBox, el('span', { text: 'Show every tier, not only this one' })])
     ]),
-    listHost,
-    barHost
+    listHost
   ]);
-  drawBar();
 
   var body = [
     el('div', { cls: 'rowacts', style: { marginBottom: '10px' } }, [
@@ -8794,9 +9002,9 @@ function measureLibPicker(mk, onPick) {
     ]),
     host
   ];
-  if ($('dlg').open) { pushDlg('Risk reduction measures', body, 'Close'); }
-  else { openDlg('Risk reduction measures', body, null, 'Close'); }
-  $('dlgOk').style.display = 'none';
+  if ($('dlg').open) { pushDlg('Risk reduction measures', body); }
+  else { openDlg('Risk reduction measures', body, null); }
+  drawBar();
 }
 
 function measureLibForm(entry, seedKind, seedLabel, after) {
@@ -8908,18 +9116,17 @@ function measureLibManager(after) {
 function hazardLibPicker(onPick) {
   var host = el('div');
   var chosen = {};
-  var barHost = el('div');
   function chosenList() {
     return Object.keys(chosen).map(function (k) { return chosen[k]; });
   }
   function drawBar() {
-    var list = chosenList();
-    put(barHost, [pickBar(list.length, 'one or more hazards', function () {
+    dlgPickerFooter(chosenList().length, 'one or more hazards', function () {
       dismissDlg();
       onPick(chosenList());
-    }, function () { chosen = {}; paint(); drawBar(); })]);
+    }, function () { chosen = {}; paint(); drawBar(); });
   }
   var q = el('input', { type: 'search', placeholder: 'Search the list: nip, crush, arc flash, overreach' });
+  q.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); } });
   var catSel = el('select');
   catSel.appendChild(el('option', { value: '', text: 'Every category' }));
   HAZARD_TYPES.forEach(function (c) {
@@ -8973,10 +9180,8 @@ function hazardLibPicker(onPick) {
       el('label', { cls: 'f', style: { marginBottom: 0 } }, [el('span', { text: 'Search' }), q]),
       el('label', { cls: 'f', style: { marginBottom: 0 } }, [el('span', { text: 'Category' }), catSel])
     ]),
-    listHost,
-    barHost
+    listHost
   ]);
-  drawBar();
 
   /* Pushed, not opened: the form underneath must still be there, with
      whatever was typed into it, when this closes. */
@@ -8988,9 +9193,144 @@ function hazardLibPicker(onPick) {
     ]),
     host
   ];
-  if (open) { pushDlg('Potential hazards', body, 'Close'); }
-  else { openDlg('Potential hazards', body, null, 'Close'); }
-  /* Picking is the action; there is nothing to save. */
+  if (open) { pushDlg('Potential hazards', body); }
+  else { openDlg('Potential hazards', body, null); }
+  drawBar();
+}
+
+
+/* The risk reduction measures picker: ticked, searchable, grouped, and
+   editable, used the same way the hazard list is. */
+function riskReductionPicker(onPick) {
+  var host = el('div');
+  var chosen = {};
+  function chosenList() { return Object.keys(chosen).map(function (k) { return chosen[k]; }); }
+  function drawBar() {
+    dlgPickerFooter(chosenList().length, 'one or more measures', function () {
+      dismissDlg(); onPick(chosenList());
+    }, function () { chosen = {}; paint(); drawBar(); });
+  }
+  var q = el('input', { type: 'search', placeholder: 'Search the list: lockout, light curtain, training, PPE' });
+  q.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); } });
+  var catSel = el('select');
+  catSel.appendChild(el('option', { value: '', text: 'Every category' }));
+  RISK_REDUCTION_TYPES.forEach(function (c) {
+    catSel.appendChild(el('option', { value: c, text: c + '  (' + rrLibByCat(c).length + ')' }));
+  });
+  var listHost = el('div');
+  function paint() {
+    var rows = rrLibSearch(q.value);
+    if (catSel.value) { rows = rows.filter(function (e) { return e.cat === catSel.value; }); }
+    if (!rows.length) {
+      put(listHost, [
+        el('p', { cls: 'hint', text: 'Nothing in the list matches that. Add it so it is offered next time, or type the measure into the field.' }),
+        el('button', { cls: 'btn ghost sm', type: 'button', text: 'Add "' + (q.value.trim() || 'a new measure') + '" to the list', on: { click: function () { rrLibForm(null, catSel.value, q.value.trim(), paint); } } })
+      ]);
+      return;
+    }
+    var byCat = {};
+    rows.forEach(function (e) { (byCat[e.cat] = byCat[e.cat] || []).push(e); });
+    var kids = [];
+    RISK_REDUCTION_TYPES.forEach(function (c) {
+      if (!byCat[c]) return;
+      kids.push(el('h4', { cls: 'libcat', text: c }));
+      var wrap = el('div', { cls: 'libwrap' });
+      byCat[c].forEach(function (e) {
+        wrap.appendChild(pickItem(!!chosen[e.k], e.label, [el('span', { cls: 'libname', text: e.label })], function (on) {
+          if (on) { chosen[e.k] = e; } else { delete chosen[e.k]; }
+          drawBar();
+        }));
+      });
+      kids.push(wrap);
+    });
+    put(listHost, kids);
+  }
+  q.addEventListener('input', paint);
+  catSel.addEventListener('change', paint);
+  paint();
+  put(host, [
+    el('p', { cls: 'hint', text: 'Tick every measure that applies. They are written into the field together and remain editable. The list does not restrict what can be entered, and any measure missing from it can be added.' }),
+    row('g2', [
+      el('label', { cls: 'f', style: { marginBottom: 0 } }, [el('span', { text: 'Search' }), q]),
+      el('label', { cls: 'f', style: { marginBottom: 0 } }, [el('span', { text: 'Category' }), catSel])
+    ]),
+    listHost
+  ]);
+  var open = !!$('dlg').open;
+  var body = [
+    el('div', { cls: 'rowacts', style: { marginBottom: '10px' } }, [
+      el('button', { cls: 'btn ghost sm', type: 'button', text: 'Add an entry to the list', on: { click: function () { rrLibForm(null, catSel.value, q.value.trim(), paint); } } }),
+      el('button', { cls: 'btn ghost sm', type: 'button', text: 'Edit the list', on: { click: function () { rrLibManager(paint); } } })
+    ]),
+    host
+  ];
+  if (open) { pushDlg('Risk reduction measures', body); } else { openDlg('Risk reduction measures', body, null); }
+  drawBar();
+}
+
+function rrLibForm(entry, seedCat, seedLabel, after) {
+  var isNew = !entry;
+  var work = entry ? JSON.parse(JSON.stringify(entry)) : newRrEntry(seedCat);
+  if (isNew && seedLabel) { work.label = seedLabel; }
+  var bag = [], body = [];
+  body.push(fset('The measure', [
+    fSel(bag, 'cat', 'Category', work, RISK_REDUCTION_TYPES.map(function (k) { return { k: k, label: k }; }), { help: 'Which group of the risk reduction hierarchy this measure belongs to.' }),
+    fText(bag, 'label', 'Measure', work, { ph: 'Light curtain installed with applied safety distance', help: 'The measure as it should read when picked. Short enough to read in a list.' })
+  ]));
+  var commitEntry = function () {
+    bag.forEach(function (fn) { fn(); });
+    if (!String(work.label || '').trim()) { say('The measure needs a name'); return false; }
+    var list = rrLib();
+    if (isNew) { list.push(work); }
+    else { var i = -1; list.forEach(function (e, j) { if (e.k === work.k) i = j; }); if (i >= 0) { list[i] = work; } }
+    saveLocalSoon();
+    if (after) { after(); }
+    say(isNew ? 'Added to the risk reduction list' : 'Risk reduction list updated');
+    return true;
+  };
+  var title = isNew ? 'Add a measure to the list' : 'Edit ' + (entry.label || 'this entry');
+  if ($('dlg').open) {
+    body.push(el('div', { cls: 'rowacts', style: { marginTop: '12px' } }, [
+      el('button', { cls: 'btn', type: 'button', text: isNew ? 'Add it to the list' : 'Save the entry', on: { click: function () { if (commitEntry() !== false) { dismissDlg(); } } } }),
+      el('button', { cls: 'btn ghost', type: 'button', text: 'Back', on: { click: dismissDlg } })
+    ]));
+    pushDlg(title, body);
+    $('dlgOk').style.display = 'none';
+  } else { openDlg(title, body, commitEntry); }
+}
+
+function rrLibManager(after) {
+  var host = el('div');
+  function paint() {
+    var kids = [];
+    var custom = rrLib().filter(rrLibIsCustom).length;
+    kids.push(el('p', { cls: 'hint', text: rrLib().length + ' entries, of which ' + custom + ' ' + (custom === 1 ? 'was' : 'were') + ' added or edited on this file. The list is saved in the file, so it travels with the assessment.' }));
+    RISK_REDUCTION_TYPES.forEach(function (cat) {
+      var rows = rrLibByCat(cat);
+      kids.push(el('h4', { cls: 'libcat' }, [
+        el('span', { text: cat + '  (' + rows.length + ')' }),
+        el('button', { cls: 'btn ghost sm', type: 'button', text: 'Add', on: { click: function () { rrLibForm(null, cat, '', function () { paint(); if (after) after(); }); } } })
+      ]));
+      if (!rows.length) { kids.push(el('p', { cls: 'hint', text: 'Nothing in this group yet.' })); return; }
+      var wrap = el('div', { cls: 'libwrap edit' });
+      rows.forEach(function (e) {
+        wrap.appendChild(el('div', { cls: 'libitem' }, [
+          el('span', { cls: 'libname' }, [el('span', { text: e.label }), rrLibIsCustom(e) ? el('span', { cls: 'chip tag', text: 'added here' }) : null]),
+          el('span', { cls: 'rowacts' }, [
+            actBtn('Edit', function () { rrLibForm(e, e.cat, '', function () { paint(); if (after) after(); }); }),
+            actBtn('Remove', function () { P.riskReductionLib = rrLib().filter(function (x) { return x.k !== e.k; }); saveLocalSoon(); paint(); if (after) after(); say(e.label + ' removed from the list'); }, 'danger')
+          ])
+        ]));
+      });
+      kids.push(wrap);
+    });
+    put(host, kids);
+  }
+  paint();
+  var mbody = [host, el('div', { cls: 'rowacts', style: { marginTop: '12px' } }, [
+    el('button', { cls: 'btn ghost sm', type: 'button', text: 'Restore the list the application ships with', on: { click: function () { confirmDelete('every change made to the risk reduction list', function () { rrLibReset(); saveLocalSoon(); paint(); if (after) after(); say('The risk reduction list is back to the built-in one'); }, 'Restore'); } } })
+  ])];
+  if ($('dlg').open) { pushDlg('The risk reduction list', mbody); } else { openDlg('The risk reduction list', mbody, null); }
   $('dlgOk').style.display = 'none';
 }
 
@@ -9181,7 +9521,7 @@ function riskFromHazard(h) {
   r.phase = h.phase || 'Normal production';
   r.hazard = h.title || '';
   r.hazardSource = h.area || '';
-  r.harm = h.consequence || '';
+  r.harm = h.consequence || h.title || '';
   r.task = '';
   r.notes = h.id ? ('Raised from safety report observation ' + h.id + '.') : 'Raised from a safety report observation.';
   r.images = (h.images || []).slice();
@@ -9229,20 +9569,20 @@ function hazardForm(existing) {
       fSel(bag, 'priority', 'Priority', work, HAZARD_PRIORITY.map(function (k) { return { k: k, label: k }; }), { help: 'How quickly it needs attention, as judged on the day. This is not a risk score: the scoring happens in the risk assessment.' }),
       fSel(bag, 'status', 'Status', work, HAZARD_STATUS.map(function (k) { return { k: k, label: k }; }), { help: 'Not a finding is for something recorded on the walk and then ruled out. It keeps the record of having looked. Closed is for something already put right, or recorded as correct on the machine. Neither needs a risk assessment row raised against it; every other status does.' })
     ]),
-    fText(bag, 'title', 'The hazard, in a line', work, { req: true, ph: 'Unguarded nip point at the infeed conveyor' }),
-    hazardPickButton('title', 'hazardType', 'consequence'),
+    fText(bag, 'title', 'Possible Harm', work, { req: true, ph: 'Crushing of the hand or arm at the infeed nip', help: 'The harm this observation is about, in a line. It heads the observation in the list and the report. Pick from the hazard list to fill it from the library.' }),
+    hazardPickButton('title', 'hazardType', null),
     row('g3', [
       fText(bag, 'area', 'Where on the machine', work, { ph: 'Infeed, drive end' }),
       fSel(bag, 'phase', 'Lifecycle phase', work, ['Normal production', 'Setup', 'Changeover', 'Cleaning', 'Maintenance', 'Fault finding', 'Installation', 'Decommissioning'].map(function (k) { return { k: k, label: k }; })),
       fSel(bag, 'hazardType', 'Hazard type', work, HAZARD_TYPES.map(function (k) { return { k: k, label: k }; }))
     ]),
     fArea(bag, 'observed', 'What was observed', work, { ph: 'What was seen, in plain description.' }),
-    fArea(bag, 'existing', 'Safeguarding in place at the time', work, { ph: 'What was already fitted, and whether it was working, defeated or missing.' }),
-    fArea(bag, 'consequence', 'Possible harm', work, { ph: 'What could happen to whom.' })
+    fArea(bag, 'existing', 'Safeguarding in place at the time', work, { ph: 'What was already fitted, and whether it was working, defeated or missing.' })
   ]));
 
   body.push(fset('What should be done', [
-    fArea(bag, 'recommendation', 'Recommendation', work, { ph: 'The measure recommended, in hierarchy order: eliminate, substitute, engineer, then administrate.' }),
+    fArea(bag, 'recommendation', 'Risk reduction measures', work, { ph: 'The measures recommended, in hierarchy order: eliminate, substitute, engineer, then administrate.', help: 'The measures recommended to reduce the risk. Pick from the risk reduction list to fill them from the library, then edit to match this machine.' }),
+    rrPickButton('recommendation'),
     row('g2', [
       fText(bag, 'owner', 'Action owner', work),
       fText(bag, 'due', 'Target date', work, { type: 'date' })
@@ -9266,7 +9606,7 @@ function hazardForm(existing) {
 
   openDlg(isNew ? 'New observation' : 'Edit observation', body, function () {
     bag.forEach(function (fn) { fn(); });
-    if (!work.title) { say('Give the observation a line describing the hazard'); return false; }
+    if (!work.title) { say('Give the observation a line describing the possible harm'); return false; }
     P.hazards = P.hazards || [];
     if (isNew) { P.hazards.push(work); }
     else {
@@ -9331,6 +9671,71 @@ function complianceForm(existing) {
       }
     }
     commit(isNew ? 'Compliance item documented' : 'Compliance item updated');
+    return true;
+  });
+}
+
+/* ---------------------------------------------------------------------
+   Documenting a policy update.
+
+   A record that a procedure or policy needs changing, or was changed.
+   It carries the same light field set as a compliance item plus the
+   recommended change, with the risk reduction list available to fill it.
+   Like a compliance item it is an observation record with a kind, so it
+   rides the same list, photographs, collapse and report plumbing, and is
+   never scored.
+   --------------------------------------------------------------------- */
+function policyForm(existing) {
+  var isNew = !existing;
+  var work = existing ? JSON.parse(JSON.stringify(existing)) : newPolicy();
+  if (isNew && !work.id) { work.id = nextId('POL-', policyItems(), 2); }
+  var bag = [];
+  var body = [];
+
+  body.push(fset('The policy update', [
+    row('g2', [
+      fText(bag, 'id', 'Reference', work, { mono: true, help: 'The number this policy update is known by. It starts with POL and appears in the report.' }),
+      fSel(bag, 'status', 'Status', work, HAZARD_STATUS.map(function (k) { return { k: k, label: k }; }), { help: 'Open while the policy still needs changing; Closed once the change is made. The other values are available where they fit.' })
+    ]),
+    fText(bag, 'area', 'Where on the machine', work, { ph: 'Operator station, or the area the policy covers' }),
+    fArea(bag, 'observed', 'What was observed', work, { ph: 'The procedure or policy that needs changing, and why. For example: the lockout procedure does not list unique identifiers for each isolation point.' })
+  ]));
+
+  body.push(fset('What should be done', [
+    fArea(bag, 'recommendation', 'Recommended policy update', work, { ph: 'The change recommended to the policy or procedure.', help: 'The policy or procedure change recommended. Pick from the risk reduction list to fill it from the library, then edit to match this site.' }),
+    rrPickButton('recommendation'),
+    row('g2', [
+      fText(bag, 'owner', 'Action owner', work),
+      fText(bag, 'due', 'Target date', work, { type: 'date' })
+    ])
+  ]));
+
+  body.push(fset('Who saw it', [
+    row('g2', [
+      fText(bag, 'observedBy', 'Observed by', work),
+      fText(bag, 'observedDate', 'Date observed', work, { type: 'date' })
+    ]),
+    fArea(bag, 'notes', 'Notes', work, { ph: 'Anything a reader would need that does not belong in the fields above.' })
+  ]));
+
+  var imgHost = el('div');
+  put(imgHost, gallery(work.images, { editable: true, onChange: function () { /* held until save */ } }));
+  body.push(fset('Photographs', [
+    el('p', { cls: 'hint', text: 'A photograph of the current label, sign or procedure is the evidence of what was in place. Photographs are kept inside the file itself and shrunk on the way in.' }),
+    imgHost
+  ]));
+
+  openDlg(isNew ? 'Document a policy update' : 'Edit policy update', body, function () {
+    bag.forEach(function (fn) { fn(); });
+    work.kind = 'policy';
+    P.hazards = P.hazards || [];
+    if (isNew) { P.hazards.push(work); }
+    else {
+      for (var i = 0; i < P.hazards.length; i += 1) {
+        if (P.hazards[i].uid === work.uid) { P.hazards[i] = work; }
+      }
+    }
+    commit(isNew ? 'Policy update documented' : 'Policy update updated');
     return true;
   });
 }
@@ -9734,6 +10139,7 @@ var REPORT_SECTIONS = [
   { k: 'legend', label: 'Legend for photographic notes', help: 'The key to the colored rings drawn on the photographs. Prints only when a photograph carries one.', empty: function () { return !marksUsed(allImages()).length; } },
   { k: 'hazards', label: 'Safety report: hazards found', help: 'The walkdown record. Each observation with its photographs, the recommendation and who owns it.', empty: function () { return !hazardsOnly().length; } },
   { k: 'compliance', label: 'Items documented as in compliance', help: 'Conditions observed to be correct on the machine, with their photographs. Prints only when a compliance item has been documented.', empty: function () { return !complianceItems().length; } },
+  { k: 'policy', label: 'Policy updates', help: 'Procedures or policies that need changing, or that were changed, with the recommended update. Prints only when a policy update has been documented.', empty: function () { return !policyItems().length; } },
   { k: 'risk', label: 'Risk assessment', help: 'One row per task and hazard pair, with initial score, measures and residual score.' },
   { k: 'devices', label: 'Safety device schedule', help: 'Every device with its safety values, provenance and the functions it serves.' },
   { k: 'sfperf', label: 'Safety function performance', help: 'Required against achieved performance level and structure category.' },
@@ -10311,6 +10717,48 @@ function renderReport() {
         ['Where on the machine', h.area],
         ['What was observed', h.observed],
         ['Status', h.status],
+        ['Who saw it', [h.observedBy, h.observedDate].filter(Boolean).join(' on ')],
+        ['Notes', h.notes]
+      ].filter(function (x) { return x[1]; });
+      block.appendChild(dl(facts));
+      if ((h.images || []).length) { block.appendChild(gallery(h.images, { editable: false })); }
+      doc.appendChild(block);
+    });
+  });
+
+  sec('policy', function (H) {
+    doc.appendChild(el('h3', { text: H }));
+    var items = policyItems();
+    if (!items.length) {
+      doc.appendChild(emptySection('No policy update has been documented on this file.'));
+      return;
+    }
+    doc.appendChild(el('p', { cls: 'wrap', text: 'Procedures or policies that need changing, or that were changed, documented so the record shows what the installation calls for beyond the machine itself. These are not scored.' }));
+    var built = compactTable([
+      { label: 'Ref', always: true, value: function (h) { return h.id; }, cell: function (h) { return el('td', { cls: 'mono nw', text: h.id || '' }); } },
+      { label: 'What was observed', always: true, value: function (h) { return h.observed || h.title; } },
+      { label: 'Recommended update', value: function (h) { return h.recommendation; } },
+      { label: 'Where', value: function (h) { return h.area; } },
+      {
+        label: 'Status', always: true, value: function (h) { return h.status; },
+        cell: function (h) { return el('td', null, el('span', { cls: 'chip nw ' + hazardStatusTone(h), text: h.status || '' })); }
+      }
+    ], items);
+    doc.appendChild(el('div', { cls: 'tw' }, [built.table]));
+
+    if (P.compSummaryOnly) {
+      doc.appendChild(el('p', { cls: 'wrap muted', text: 'Detail is shown in the summary above only.' }));
+      return;
+    }
+    items.forEach(function (h) {
+      var block = el('section', { cls: 'recblock' });
+      block.appendChild(el('h4', { text: hazardLabel(h) }));
+      var facts = [
+        ['Where on the machine', h.area],
+        ['What was observed', h.observed],
+        ['Recommended policy update', h.recommendation],
+        ['Status', h.status],
+        ['Action owner', [h.owner, h.due ? 'due ' + h.due : ''].filter(Boolean).join(', ')],
         ['Who saw it', [h.observedBy, h.observedDate].filter(Boolean).join(' on ')],
         ['Notes', h.notes]
       ].filter(function (x) { return x[1]; });
@@ -12260,6 +12708,28 @@ function openDlg(title, bodyNodes, onSave, okLabel) {
 }
 function resetFieldRegistry() { FIELD_NODES = {}; }
 
+/* A ticking picker drives the dialog footer rather than a bar of its own
+   in the body, so the Use and Clear buttons sit next to Cancel. The Use
+   button is the dialog's own OK button, relabelled and wired to apply
+   the selection; Clear is the extra button beside it. */
+function dlgPickerFooter(count, label, onUse, onClear) {
+  var ok = $('dlgOk'), clr = $('dlgClear');
+  ok.style.display = '';
+  ok.disabled = !count;
+  ok.textContent = count ? ('Use ' + count + ' Selected') : ('Select ' + label + ' to use');
+  if (clr) {
+    clr.style.display = count ? '' : 'none';
+    clr.textContent = 'Clear Selected';
+    clr.onclick = function () { onClear(); };
+  }
+  _dlgSave = function () { onUse(); return false; };
+}
+function resetDlgPickerFooter() {
+  var ok = $('dlgOk'), clr = $('dlgClear');
+  if (ok) { ok.disabled = false; }
+  if (clr) { clr.style.display = 'none'; clr.onclick = null; }
+}
+
 /* ---------------------------------------------------------------------
    One dialog element serves every form, which is fine until a form needs
    to open one of its own: a picker over a hazard list, say. Opening it
@@ -12288,6 +12758,7 @@ function pushDlg(title, bodyNodes, okLabel) {
   FIELD_NODES = {};
   $('dlgTitle').textContent = title;
   ok.textContent = okLabel || 'Save';
+  resetDlgPickerFooter();
   _dlgSave = null;
   put(body, bodyNodes);
   body.scrollTop = 0;
@@ -12304,6 +12775,7 @@ function popDlg() {
   $('dlgTitle').textContent = st.title;
   ok.textContent = st.okText;
   ok.style.display = st.okShown;
+  resetDlgPickerFooter();
   _dlgSave = st.save;
   try { body.scrollTop = st.scroll; } catch (e) { /* no layout */ }
   return true;
@@ -12318,6 +12790,7 @@ function closeDlg() {
   var d = $('dlg');
   _dlgSave = null;
   _dlgStack = [];
+  resetDlgPickerFooter();
   $('dlgOk').style.display = '';
   if (d.close && d.open) { d.close(); } else { d.removeAttribute('open'); }
   if (_lastFocus && _lastFocus.focus) _lastFocus.focus();
@@ -12600,6 +13073,32 @@ function hazardPickButton(labelKey, typeKey, harmKey) {
       }
     }),
     el('span', { cls: 'hint', text: 'Potential hazards by category, searchable, editable, and selected several at a time. The list does not restrict what can be entered in the field.' })
+  ]);
+}
+
+/* The button that sits under a risk reduction measures field, wired to
+   append the picked measures to the field named here. Appends rather
+   than replaces, so several visits to the list build one list up. */
+function rrPickButton(targetKey, hintText) {
+  return el('div', { cls: 'rowacts', style: { margin: '-4px 0 10px' } }, [
+    el('button', {
+      cls: 'btn ghost sm', type: 'button', text: 'Pick from the risk reduction list',
+      on: {
+        click: function () {
+          riskReductionPicker(function (picked) {
+            if (!picked || !picked.length) return;
+            var node = FIELD_NODES[String(targetKey)] || document.querySelector('[data-field="' + String(targetKey).replace(/"/g, '') + '"]');
+            var cur = node ? String(node.value || '').trim() : '';
+            var add = rrMeasuresText(picked);
+            setFieldValue(targetKey, cur ? (cur.replace(/[;\s]+$/, '') + '; ' + add) : add);
+            say(picked.length === 1
+              ? 'Added from the risk reduction list. Edit the wording to match this machine.'
+              : picked.length + ' measures added. Edit the wording to match this machine.');
+          });
+        }
+      }
+    }),
+    el('span', { cls: 'hint', text: hintText || 'Risk reduction measures by category, searchable, editable, and selected several at a time. The list does not restrict what can be entered.' })
   ]);
 }
 
@@ -13135,6 +13634,26 @@ function riskForm(existing) {
           }
         }),
         el('span', { cls: 'hint', text: 'The ANSI/RIA R15.306 Table 3 examples for this tier, including the ANSI Z535.4 sign and label entries.' })
+      ]));
+
+      kids2.push(el('div', { cls: 'rowacts', style: { margin: '6px 0 0' } }, [
+        el('button', {
+          cls: 'btn ghost sm', type: 'button', text: 'Pick from the risk reduction list',
+          on: {
+            click: function () {
+              riskReductionPicker(function (picked) {
+                if (!picked || !picked.length) return;
+                var add = rrMeasuresText(picked);
+                m.desc = m.desc ? (String(m.desc).replace(/[;\s]+$/, '') + '; ' + add) : add;
+                drawMeasures();
+                say(picked.length === 1
+                  ? 'Added from the risk reduction list. Edit the wording to match this machine.'
+                  : picked.length + ' measures added. Edit the wording to match this machine.');
+              });
+            }
+          }
+        }),
+        el('span', { cls: 'hint', text: 'The firm\u2019s risk reduction measures list, grouped and searchable. Adds to the description above.' })
       ]));
 
       if (m.k === 'SAFEGUARD') {
@@ -15608,6 +16127,7 @@ function boot() {
   /* section actions */
   $('btnAddHz').addEventListener('click', function () { hazardForm(null); });
   $('btnAddComp').addEventListener('click', function () { complianceForm(null); });
+  $('btnAddPolicy').addEventListener('click', function () { policyForm(null); });
   $('btnFsReset').addEventListener('click', function () {
     confirmDelete('every answer on the functional safety checklist', function () {
       P.fsChecklist = null;

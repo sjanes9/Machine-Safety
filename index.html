@@ -687,6 +687,15 @@ table.mx select{padding:3px 5px;font-size:11.5px}
     margin:16pt 0 6pt;padding-bottom:4pt;border-bottom:1.2pt solid #000;
     break-after:avoid;page-break-after:avoid}
   .doc h3:first-child{margin-top:0}
+  /* the detailed records of each walkdown section begin on a fresh page,
+     so the single-line summary reads as its own portion and the full
+     records as another. first-child guard: a detail heading never leads
+     the document, so this never opens on a blank first page */
+  .doc h3.detailsec:not(:first-child){break-before:page;page-break-before:always}
+  /* a record keeps its heading with its first rows, and a short record
+     stays whole on a page */
+  .recblock h4{break-after:avoid;page-break-after:avoid}
+  .recblock dl{break-inside:avoid;page-break-inside:avoid}
   .doc h4{font:700 10pt/1.3 var(--sans);color:#000;margin:12pt 0 4pt;
     break-after:avoid;page-break-after:avoid}
   h2.sec{border-bottom-color:#000;color:#000;break-after:avoid;page-break-after:avoid}
@@ -1095,9 +1104,9 @@ function debounce(fn, ms) {
 }
 
 /* ---------- 20.2 Schema and state ---------- */
-var SCHEMA = 16;
-var STORE_KEY = 'safetyFile.v16';
-var LEGACY_KEYS = ['safetyFile.v15', 'safetyFile.v14', 'safetyFile.v13', 'safetyFile.v12', 'safetyFile.v11', 'safetyFile.v10', 'safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
+var SCHEMA = 17;
+var STORE_KEY = 'safetyFile.v17';
+var LEGACY_KEYS = ['safetyFile.v16', 'safetyFile.v15', 'safetyFile.v14', 'safetyFile.v13', 'safetyFile.v12', 'safetyFile.v11', 'safetyFile.v10', 'safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
 
 function blankProject() {
   return {
@@ -1125,7 +1134,6 @@ function blankProject() {
     fsChecklist: null,     // functional safety onsite verification, same rule
     guardOpenings: [],     // ANSI B11.19 reach measurements
     reportSections: null,  // null means "every section"
-    compSummaryOnly: false, // print COMP items as a summary row only, no detail block
     sectionTitles: {},     // section key -> the heading this file prints for it
     muteField: false,      // field verification findings set aside for now
     signatures: [],        // e-signed approvals
@@ -1208,7 +1216,6 @@ function migrate(data) {
   base.fieldTests = Array.isArray(data.fieldTests) ? data.fieldTests : [];
   base.sistemaReports = Array.isArray(data.sistemaReports) ? data.sistemaReports : [];
   base.reportSections = Array.isArray(data.reportSections) ? data.reportSections : null;
-  base.compSummaryOnly = !!data.compSummaryOnly;
   /* Anything an assessor edits that belongs to the file rather than to
      the browser has to be carried here, or it is silently discarded on
      the next open. The hazard list, the measures list and the section
@@ -1234,6 +1241,7 @@ function migrate(data) {
   if (v < 14) { migrateV13(base); }
   if (v < 15) { migrateV14(base); }
   if (v < 16) { migrateV15(base); }
+  if (v < 17) { migrateV16(base, data); }
   normalize(base);
   return base;
 }
@@ -1256,6 +1264,27 @@ function migrate(data) {
 /* v15 -> v16. Policy updates are documented in the same list as
    observations, and a report section prints them. Slot that section in
    right after the compliance section on a file written before it. */
+/* v16 -> v17. The single line and the detail of each walkdown section
+   are now separate report sections, so either can be left out. Slot the
+   detail section in right after its summary on a file written before the
+   split. A file that had the old COMP summary-only switch on wanted the
+   compliance and policy detail left out, so honour that by not adding
+   those two detail sections. */
+function migrateV16(base, data) {
+  if (!Array.isArray(base.reportSections)) return;
+  var summaryOnly = !!(data && data.compSummaryOnly);
+  function insertAfter(key, detailKey, skip) {
+    if (skip) return;
+    var sel = base.reportSections;
+    if (sel.indexOf(detailKey) >= 0) return;
+    var i = sel.indexOf(key);
+    if (i >= 0) { sel.splice(i + 1, 0, detailKey); }
+  }
+  insertAfter('hazards', 'hazardsDetail', false);
+  insertAfter('compliance', 'complianceDetail', summaryOnly);
+  insertAfter('policy', 'policyDetail', summaryOnly);
+}
+
 function migrateV15(base) {
   if (Array.isArray(base.reportSections) && base.reportSections.indexOf('policy') < 0) {
     var i = base.reportSections.indexOf('compliance');
@@ -10137,9 +10166,12 @@ var REPORT_SECTIONS = [
   { k: 'standards', label: 'Standards applied', help: 'The documents the assessment was carried out against.', empty: function () { return !P.meta.standards; } },
   { k: 'assumptions', label: 'Assumptions and limitations', help: 'The conditions the assessment holds under.', empty: function () { return !P.meta.assumptions; } },
   { k: 'legend', label: 'Legend for photographic notes', help: 'The key to the colored rings drawn on the photographs. Prints only when a photograph carries one.', empty: function () { return !marksUsed(allImages()).length; } },
-  { k: 'hazards', label: 'Safety report: hazards found', help: 'The walkdown record. Each observation with its photographs, the recommendation and who owns it.', empty: function () { return !hazardsOnly().length; } },
-  { k: 'compliance', label: 'Items documented as in compliance', help: 'Conditions observed to be correct on the machine, with their photographs. Prints only when a compliance item has been documented.', empty: function () { return !complianceItems().length; } },
-  { k: 'policy', label: 'Policy updates', help: 'Procedures or policies that need changing, or that were changed, with the recommended update. Prints only when a policy update has been documented.', empty: function () { return !policyItems().length; } },
+  { k: 'hazards', label: 'Safety report: hazards found', help: 'The single line per observation: reference, where, phase, type, priority and status.', empty: function () { return !hazardsOnly().length; } },
+  { k: 'hazardsDetail', label: 'Hazards in detail', help: 'Each observation in full, with its photographs. Separate from the summary line, so either can be left out of the report.', empty: function () { return !hazardsOnly().length; } },
+  { k: 'compliance', label: 'Items documented as in compliance', help: 'The single line per compliance item: reference, what was observed, where and status.', empty: function () { return !complianceItems().length; } },
+  { k: 'complianceDetail', label: 'Compliance items in detail', help: 'Each compliance item in full, with its photographs. Separate from the summary line, so either can be left out of the report.', empty: function () { return !complianceItems().length; } },
+  { k: 'policy', label: 'Policy updates', help: 'The single line per policy update: reference, what was observed, recommended update and status.', empty: function () { return !policyItems().length; } },
+  { k: 'policyDetail', label: 'Policy updates in detail', help: 'Each policy update in full, with its photographs. Separate from the summary line, so either can be left out of the report.', empty: function () { return !policyItems().length; } },
   { k: 'risk', label: 'Risk assessment', help: 'One row per task and hazard pair, with initial score, measures and residual score.' },
   { k: 'devices', label: 'Safety device schedule', help: 'Every device with its safety values, provenance and the functions it serves.' },
   { k: 'sfperf', label: 'Safety function performance', help: 'Required against achieved performance level and structure category.' },
@@ -10162,13 +10194,13 @@ var REPORT_SECTIONS = [
 /* Named presets for the combinations people actually ask for. */
 var REPORT_PRESETS = [
   { k: 'full', label: 'Everything', keys: REPORT_SECTIONS.map(function (x) { return x.k; }) },
-  { k: 'walkdown', label: 'Safety report only', keys: ['scope', 'legend', 'assumptions', 'hazards', 'checklist', 'conclusion', 'approval'] },
-  { k: 'ra', label: 'Risk assessment only', keys: ['scope', 'legend', 'assumptions', 'hazards', 'risk', 'approval'] },
+  { k: 'walkdown', label: 'Safety report only', keys: ['scope', 'legend', 'assumptions', 'hazards', 'hazardsDetail', 'checklist', 'conclusion', 'approval'] },
+  { k: 'ra', label: 'Risk assessment only', keys: ['scope', 'legend', 'assumptions', 'hazards', 'hazardsDetail', 'risk', 'approval'] },
   { k: 'ra_sf', label: 'Risk assessment and safety functions', keys: ['scope', 'assumptions', 'risk', 'sfperf', 'spec', 'devices', 'approval'] },
   { k: 'vv', label: 'Verification and validation only', keys: ['scope', 'vv', 'approval'] },
   { k: 'controls', label: 'Controls package', keys: ['scope', 'devices', 'sfperf', 'spec', 'fschecklist', 'provenance', 'vv', 'approval'] },
   { k: 'field', label: 'Field verification only', keys: ['scope', 'legend', 'field', 'fschecklist', 'checklist', 'approval'] },
-  { k: 'guarding', label: 'Guarding package', keys: ['scope', 'legend', 'hazards', 'risk', 'checklist', 'approval'] },
+  { k: 'guarding', label: 'Guarding package', keys: ['scope', 'legend', 'hazards', 'hazardsDetail', 'risk', 'checklist', 'approval'] },
   { k: 'findings', label: 'Findings only', keys: ['scope', 'findings', 'conclusion'] }
 ];
 
@@ -10294,25 +10326,6 @@ function renderReportPicker() {
   var host = $('reportPicker');
   if (!host) return;
   var sel = reportSelection();
-
-  /* COMP items can run to dozens on a line with a lot of guarding that
-     was found correct. Documenting each one is the point, but the full
-     detail block for every one makes the report long. This prints them
-     as a summary row only, with the detail left out. */
-  var hasComp = (P.hazards || []).some(isCompRef);
-  var compToggle = null;
-  if (hasComp) {
-    var compCb = el('input', { type: 'checkbox' });
-    compCb.checked = !!P.compSummaryOnly;
-    compCb.addEventListener('change', function () {
-      P.compSummaryOnly = compCb.checked;
-      commit(compCb.checked ? 'COMP items set to summary only in the report' : 'COMP items show full detail in the report');
-    });
-    compToggle = el('label', { cls: 'chkrow noprint', style: { margin: '0 0 10px' } }, [
-      compCb,
-      el('span', { text: 'Compliance (COMP) items: show the summary row only, hide the detail blocks' })
-    ]);
-  }
 
   var presetSel = el('select', { cls: 'inp' });
   var match = reportPresetMatch();
@@ -10483,7 +10496,7 @@ function renderReportPicker() {
         ]),
         el('span', { cls: 'hint', style: { marginLeft: 'auto' }, text: sel.length + ' of ' + REPORT_SECTIONS.length + ' sections. Numbering follows what is included.' + (renamedSectionCount() ? '  ' + renamedSectionCount() + ' renamed.' : '') })
       ]),
-      compToggle,
+      el('p', { cls: 'hint', style: { margin: '0 0 8px' }, text: 'The single line and the detail of each walkdown section are separate rows below, so either can be left out or moved on its own.' }),
       boxes
     ].filter(Boolean))
   ]);
@@ -10658,10 +10671,13 @@ function renderReport() {
       }
     ], hz);
     doc.appendChild(el('div', { cls: 'tw' }, [built.table]));
+  });
 
-    var hiddenComp = 0;
+  sec('hazardsDetail', function (H) {
+    doc.appendChild(el('h3', { cls: 'detailsec', text: H }));
+    var hz = hazardsOnly();
+    if (!hz.length) { doc.appendChild(emptySection('No observation has been recorded on this file.')); return; }
     hz.forEach(function (h) {
-      if (P.compSummaryOnly && isCompRef(h)) { hiddenComp += 1; return; }
       var block = el('section', { cls: 'recblock' });
       block.appendChild(el('h4', { text: hazardLabel(h) }));
       var facts = [
@@ -10669,7 +10685,7 @@ function renderReport() {
         ['What was observed', h.observed],
         ['Safeguarding in place at the time', h.existing],
         ['Possible harm', h.consequence],
-        ['Recommendation', h.recommendation],
+        ['Risk reduction measures', h.recommendation],
         ['Priority and status', [h.priority, h.status].filter(Boolean).join(', ')],
         ['Action owner', [h.owner, h.due ? 'due ' + h.due : ''].filter(Boolean).join(', ')],
         ['Observed by', [h.observedBy, h.observedDate].filter(Boolean).join(' on ')],
@@ -10681,9 +10697,6 @@ function renderReport() {
       else { block.appendChild(el('p', { cls: 'hint', text: 'No photograph was recorded for this observation.' })); }
       doc.appendChild(block);
     });
-    if (hiddenComp) {
-      doc.appendChild(el('p', { cls: 'wrap muted', text: 'Detail for ' + hiddenComp + ' item' + (hiddenComp === 1 ? '' : 's') + ' documented as in compliance is shown in the summary above only.' }));
-    }
   });
 
   sec('compliance', function (H) {
@@ -10705,11 +10718,12 @@ function renderReport() {
       { label: 'Observed by', value: function (h) { return [h.observedBy, h.observedDate].filter(Boolean).join(' on '); } }
     ], items);
     doc.appendChild(el('div', { cls: 'tw' }, [built.table]));
+  });
 
-    if (P.compSummaryOnly) {
-      doc.appendChild(el('p', { cls: 'wrap muted', text: 'Detail is shown in the summary above only.' }));
-      return;
-    }
+  sec('complianceDetail', function (H) {
+    doc.appendChild(el('h3', { cls: 'detailsec', text: H }));
+    var items = complianceItems();
+    if (!items.length) { doc.appendChild(emptySection('No compliance item has been documented on this file.')); return; }
     items.forEach(function (h) {
       var block = el('section', { cls: 'recblock' });
       block.appendChild(el('h4', { text: hazardLabel(h) }));
@@ -10745,11 +10759,12 @@ function renderReport() {
       }
     ], items);
     doc.appendChild(el('div', { cls: 'tw' }, [built.table]));
+  });
 
-    if (P.compSummaryOnly) {
-      doc.appendChild(el('p', { cls: 'wrap muted', text: 'Detail is shown in the summary above only.' }));
-      return;
-    }
+  sec('policyDetail', function (H) {
+    doc.appendChild(el('h3', { cls: 'detailsec', text: H }));
+    var items = policyItems();
+    if (!items.length) { doc.appendChild(emptySection('No policy update has been documented on this file.')); return; }
     items.forEach(function (h) {
       var block = el('section', { cls: 'recblock' });
       block.appendChild(el('h4', { text: hazardLabel(h) }));

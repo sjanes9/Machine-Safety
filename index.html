@@ -140,7 +140,7 @@ nav.steps{padding:8px}
 .devtbl th:nth-child(1),.devtbl td:nth-child(1){width:28px}
 /* column 2 is the status chip, which has to hold "Caution" whole */
 .devtbl th:nth-child(2),.devtbl td:nth-child(2){width:84px}
-.devtbl th:nth-child(3),.devtbl td:nth-child(3){width:74px}
+.devtbl th:nth-child(3),.devtbl td:nth-child(3){width:96px}
 .devtbl th:nth-child(5),.devtbl td:nth-child(5){width:70px}
 /* column 6 is Cat, and it carries the provenance chip under the
    number. At 74px a "field verified" chip ran out over the column
@@ -160,6 +160,22 @@ nav.steps{padding:8px}
 .devtbl .rowacts{flex-direction:column;align-items:stretch;gap:4px}
 .devtbl .rowacts .btn{width:100%}
 .bulkbar{display:flex;align-items:center;gap:10px;padding:6px 0 10px}
+/* the findings under the device tiles: one block per device, the device
+   named first, then each finding in full */
+.devfind-card{margin:12px 0;padding:10px 13px}
+.devfind-title{font:600 9.5px/1 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px}
+.devfind-devs{list-style:none;margin:0;padding:0}
+.devfind{padding:8px 0;border-top:1px solid var(--rule-2)}
+.devfind:first-child{border-top:0;padding-top:0}
+.devfind-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.devfind-head strong{overflow-wrap:anywhere}
+.devfind-head .hint{flex:1 1 200px;min-width:0}
+.devfind-acts{display:flex;gap:6px;margin-left:auto}
+.devfind-list{margin:6px 0 0;padding-left:0;list-style:none;font-size:12.5px}
+.devfind-list li{margin:4px 0;line-height:1.45}
+.devfind-held{margin-top:10px}
+.devfind-held summary{cursor:pointer;font-size:12.5px;color:var(--ink-2)}
+.stat .s{overflow-wrap:break-word}
 .bulkcount{font-weight:600;font-size:12.5px}
 /* Field verification findings read as their own class: answered at a
    different time, by a different person, standing at the machine. */
@@ -365,6 +381,10 @@ body.nohints .f .hint{display:none}
 .stat{background:var(--panel);border:1px solid var(--rule);border-top:3px solid var(--ink);padding:11px 13px}
 .stat .k{font:600 9px/1 var(--sans);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
 .stat .v{font:600 27px/1.1 var(--mono);margin-top:6px}
+/* A word in the value slot ("Satisfied", "Not satisfied") is not a count.
+   At the count's size it ran out past the card on a narrow screen. */
+.stat .v.word{font-size:16px;line-height:1.25;overflow-wrap:break-word}
+.stat{min-width:0}
 .stat .s{font-size:11px;color:var(--ink-3);margin-top:3px}
 .stat.alert{border-top-color:var(--bad)} .stat.alert .v{color:var(--bad)}
 .stat.good{border-top-color:var(--ok)} .stat.good .v{color:var(--ok)}
@@ -535,6 +555,21 @@ table.dt .chip{white-space:normal;word-break:keep-all;overflow-wrap:normal}
    as two separate values. */
 table.dt .chip.nw{white-space:nowrap}
 table.dt td.nw,table.dt th.nw,.doc .dt td.nw{white-space:nowrap}
+/* A tag or identifier sitting in a column of fixed width. It reads in the
+   mono face like a number, but it is a name, and names have spaces:
+   "Door Switch" held on one line ran out over the Device column beside
+   it. So it wraps at the space, and a long tag with no space breaks
+   inside the column rather than overlapping the next one. */
+table.dt td.tagcell,table.dt th.tagcell{font-family:var(--mono);white-space:normal;
+  overflow-wrap:anywhere;word-break:normal;hyphens:none}
+/* The same safety net for any numeric cell in a table whose columns are
+   fixed: in an auto table the column widens for an unbroken value, in a
+   fixed one it cannot, and the value lands on top of its neighbor. */
+.devtbl td.num,.importtbl td.num,table.dt.risk td.num{white-space:normal;overflow-wrap:anywhere}
+/* The report's risk table is laid out for a letter page. On a narrow
+   screen its ID and level columns came out narrower than "RA-001" and
+   "NEGLIGIBLE", which cannot break, so on screen it scrolls instead. */
+@media screen{table.dt.ratbl{min-width:760px}}
 .chip.tag{background:var(--panel-2);color:var(--ink-2);border-color:var(--rule-2)}
 .chip.ok{background:var(--ok-bg);color:var(--ok)}
 .chip.warn{background:var(--warn-bg);color:var(--warn)}
@@ -2971,10 +3006,107 @@ function parseSistemaReport(text) {
     if (d2) { Object.keys(d2).forEach(function (k) { f[k] = d2[k]; }); }
   });
 
+  /* The summary layout. When SISTEMA prints only the project summary,
+     there are no "Subsystems (n / m)" detail pages at all. Each function
+     instead lists its subsystems under "Contained subsystems", three
+     lines apiece:
+       Name: Guard Locking Interlock Switch: TLS-Z GD2
+       Resulting PL: e   PFH [1/h]: 1.7E-9   Category: 4
+       MTTFD [a]: not relevant   DCavg [%]: not relevant   CCF Points: not relevant
+     A report printed that way used to come in with its functions and no
+     devices, because only the detail pages were read. The list runs over
+     page breaks, so the page header lines in between are skipped rather
+     than ending it. */
+  function blankIfNotRelevant(v) {
+    var t = String(v || '').trim();
+    return (!t || /^not\s+relevant$/i.test(t) || t === '-') ? '' : t;
+  }
+  var summary = [], curFn = '', inList = false;
+  for (i = 0; i < lines.length; i += 1) {
+    var l0 = lines[i];
+    var fnHead = l0.match(/^Name:\s*(.+?)\s*\[([^\]]+)\]\s*$/);
+    if (fnHead && /^Required:\s*PLr/.test(lines[i + 1] || '')) { curFn = fnHead[2]; inList = false; continue; }
+    if (/^Contained subsystems\s*$/.test(l0) && curFn) { inList = true; continue; }
+    /* the detail pages and the closing pages end the summary */
+    if (/^Subsystems \(\d+ \/ \d+\)/.test(l0) || /^Safety function:/.test(l0) || /^EXCLUSION OF LIABILITY/.test(l0)) { inList = false; curFn = ''; continue; }
+    if (!inList) continue;
+    var sn = l0.match(/^Name:\s*(.+)$/);
+    if (!sn) continue;
+    var r1 = (lines[i + 1] || '').match(/^Resulting PL:\s*(\S+)\s+PFH\s*\[1\/h\]:\s*(\S+)\s+Category:\s*(\S+)/i);
+    if (!r1) continue;
+    var r2 = (lines[i + 2] || '').match(/^MTTFD\s*\[a\]:\s*(.+?)\s+DCavg\s*\[%\]:\s*(.+?)\s+CCF Points:\s*(.+)$/i);
+    var mt = r2 ? blankIfNotRelevant(r2[1]) : '', dcv = r2 ? blankIfNotRelevant(r2[2]) : '', ccv = r2 ? blankIfNotRelevant(r2[3]) : '';
+    var plv = String(r1[1]).toLowerCase();
+    summary.push({
+      fn: curFn,
+      name: sn[1].trim(),
+      ref: '', manufacturer: '', partNumber: '',
+      cat: /^[B1-4]$/.test(r1[3]) ? r1[3] : '',
+      pl: /^[a-e]$/.test(plv) ? plv : '',
+      pfhd: /^[\d.]+E-?\d+$/i.test(r1[2]) ? r1[2] : '',
+      mttfd: /^[\d.]+$/.test(mt) ? mt : '',
+      dc: /^[\d.]+$/.test(dcv) ? dcv : '',
+      ccf: /^\d+$/.test(ccv) ? ccv : '',
+      /* MTTFD, DCavg and CCF "not relevant" is how SISTEMA prints a
+         subsystem whose PL and PFH were entered directly, which is what
+         a manufacturer library subsystem is */
+      determination: r2 && !mt && !dcv ? 'ENCAPSULATED' : 'ARCHITECTURE',
+      from: 'summary'
+    });
+    i += r2 ? 2 : 1;
+  }
+
+  /* Which subsystem belongs to which function. The summary lists them
+     under their function, so here, unlike on the detail pages, the
+     membership is printed and can be taken as read.
+
+     A function can hold two subsystems with the same name: two I/O
+     modules, say. Both count toward its PFH, so both are kept. Across
+     functions, the k-th "E-Stop PB" in one function is taken to be the
+     same device as the k-th in another when the values match too, since
+     SISTEMA prints a shared subsystem once per function that uses it. */
+  var links = [], unmatched = [];
+  if (summary.length) {
+    var fromSummary = !uniq.length;
+    var keyOf = function (x) {
+      return fromSummary
+        ? [squash(x.name), x.pl, x.pfhd, x.cat].join('|')
+        : squash(x.name);
+    };
+    var byFn = {}, fnOrder = [];
+    summary.forEach(function (x) {
+      if (!byFn[x.fn]) { byFn[x.fn] = []; fnOrder.push(x.fn); }
+      byFn[x.fn].push(x);
+    });
+    fnOrder.forEach(function (fid) {
+      var used = {};
+      byFn[fid].forEach(function (x) {
+        var k = keyOf(x), idx = -1;
+        for (var q = 0; q < uniq.length; q += 1) {
+          if (!used[q] && keyOf(uniq[q]) === k) { idx = q; break; }
+        }
+        if (idx < 0 && fromSummary) { uniq.push(x); idx = uniq.length - 1; }
+        if (idx < 0) { unmatched.push({ fn: fid, name: x.name }); return; }
+        used[idx] = 1;
+        links.push({ fn: fid, idx: idx });
+      });
+    });
+  }
+
   if (!funcs.length && !uniq.length) {
     return { ok: false, error: 'The file was read but no safety functions or subsystems were recognized in it. It may be a SISTEMA report in a layout this reader does not know, or a report of an empty project.' };
   }
-  return { ok: true, meta: meta, functions: funcs, subsystems: uniq };
+  return {
+    ok: true, meta: meta, functions: funcs, subsystems: uniq,
+    links: links, unmatched: unmatched,
+    layout: summary.length && subs.length ? 'both' : (summary.length ? 'summary' : (subs.length ? 'detail' : 'none'))
+  };
+}
+/* The functions a parsed subsystem was listed under, by identifier. */
+function sistemaSubFns(res, idx) {
+  var out = [];
+  (res.links || []).forEach(function (l) { if (l.idx === idx && out.indexOf(l.fn) < 0) out.push(l.fn); });
+  return out;
 }
 
 /* Turn a parsed report into records this file understands. */
@@ -2997,7 +3129,8 @@ function sistemaToRecords(res) {
     dv.libName = res.meta.project || 'SISTEMA report';
     dv.libImported = new Date().toISOString().slice(0, 10);
     dv.prov = 'OUTSTANDING';
-    dv.notes = 'Imported from a SISTEMA report. The report is the reference for the calculation; these values are a copy of it.';
+    dv.notes = 'Imported from a SISTEMA report. The report is the reference for the calculation; these values are a copy of it.'
+      + (sub.from === 'summary' ? ' The report printed only its summary, so there is no reference designator, manufacturer or part number to copy; the tag is left for you to set.' : '');
     return dv;
   });
 
@@ -3055,7 +3188,15 @@ function sistemaToRecords(res) {
     return sf;
   });
 
-  return { devices: devices, sfs: sfs };
+  /* the device links each function carries, in the order SISTEMA lists
+     its subsystems */
+  var linksByFn = {};
+  (res.links || []).forEach(function (l) {
+    var dv = devices[l.idx];
+    if (!dv) return;
+    (linksByFn[l.fn] = linksByFn[l.fn] || []).push({ uid: dv.uid, role: dv.role });
+  });
+  return { devices: devices, sfs: sfs, linksByFn: linksByFn };
 }
 
 var SCHEME_RIA = 'ANSI/RIA R15.306';
@@ -7398,7 +7539,7 @@ function roleGuess(rec) {
   var hay = normKey([rec.role, rec.name, rec.useCase, rec.deviceType].join(' '));
   if (/interlock|switch|curtain|scanner|sensor|estop|emergencystop|button|mat|encoder|input|rope|magnet/.test(hay)) return 'Input';
   if (/relay|controller|plc|logic|module|gateway|processor|safetycontrol|monitor/.test(hay)) return 'Logic';
-  if (/contactor|valve|drive|inverter|brake|motor|output|starter|actuator/.test(hay)) return 'Output';
+  if (/contactor|valve|drive|inverter|brake|motor|output|starter|actuator|torqueoff|servo/.test(hay)) return 'Output';
   return 'Logic';
 }
 
@@ -7571,7 +7712,7 @@ function statCard(k, v, sub, tone, opts) {
   }
   return el('div', { cls: 'stat' + (tone ? ' ' + tone : '') }, [
     el('div', { cls: 'k' }, head),
-    el('div', { cls: 'v', text: String(v) }),
+    el('div', { cls: 'v' + (/^[\d.,%\s\/+-]*$/.test(String(v)) ? '' : ' word'), text: String(v) }),
     sub ? el('div', { cls: 's', text: sub }) : null,
     opts.action ? el('div', { cls: 'noprint', style: { marginTop: '7px' } }, [
       el('button', { cls: 'btn ghost sm', type: 'button', text: opts.action.label, on: { click: opts.action.fn } })
@@ -8312,7 +8453,7 @@ var GUIDE = [
     body: [
       'A safety function here is written on the four tabs SISTEMA gives one, with the same names in the same order. Documentation holds what the function is and what it does. PLr holds the required level, entered directly or read off the risk graph. PL holds what the chain reaches, with the PFH scale SISTEMA prints. Subsystems holds the input, logic and output positions, with the columns from SISTEMA’s own subsystem table.',
       'SISTEMA divides a subsystem further into channels and blocks. This app stops one level higher: the devices assigned to a position are that subsystem’s blocks, and the channel figures are worked out from them by the parts count formula of clause 6.1.6 and the DCavg formula of clause 6.1.7. Everything SISTEMA prints per subsystem appears in the same columns, so the two can be read side by side without translating anything.',
-      'Import a SISTEMA report from the safety functions step or the devices step and the functions, their subsystems and the device values are read straight out of it. What comes in is marked as modeled and not field verified, so nothing imported can pass itself off as proven hardware. Where a report states a PFH for the function as a whole, that figure is kept beside the one this file builds from its devices rather than replacing it; if the two disagree, the app says so, because one of them is working from a different set of devices.'
+      'Import a SISTEMA report from the safety functions step or the devices step and the functions, their subsystems and the device values are read straight out of it. What comes in is marked as modeled and not field verified, so nothing imported can pass itself off as proven hardware. Where the report lists the subsystems under each function, as its summary does when it is printed with "also show Subsystems", each device is added to the function it is listed under; the detail pages alone do not say which function a subsystem serves, so from those the devices come in unlinked. Where a report states a PFH for the function as a whole, that figure is kept beside the one this file builds from its devices rather than replacing it; if the two disagree, the app says so, because one of them is working from a different set of devices.'
     ],
     tip: 'The reader handles the report SISTEMA prints. A PDF that has been re-saved, scanned or compressed by another tool needs exporting from SISTEMA again.'
   },
@@ -12174,17 +12315,139 @@ function deleteSelectedDevices() {
   });
 }
 
+/* The short name a finding uses for a device: its tag where it has one,
+   otherwise its name, cut down so a tile can carry it. */
+function deviceShortLabel(dv) {
+  var t = String(dv.tag || '').trim();
+  if (t) return t;
+  var n = String(dv.name || 'Untitled device').trim();
+  return n.length > 38 ? n.slice(0, 36).replace(/\s+\S*$/, '') + '...' : n;
+}
+/* The first sentence of a finding, for a tile that cannot hold the rest. */
+function issueGist(text) {
+  var t = String(text || '').trim();
+  var m = t.match(/^(.+?[.?!])(\s|$)/);
+  var g = m ? m[1] : t;
+  return g.length > 110 ? g.slice(0, 107).replace(/\s+\S*$/, '') + '...' : g;
+}
+/* "DS-2", "DS-2 and PLC", "DS-2, PLC and 3 more" */
+function nameList(names, max) {
+  max = max || 2;
+  if (names.length <= max) {
+    return names.length === 2 ? names[0] + ' and ' + names[1] : names.join(', ');
+  }
+  return names.slice(0, max).join(', ') + ' and ' + (names.length - max) + ' more';
+}
+/* What each device has against it, worked out once per render. The
+   tiles, the table and the list under the tiles all read from this, so
+   they cannot disagree. They did: the "To check" tile counted every
+   warning, while the row chip leaves out the completeness notes an
+   imported device is exempt from, so a file could show one warning on
+   the tile and a green OK on every row. */
+function deviceFindingRows() {
+  return P.devices.map(function (dv) {
+    var sum = deviceSummary(dv);
+    var held = isImported(dv)
+      ? deviceIssues(dv).filter(function (x) { return suppressForImport(dv, x.text); })
+      : [];
+    return { dv: dv, sum: sum, held: held };
+  });
+}
+var DEV_HELD_OPEN = false;
+function deviceFindingsPanel(rows) {
+  var withIssues = rows.filter(function (r) { return r.sum.issues.length; });
+  var withHeld = rows.filter(function (r) { return r.held.length; });
+  if (!withIssues.length && !withHeld.length) return null;
+  function deviceBlock(r, list, tone) {
+    var dv = r.dv;
+    return el('li', { cls: 'devfind' }, [
+      el('div', { cls: 'devfind-head' }, [
+        tone ? statusChip(tone, list.length) : el('span', { cls: 'chip tag', text: 'note' }),
+        el('strong', { cls: dv.tag ? 'mono' : '', text: deviceShortLabel(dv) }),
+        dv.tag && dv.name ? el('span', { cls: 'hint', text: dv.name }) : null,
+        el('span', { cls: 'devfind-acts noprint' }, [
+          el('button', {
+            cls: 'btn ghost sm', type: 'button', text: 'Show in table',
+            'aria-label': 'Show ' + deviceShortLabel(dv) + ' in the device table',
+            on: { click: function () { flashRow(dv.uid); } }
+          }),
+          el('button', {
+            cls: 'btn ghost sm', type: 'button', text: 'Open',
+            'aria-label': 'Open ' + deviceShortLabel(dv),
+            on: { click: function () { deviceForm(dv); } }
+          })
+        ])
+      ]),
+      el('ul', { cls: 'devfind-list' }, list.map(function (x) {
+        return el('li', null, [
+          el('span', { cls: 'chip nw ' + (x.level === 'bad' ? 'bad' : (tone ? 'warn' : 'tag')), text: x.level === 'bad' ? 'error' : (tone ? 'warning' : 'not counted') }),
+          el('span', { text: ' ' + x.text })
+        ]);
+      }))
+    ]);
+  }
+  var kids = [];
+  if (withIssues.length) {
+    var bad = withIssues.filter(function (r) { return r.sum.status === 'bad'; });
+    var warn = withIssues.filter(function (r) { return r.sum.status === 'warn'; });
+    kids.push(el('div', { cls: 'devfind-title', text: 'Devices with findings' }));
+    kids.push(el('ul', { cls: 'devfind-devs' }, bad.concat(warn).map(function (r) { return deviceBlock(r, r.sum.issues, r.sum.status); })));
+  }
+  if (withHeld.length) {
+    var nHeld = withHeld.reduce(function (a, r) { return a + r.held.length; }, 0);
+    var det = el('details', { cls: 'devfind-held' }, [
+      el('summary', { text: nHeld + ' note' + (nHeld === 1 ? '' : 's') + ' on imported devices, not counted' }),
+      el('p', { cls: 'hint', text: 'These are about data a manufacturer library or a SISTEMA report does not carry, such as diagnostic coverage on a part whose maker states only a PL and PFHd. An imported device is exempt from them, so they are not counted on the tiles or shown on its row. They are listed here so nothing is out of sight.' }),
+      el('ul', { cls: 'devfind-devs' }, withHeld.map(function (r) { return deviceBlock(r, r.held, ''); }))
+    ]);
+    det.open = DEV_HELD_OPEN;
+    det.addEventListener('toggle', function () { DEV_HELD_OPEN = det.open; });
+    kids.push(det);
+  }
+  return el('div', { cls: 'card devfind-card', id: 'devFindings' }, kids);
+}
+
 function renderDevices() {
+  var rows = deviceFindingRows();
+  var rowByUid = {};
+  rows.forEach(function (r) { rowByUid[r.dv.uid] = r; });
   var determined = P.devices.filter(function (d) { return devicePl(d).pl || isFaultExcluded(d); }).length;
   var orphan = P.devices.filter(function (d) { return !sfsUsingDevice(d.uid).length; }).length;
   var imported = P.devices.filter(function (d) { return d.sourceKind === 'MFR_LIB'; }).length;
-  var errored = P.devices.filter(function (d) { return deviceStatus(d) === 'bad'; }).length;
-  var flagged = P.devices.filter(function (d) { return deviceStatus(d) === 'warn'; }).length;
+  var badRows = rows.filter(function (r) { return r.sum.status === 'bad'; });
+  var warnRows = rows.filter(function (r) { return r.sum.status === 'warn'; });
+  var heldRows = rows.filter(function (r) { return r.held.length; });
+  var errored = badRows.length, flagged = warnRows.length;
+  function goToFindings() {
+    var n = $('devFindings');
+    if (!n) return;
+    if (n.scrollIntoView) { n.scrollIntoView({ block: 'start' }); }
+    n.classList.add('flash');
+    window.setTimeout(function () { n.classList.remove('flash'); }, 2200);
+  }
+  /* The tile names the device and says what is wrong with it. With one
+     device that fits on the tile; with more it names them and the list
+     underneath carries the detail. */
+  function tileSub(list, empty) {
+    if (!list.length) return empty;
+    if (list.length === 1) {
+      var r = list[0];
+      var first = r.sum.issues.filter(function (x) { return x.level === r.sum.status; })[0] || r.sum.issues[0];
+      return deviceShortLabel(r.dv) + ': ' + issueGist(first.text)
+        + (r.sum.issues.length > 1 ? ' Plus ' + (r.sum.issues.length - 1) + ' more finding' + (r.sum.issues.length === 2 ? '' : 's') + ' on this device.' : '');
+    }
+    return nameList(list.map(function (r) { return deviceShortLabel(r.dv); }), 2) + '. See the list below.';
+  }
+  var heldNote = heldRows.length
+    ? 'Not counted: notes on ' + nameList(heldRows.map(function (r) { return deviceShortLabel(r.dv); }), 2) + ', which came in from a library.'
+    : null;
   put($('devStats'), [
     statCard('Devices', P.devices.length),
     statCard('Performance determinable', determined, determined === P.devices.length && P.devices.length ? 'Every device has enough data' : 'Missing PFHd, MTTFd or category', determined === P.devices.length && P.devices.length ? 'good' : (P.devices.length ? 'alert' : '')),
-    statCard('Must be resolved', errored, errored ? 'A device with an error cannot be analyzed' : (P.devices.length ? 'Nothing blocking' : null), errored ? 'alert' : (P.devices.length ? 'good' : '')),
-    statCard('To check', flagged, flagged ? 'Warnings, mostly missing context' : null, flagged ? 'alert' : ''),
+    statCard('Must be resolved', errored, tileSub(badRows, P.devices.length ? 'Nothing blocking' : null), errored ? 'alert' : (P.devices.length ? 'good' : ''),
+      errored ? { action: { label: 'Show which', fn: goToFindings } } : null),
+    statCard('To check', flagged, tileSub(warnRows, heldNote), flagged ? 'alert' : '',
+      (flagged || heldRows.length) ? { action: { label: flagged ? 'Show which' : 'Show notes', fn: function () { if (!flagged) { DEV_HELD_OPEN = true; renderDevices(); } goToFindings(); } } } : null),
     statCard('Not used by a function', orphan, orphan ? 'Assign them or remove them' : null, orphan ? 'alert' : ''),
     statCard('From a manufacturer library', imported)
   ]);
@@ -12196,6 +12459,8 @@ function renderDevices() {
     host.appendChild(el('div', { cls: 'card empty', text: 'No devices yet. Add the interlocks, relays, contactors and drives that make up the safety circuits, or load a manufacturer library in VDMA 66413 XML format.' }));
     return;
   }
+  var panel = deviceFindingsPanel(rows);
+  if (panel) { host.appendChild(panel); }
   /* ---- bulk selection bar ---- */
   var bar = el('div', { cls: 'bulkbar noprint' });
   function paintBar() {
@@ -12233,7 +12498,7 @@ function renderDevices() {
     var d = DEVICE_ROLES.indexOf(a.role) - DEVICE_ROLES.indexOf(b.role);
     return d !== 0 ? d : String(a.tag || a.name).localeCompare(String(b.tag || b.name));
   }).forEach(function (dv) {
-    var sum = deviceSummary(dv);
+    var sum = rowByUid[dv.uid].sum;
     var users = sfsUsingDevice(dv.uid);
     var pick = el('input');
     pick.type = 'checkbox';
@@ -12246,10 +12511,13 @@ function renderDevices() {
       paintBar();
       all.checked = P.devices.length > 0 && DEV_SELECTION.length === P.devices.length;
     });
-    tb.appendChild(el('tr', null, [
+    var chipCell = el('td', null, statusChip(sum.status, sum.issues.length));
+    /* every finding on hover, not only the first one shown under the name */
+    if (sum.issues.length) { chipCell.title = sum.issues.map(function (x) { return (x.level === 'bad' ? 'Error: ' : 'Warning: ') + x.text; }).join('\n'); }
+    tb.appendChild(el('tr', { 'data-rowid': dv.uid }, [
       el('td', null, pick),
-      el('td', null, statusChip(sum.status, sum.issues.length)),
-      el('td', { cls: 'num', text: dv.tag || '--' }),
+      chipCell,
+      el('td', { cls: 'tagcell', text: dv.tag || '--' }),
       el('td', null, [
         el('div', { text: dv.name || '--' }),
         el('div', { cls: 'hint', text: [dv.manufacturer, dv.partNumber, dv.useCase].filter(Boolean).join(' / ') || dv.technology }),
@@ -12447,7 +12715,8 @@ function sistemaProblem(msg) {
 
 function sistemaPreview(res) {
   var body = [];
-  var takeSfs = true, takeDevs = true, keepReport = true;
+  var takeSfs = true, takeDevs = true, keepReport = true, linkExisting = false;
+  var hasLinks = (res.links || []).length > 0;
 
   body.push(el('div', { cls: 'notice' }, [
     el('strong', { text: res.functions.length + ' safety function' + (res.functions.length === 1 ? '' : 's') + ' and ' + res.subsystems.length + ' subsystem' + (res.subsystems.length === 1 ? '' : 's') + ' read from ' + res.fileName }),
@@ -12493,13 +12762,23 @@ function sistemaPreview(res) {
     body.push(el('div', { cls: 'tw' }, ft));
   }
 
+  if (!res.subsystems.length && res.functions.length) {
+    /* Said plainly, rather than leaving an import that brings in the
+       functions and quietly no devices. */
+    body.push(el('div', { cls: 'notice bad' }, [
+      el('strong', { text: 'No subsystems were found in this report, so no devices will be created' }),
+      el('span', { text: 'The reader takes subsystems from the subsystem detail pages, or from the "Contained subsystems" list under each function in the summary. This report has neither. In SISTEMA, print the report again with "also show Subsystems" ticked under the print options, and import that file.' })
+    ]));
+  }
+
   if (res.subsystems.length) {
     var st = el('table', { cls: 'dt' });
     var sh = el('tr');
-    ['Reference', 'Subsystem', 'Manufacturer', 'Part number', 'Cat', 'PL', 'PFHd', 'MTTFd', 'DCavg', 'CCF'].forEach(function (h) { sh.appendChild(el('th', { scope: 'col', text: h })); });
+    ['Reference', 'Subsystem', 'Manufacturer', 'Part number', 'Cat', 'PL', 'PFHd', 'MTTFd', 'DCavg', 'CCF', 'In function'].forEach(function (h) { sh.appendChild(el('th', { scope: 'col', text: h })); });
     st.appendChild(el('thead', null, sh));
     var sb = el('tbody');
-    res.subsystems.forEach(function (x) {
+    res.subsystems.forEach(function (x, xi) {
+      var inFns = sistemaSubFns(res, xi);
       sb.appendChild(el('tr', null, [
         el('td', { cls: 'mono', text: x.ref || '--' }),
         el('td', { text: x.name }),
@@ -12510,12 +12789,22 @@ function sistemaPreview(res) {
         el('td', { cls: 'mono num', text: x.pfhd || '--' }),
         el('td', { cls: 'num', text: x.mttfd || '--' }),
         el('td', { cls: 'num', text: x.dc ? x.dc + '%' : '--' }),
-        el('td', { cls: 'num', text: x.ccf || '--' })
+        el('td', { cls: 'num', text: x.ccf || '--' }),
+        el('td', { cls: 'mono', text: inFns.length ? inFns.join(', ') : (hasLinks ? 'none listed' : '--') })
       ]));
     });
     st.appendChild(sb);
     body.push(el('h3', { text: 'Subsystems, which come in as devices' }));
     body.push(el('div', { cls: 'tw' }, st));
+    if (res.layout === 'summary') {
+      body.push(el('p', { cls: 'hint', text: 'This report printed only its summary. The summary gives each subsystem\'s name, category, PL and PFH, and the function it belongs to, but no reference designator, manufacturer or part number, so those come in blank. Tags are left for you to set.' }));
+    }
+    if ((res.unmatched || []).length) {
+      body.push(el('div', { cls: 'notice' }, [
+        el('strong', { text: res.unmatched.length + ' subsystem' + (res.unmatched.length === 1 ? '' : 's') + ' listed under a function could not be matched to a detail page' }),
+        el('span', { text: res.unmatched.map(function (u) { return u.name + ' (' + u.fn + ')'; }).join(', ') + '. These are not linked; add them to the function by hand.' })
+      ]));
+    }
   }
 
   function chk(label, on, help, onChange) {
@@ -12530,7 +12819,9 @@ function sistemaPreview(res) {
   }
   body.push(fset('What to bring in', [
     chk('The safety functions', true, 'Created with their identifier, required and achieved performance level taken directly from the report.', function (v) { takeSfs = v; }),
-    chk('The subsystems, as devices', true, 'Each subsystem becomes a device with its category, performance level and values. Devices are not linked to functions automatically, because the report does not say unambiguously which subsystem serves which function in a form this reader can trust.', function (v) { takeDevs = v; }),
+    chk('The subsystems, as devices', true, hasLinks
+      ? 'Each subsystem becomes a device with its category, performance level and values, and is added to the function the report lists it under, in the report\'s order. Check the role each device was given: it is inferred from the name.'
+      : 'Each subsystem becomes a device with its category, performance level and values. Devices are not linked to functions automatically, because this report does not say which subsystem serves which function. Print the summary with "also show Subsystems" ticked and the links come with it.', function (v) { takeDevs = v; }),
     chk('Keep the report itself', true, 'Stores the extracted text with the project, so the source of every imported value stays with the file.', function (v) { keepReport = v; })
   ]));
 
@@ -12540,17 +12831,35 @@ function sistemaPreview(res) {
       el('strong', { text: existing.length + ' of these identifiers already exist' }),
       el('span', { text: existing.map(function (f) { return f.identifier; }).join(', ') + '. Those will be skipped rather than overwritten, so nothing already recorded is lost.' })
     ]));
+    if (hasLinks && existing.some(function (f) { return (res.links || []).some(function (l) { return l.fn === f.identifier; }); })) {
+      body.push(fset('Functions already in this file', [
+        chk('Add the imported devices to those functions too', false, 'Off by default, because those functions may already carry the devices you entered by hand, and adding the report\'s copies alongside would count them twice. Nothing on the function itself is changed; the devices are only added to its list.', function (v) { linkExisting = v; })
+      ]));
+    }
   }
 
   openDlg('Import from a SISTEMA report', body, function () {
     var made = sistemaToRecords(res);
-    var nD = 0, nS = 0;
+    var nD = 0, nS = 0, nL = 0;
     if (takeDevs) { made.devices.forEach(function (d) { P.devices.push(d); nD += 1; }); }
+    /* links go only where both ends were brought in, or, when asked,
+       onto a function that was already here */
+    function linkInto(sf, isNew) {
+      var ls = takeDevs ? (made.linksByFn[sf.id] || []) : [];
+      if (!ls.length || (!isNew && !linkExisting)) return;
+      sf.devices = sf.devices || [];
+      ls.forEach(function (l) { sf.devices.push({ uid: l.uid, role: l.role }); nL += 1; });
+    }
     if (takeSfs) {
       made.sfs.forEach(function (sf) {
-        if (sfById(sf.id)) return;
+        var had = sfById(sf.id);
+        if (had) { linkInto(had, false); return; }
+        sf.devices = [];
+        linkInto(sf, true);
         P.sfs.push(sf); nS += 1;
       });
+    } else if (linkExisting) {
+      made.sfs.forEach(function (sf) { var had = sfById(sf.id); if (had) linkInto(had, false); });
     }
     if (keepReport) {
       P.sistemaReports.push({
@@ -12561,7 +12870,8 @@ function sistemaPreview(res) {
         pageCount: res.pageCount, text: res.text
       });
     }
-    commit(nS + ' safety function' + (nS === 1 ? '' : 's') + ' and ' + nD + ' device' + (nD === 1 ? '' : 's') + ' imported from the SISTEMA report');
+    commit(nS + ' safety function' + (nS === 1 ? '' : 's') + ' and ' + nD + ' device' + (nD === 1 ? '' : 's') + ' imported from the SISTEMA report'
+      + (nL ? ', with ' + nL + ' device link' + (nL === 1 ? '' : 's') + ' to the functions' : ''));
     return true;
   }, 'Import');
 }

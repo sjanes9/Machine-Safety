@@ -861,9 +861,8 @@ table.mx select{padding:3px 5px;font-size:11.5px}
           <label class="f"><span>General description of the application</span><textarea id="p_narrative" data-meta="narrative" placeholder="What the cell does, how product moves through it, and where people interact with it."></textarea></label>
           <label class="f"><span>Assessment team and roles</span><textarea id="p_team" data-meta="team" placeholder="Name, role, qualification. One per line."></textarea></label>
           <label class="f internal"><span>Reviewer comments<span class="reqmark">  (excluded from the report)</span></span><textarea id="p_review" data-meta="reviewNotes" placeholder="Questions for the reviewer, things to check on the next visit, anything that should not reach the client."></textarea></label>
-          <label class="f"><span>Scope, boundaries and limits of the assessment</span><textarea id="p_scope" data-meta="scope" placeholder="Physical boundaries, interfaces to adjacent equipment, lifecycle phases covered, what is explicitly excluded."></textarea></label>
+          <label class="f"><span>Scope, boundaries, assumptions and limitations</span><textarea id="p_scope" data-meta="scope" placeholder="What is inside the assessment and what is excluded, the interfaces to adjacent equipment, the lifecycle phases covered, and the conditions the assessment holds under."></textarea></label>
           <div class="f"><span class="flab-plain" id="stdsLabel">Standards and documents applied</span><div id="stdsHost"></div></div>
-          <label class="f"><span>Assumptions and limitations</span><textarea id="p_assume" data-meta="assumptions"></textarea></label>
         </div>
         <h2 class="sec">Photographs of the machine and cell</h2>
         <p class="lede">General views, the guarding, the layout and the access points. These print in the report and stay inside the saved file, so nothing is lost when it moves between people. Photos are shrunk on the way in.</p>
@@ -1139,16 +1138,16 @@ function debounce(fn, ms) {
 }
 
 /* ---------- 20.2 Schema and state ---------- */
-var SCHEMA = 17;
-var STORE_KEY = 'safetyFile.v17';
-var LEGACY_KEYS = ['safetyFile.v16', 'safetyFile.v15', 'safetyFile.v14', 'safetyFile.v13', 'safetyFile.v12', 'safetyFile.v11', 'safetyFile.v10', 'safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
+var SCHEMA = 18;
+var STORE_KEY = 'safetyFile.v18';
+var LEGACY_KEYS = ['safetyFile.v17', 'safetyFile.v16', 'safetyFile.v15', 'safetyFile.v14', 'safetyFile.v13', 'safetyFile.v12', 'safetyFile.v11', 'safetyFile.v10', 'safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
 
 function blankProject() {
   return {
     schema: SCHEMA,
     meta: {
       title: '', client: '', machine: '', location: '', rev: 'A', revDate: '',
-      lead: '', reviewer: '', team: '', scope: '', assumptions: '',
+      lead: '', reviewer: '', team: '', scope: '',
       /* Written for the reviewer, never for the client. Nothing in the
          report reads this field, and a test holds that. */
       reviewNotes: '',
@@ -1277,6 +1276,7 @@ function migrate(data) {
   if (v < 15) { migrateV14(base); }
   if (v < 16) { migrateV15(base); }
   if (v < 17) { migrateV16(base, data); }
+  if (v < 18) { migrateV17(base); }
   normalize(base);
   return base;
 }
@@ -1305,6 +1305,30 @@ function migrate(data) {
    split. A file that had the old COMP summary-only switch on wanted the
    compliance and policy detail left out, so honour that by not adding
    those two detail sections. */
+/* v17 -> v18. "Scope, boundaries and limits" and "Assumptions and
+   limitations" asked for the same thing twice, so they are one field now,
+   kept under scope. Whatever was written under assumptions is carried
+   across below the scope text, word for word, unless the scope already
+   contains it. Nothing is reworded and nothing is dropped.
+   The report printed the assumptions as a section of their own and never
+   printed the scope text at all; the combined text now prints in the
+   Scope section, so a file that chose the old assumptions section gets
+   the Scope section in its place. */
+function migrateV17(base) {
+  var m = base.meta || {};
+  var sc = String(m.scope || '').trim();
+  var as = String(m.assumptions || '').trim();
+  if (as && sc.indexOf(as) < 0) { m.scope = sc ? sc + '\n\n' + as : as; }
+  delete m.assumptions;
+  if (Array.isArray(base.reportSections)) {
+    var sel = base.reportSections, ia = sel.indexOf('assumptions');
+    if (ia >= 0) {
+      if (sel.indexOf('scope') >= 0) { sel.splice(ia, 1); }
+      else { sel.splice(ia, 1, 'scope'); }
+    }
+  }
+  if (base.sectionTitles && base.sectionTitles.assumptions !== undefined) { delete base.sectionTitles.assumptions; }
+}
 function migrateV16(base, data) {
   if (!Array.isArray(base.reportSections)) return;
   var summaryOnly = !!(data && data.compSummaryOnly);
@@ -7061,11 +7085,18 @@ function markupForm(img, onDone) {
     for (var i = 0; i < marks.length; i += 1) { if (marks[i].uid === u) return marks[i]; }
     return null;
   }
-  function draw() {
+  /* Repaint the marks on the photograph. The list under it is rebuilt
+     only when asked: typing a label repaints the label on the picture,
+     and rebuilding the list on every keystroke threw away the field
+     being typed in, so each letter landed and then focus went with it. */
+  function paint() {
     if (layer && layer.parentNode) { layer.parentNode.removeChild(layer); }
     layer = markLayer({ marks: marks }, { selected: selected });
     stage.insertBefore(layer, handleHost);
     drawHandles();
+  }
+  function draw() {
+    paint();
     drawList();
   }
   function drawList() {
@@ -7076,7 +7107,8 @@ function markupForm(img, onDone) {
     marks.forEach(function (m, i) {
       var d = markKind(m.kind);
       var lab = el('input', { cls: 'inp', value: m.label || '', placeholder: 'Optional short label, for example A' });
-      lab.addEventListener('input', function () { m.label = lab.value.slice(0, 18); draw(); });
+      lab.maxLength = 18;
+      lab.addEventListener('input', function () { m.label = lab.value.slice(0, 18); paint(); });
       var ksel = el('select', { cls: 'inp' });
       MARK_KINDS.forEach(function (x) {
         var o = el('option', { value: x.k, text: x.label });
@@ -10302,10 +10334,9 @@ function dl(pairs) {
    section rather than its number.
    ===================================================================== */
 var REPORT_SECTIONS = [
-  { k: 'scope', label: 'Scope', help: 'Machine identification, revision, who performed and approved it, and the boundary of the assessment.' },
+  { k: 'scope', label: 'Scope', help: 'Machine identification, revision, who performed and approved it, and the scope, boundaries, assumptions and limitations of the assessment.' },
   { k: 'team', label: 'Assessment team', help: 'Who took part.', empty: function () { return !P.meta.team; } },
   { k: 'standards', label: 'Standards applied', help: 'The documents the assessment was carried out against.', empty: function () { return !P.meta.standards; } },
-  { k: 'assumptions', label: 'Assumptions and limitations', help: 'The conditions the assessment holds under.', empty: function () { return !P.meta.assumptions; } },
   { k: 'legend', label: 'Legend for photographic notes', help: 'The key to the colored rings drawn on the photographs. Prints only when a photograph carries one.', empty: function () { return !marksUsed(allImages()).length; } },
   { k: 'hazards', label: 'Safety report: hazards found', help: 'The single line per observation: reference, where, phase, type, priority and status.', empty: function () { return !hazardsOnly().length; } },
   { k: 'hazardsDetail', label: 'Hazards in detail', help: 'Each observation in full, with its photographs. Separate from the summary line, so either can be left out of the report.', empty: function () { return !hazardsOnly().length; } },
@@ -10335,9 +10366,9 @@ var REPORT_SECTIONS = [
 /* Named presets for the combinations people actually ask for. */
 var REPORT_PRESETS = [
   { k: 'full', label: 'Everything', keys: REPORT_SECTIONS.map(function (x) { return x.k; }) },
-  { k: 'walkdown', label: 'Safety report only', keys: ['scope', 'legend', 'assumptions', 'hazards', 'hazardsDetail', 'checklist', 'conclusion', 'approval'] },
-  { k: 'ra', label: 'Risk assessment only', keys: ['scope', 'legend', 'assumptions', 'hazards', 'hazardsDetail', 'risk', 'approval'] },
-  { k: 'ra_sf', label: 'Risk assessment and safety functions', keys: ['scope', 'assumptions', 'risk', 'sfperf', 'spec', 'devices', 'approval'] },
+  { k: 'walkdown', label: 'Safety report only', keys: ['scope', 'legend', 'hazards', 'hazardsDetail', 'checklist', 'conclusion', 'approval'] },
+  { k: 'ra', label: 'Risk assessment only', keys: ['scope', 'legend', 'hazards', 'hazardsDetail', 'risk', 'approval'] },
+  { k: 'ra_sf', label: 'Risk assessment and safety functions', keys: ['scope', 'risk', 'sfperf', 'spec', 'devices', 'approval'] },
   { k: 'vv', label: 'Verification and validation only', keys: ['scope', 'vv', 'approval'] },
   { k: 'controls', label: 'Controls package', keys: ['scope', 'devices', 'sfperf', 'spec', 'fschecklist', 'provenance', 'vv', 'approval'] },
   { k: 'field', label: 'Field verification only', keys: ['scope', 'legend', 'field', 'fschecklist', 'checklist', 'approval'] },
@@ -10740,6 +10771,10 @@ function renderReport() {
       ['Method', m.method === 'ISO 13849-1' ? 'ISO 13849-1:2015 Annex A risk graph' : SRC]
     ]));
     if (m.narrative) { doc.appendChild(el('p', { cls: 'wrap', text: m.narrative })); }
+    if (m.scope) {
+      doc.appendChild(el('h4', { text: 'Scope, boundaries, assumptions and limitations' }));
+      doc.appendChild(el('p', { cls: 'wrap', text: m.scope }));
+    }
     if ((m.images || []).length) { doc.appendChild(gallery(m.images, { editable: false })); }
   });
 
@@ -10751,11 +10786,6 @@ function renderReport() {
   sec('standards', function (H) {
     doc.appendChild(el('h3', { text: H }));
     doc.appendChild(el('p', { cls: 'wrap', text: m.standards }));
-  });
-
-  sec('assumptions', function (H) {
-    doc.appendChild(el('h3', { text: H }));
-    doc.appendChild(el('p', { cls: 'wrap', text: m.assumptions }));
   });
 
   sec('legend', function (H) {
@@ -13208,9 +13238,8 @@ var FIELD_HELP = {
   lead: 'Who carried out the assessment. Named, because the report is signed.',
   reviewer: 'Who checked the assessment independently of whoever performed it.',
   team: 'Everyone who took part, with their role. An assessment done alone is worth saying so.',
-  scope: 'What is inside the assessment boundary and what is outside it. The exclusions matter more than the inclusions: name the adjacent equipment that was not assessed.',
+  scope: 'What is inside the assessment boundary and what is outside it, and the conditions the assessment holds under. The exclusions matter more than the inclusions: name the adjacent equipment that was not assessed. Then the assumptions: speed, product, staffing, which procedures are assumed to be followed, and anything taken as already meeting its requirement. If one of those turns out to be false, the assessment does not hold.',
   reviewNotes: 'Written for whoever reviews this file, not for the client. Questions to settle, things to check on the next visit, anything that should not reach the report. Nothing in the report reads this field.',
-  assumptions: 'The conditions the assessment holds under. Speed, product, staffing, which procedures are assumed to be followed. If one of these turns out to be false, the assessment does not hold.',
   standards: 'The documents this was carried out against, with editions. An edition matters: the 2023 and 2015 editions of ISO 13849-1 differ.',
   narrative: 'What the machine does, in plain words. Written for someone who has never seen it.',
 
@@ -16055,8 +16084,7 @@ function loadExample() {
   P.meta.rev = 'A';
   P.meta.revDate = new Date().toISOString().slice(0, 10);
   P.meta.lead = '';
-  P.meta.scope = 'Covers the case packer, its infeed conveyor and the robot palletizer inside the shared perimeter guard. Excludes the upstream filler and the powered pallet truck route outside the fence line.';
-  P.meta.assumptions = 'Assessed with the machine at maximum rated speed and worst case product load. Assumes the plant lockout procedure is followed for any task inside the guard that is not covered by a safety function here.';
+  P.meta.scope = 'Covers the case packer, its infeed conveyor and the robot palletizer inside the shared perimeter guard. Excludes the upstream filler and the powered pallet truck route outside the fence line.\n\nAssessed with the machine at maximum rated speed and worst case product load. Assumes the plant lockout procedure is followed for any task inside the guard that is not covered by a safety function here.';
   P.meta.robotMake = 'Example Robotics ER-165, 6 axis';
   P.meta.robotDom = '2024';
   P.meta.narrative = 'A robot palletizer and case packer share one perimeter guard. Cases arrive on an infeed conveyor, are erected and packed, then palletized. Operators enter the guarded space to clear jams and to change over case sizes.';

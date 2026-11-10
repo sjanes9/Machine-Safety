@@ -368,7 +368,11 @@ p.lede{margin:0 0 12px;color:var(--ink-2);max-width:74ch}
 .hint{font-size:12px;color:var(--ink-3);margin:4px 0 0}
 /* Hints and help markers can be switched off once the forms are
    familiar. Print never shows them either way. */
-body.nohints .hint,body.nohints .helpwrap,body.nohints .lede{display:none}
+/* Hiding hints tidies the working screens. It never touches the report:
+   in the report a "hint" is content, the In place column of the risk
+   table among it, and hiding that cell slid every column after it one
+   place to the left under the wrong heading. */
+body.nohints .hint:not(.doc .hint),body.nohints .helpwrap:not(.doc .helpwrap),body.nohints .lede:not(.doc .lede){display:none}
 body.nohints .f .hint{display:none}
 
 /* ---------- Cards / panels ---------- */
@@ -523,7 +527,12 @@ table.dt.risk td{word-break:break-word}
 table.dt.risk td .hint{word-break:keep-all;overflow-wrap:normal}
 /* the report's risk table: fixed proportions, so the measures column
    keeps the room its content needs */
-table.dt.ratbl{table-layout:fixed}
+/* automatic layout, with the colgroup as the preferred proportions: a
+   fixed layout held the hazard column narrower than "Entanglement," and
+   split the word. An automatic one never sets a column narrower than its
+   longest word, and the whole table's longest words fit a letter page
+   with room to spare. */
+table.dt.ratbl{table-layout:auto}
 table.dt.ratbl td,table.dt.ratbl th{word-break:normal;overflow-wrap:break-word;
   white-space:normal;vertical-align:top}
 /* a fixed column will not widen for a chip, so the chip wraps instead of
@@ -541,6 +550,7 @@ table.dt.risk th{white-space:normal}
 table.dt.risk .chip{white-space:normal;display:inline-block;max-width:100%;line-height:1.35}
 .empty{padding:22px 14px;text-align:center;color:var(--ink-3);font-size:13px}
 .doc .muted{color:var(--ink-3);font-style:italic}
+.doc .nobr{white-space:nowrap!important}
 .rowacts{display:flex;gap:5px;flex-wrap:wrap}
 
 /* ---------- Chips ---------- */
@@ -752,9 +762,14 @@ table.mx select{padding:3px 5px;font-size:11.5px}
      as the fallback for anything it will not hyphenate. A reference,
      a part number and anything else set in the mono face are never
      hyphenated: a hyphen inside RA-001 would read as part of it. */
+  /* No hyphenation. It let the browser size a column narrower than the
+     words in it, then split them: "in-sert", "sole-noids". Without it a
+     column in an automatic table is never narrower than its longest
+     word, so words wrap whole. break-word stays only as the last resort
+     for a single token longer than the page allows. */
   table.dt td{padding:4pt 5pt;border-bottom:.5pt solid var(--rule-2);color:#111;
     vertical-align:top;word-break:normal;overflow-wrap:break-word;
-    -webkit-hyphens:auto;hyphens:auto}
+    -webkit-hyphens:manual;hyphens:manual}
   table.dt td.num,table.dt td.mono,table.dt td .mono,table.dt td .chip,table.dt td .rl{
     -webkit-hyphens:none;hyphens:none}
   table.dt th{word-break:normal;overflow-wrap:break-word}
@@ -10966,7 +10981,7 @@ function renderReport() {
        measures column: it carries the most text and gets the least
        room. */
     var rcg = el('colgroup');
-    ['8%', '15%', '12%', '10%', '9%', '14%', '14%', '10%', '8%'].forEach(function (w) {
+    ['8%', '15%', '13%', '9%', '9%', '23%', '10%', '8%', '5%'].forEach(function (w) {
       rcg.appendChild(el('col', { style: { width: w } }));
     });
     rt.appendChild(rcg);
@@ -10990,7 +11005,7 @@ function renderReport() {
         el('td', { cls: 'hint', text: r.existingControls || 'not recorded' }),
         el('td', null, [
           levelChipOr(initialLevel(r), initialLevelText(r)),
-          el('div', { cls: 'hint', text: iso ? nsTriple(sch, r.isoS, r.isoF, r.isoP) : nsTriple(sch, r.s, r.e, r.e === 'E0' ? '' : r.a) }),
+          el('div', { cls: 'hint nobr', text: iso ? nsTriple(sch, r.isoS, r.isoF, r.isoP) : nsTriple(sch, r.s, r.e, r.e === 'E0' ? '' : r.a) }),
           r.initLevelOverride ? el('div', { cls: 'hint', text: 'overridden, table gives ' + (initialLevelComputed(r) || 'no value') }) : null
         ]),
         el('td', null, (r.measures || []).length
@@ -11011,7 +11026,7 @@ function renderReport() {
           : el('span', { text: 'none' })),
         el('td', null, [
           levelChipOr(residualLevel(r), residualLevelText(r)),
-          el('div', { cls: 'hint', text: nsTriple(sch, res.s, res.e, res.e === 'E0' ? '' : res.a) }),
+          el('div', { cls: 'hint nobr', text: nsTriple(sch, res.s, res.e, res.e === 'E0' ? '' : res.a) }),
           res.scored ? null : el('div', { cls: 'hint', text: 'suggested, not assessed' }),
           (dl2.scored && dl2.sameFactors)
             ? el('div', { cls: 'hint', text: dl2.hasWhy ? 'unchanged from initial, basis recorded' : 'unchanged from initial, no basis recorded' })
@@ -11019,7 +11034,7 @@ function renderReport() {
           r.resLevelOverride ? el('div', { cls: 'hint', text: 'overridden, table gives ' + (residualLevelComputed(r) || 'no value') }) : null
         ]),
         el('td', { cls: 'num' }, [
-          el('div', { text: (requiredPl(r) && requiredPl(r) !== '-' ? 'PL' + requiredPl(r) : '--') + (requiredCat(r) && requiredCat(r) !== '-' ? ' / ' + requiredCat(r) : '') }),
+          el('div', { cls: 'nobr', text: (requiredPl(r) && requiredPl(r) !== '-' ? 'PL' + requiredPl(r) : '--') + (requiredCat(r) && requiredCat(r) !== '-' ? ' / ' + requiredCat(r) : '') }),
           requiredControlReliable(r) ? el('div', { cls: 'hint', text: 'Control reliable' }) : null
         ].filter(Boolean)),
         el('td', { cls: 'num nw', text: rowSfIds(r).join(', ') })
@@ -11062,22 +11077,30 @@ function renderReport() {
       doc.appendChild(emptySection('No safety function has been specified on this file.'));
       return;
     }
-    var st = el('table', { cls: 'dt' });
+    /* Eight headings for eight cells. This table printed nine headings
+       over ten cells: the device count sat under "Cat / MTTFd / DC", the
+       category under "PL required", and every value after it one column
+       to the right of its heading. The 6.8.2 a and b columns are gone
+       from it: validation records are reported in full in the
+       verification section, where the record behind each one is named.
+       The function's description gets a third of the width, so it reads
+       as a sentence rather than a word per line. */
+    var st = el('table', { cls: 'dt sfperftbl' });
+    var scg = el('colgroup');
+    ['13%', '33%', '7%', '8%', '9%', '10%', '10%', '10%'].forEach(function (w) { scg.appendChild(el('col', { style: { width: w } })); });
+    st.appendChild(scg);
     var sh = el('tr');
-    ['ID', 'Function', 'Stop cat', 'Cat / MTTFd / DC', 'PL required', 'PL achieved', '6.8.2 a', '6.8.2 b', 'Result'].forEach(function (h) { sh.appendChild(el('th', { scope: 'col', text: h })); });
+    ['ID', 'Function', 'Stop cat', 'Devices', 'Category', 'PL required', 'PL achieved', 'Result'].forEach(function (h) { sh.appendChild(el('th', { scope: 'col', text: h })); });
     st.appendChild(el('thead', null, sh));
     var sb = el('tbody');
     P.sfs.forEach(function (sf) {
       var req = sfRequiredPl(sf), ach = sfAchievedPl(sf), meets = req ? plMeets(ach, req) : null;
-      var cov = vvCoverage(sf.id);
       sb.appendChild(el('tr', null, [
         el('td', { cls: 'num', text: sf.id }), el('td', { text: sf.name || sf.type }),
-        el('td', { cls: 'num', text: sf.stopCat }),
-        el('td', { cls: 'num', text: (sf.devices || []).length }),
+        el('td', { cls: 'num', text: sf.stopCat || '--' }),
+        el('td', { cls: 'num', text: String((sf.devices || []).length) }),
         el('td', { cls: 'num', text: sfAchievedCat(sf) || '--' }),
         el('td', null, plChip(req)), el('td', null, plChip(ach, meets)),
-        el('td', null, el('span', { cls: 'chip ' + (cov.VAL_A ? 'ok' : 'bad'), text: cov.VAL_A ? 'done' : 'missing' })),
-        el('td', null, el('span', { cls: 'chip ' + (cov.VAL_B ? 'ok' : 'bad'), text: cov.VAL_B ? 'done' : 'missing' })),
         el('td', null, el('span', { cls: 'chip ' + (meets === null ? 'tag' : (meets ? 'ok' : 'bad')), text: meets === null ? 'no requirement' : (meets ? 'adequate' : 'shortfall') }))
       ]));
     });
@@ -11425,7 +11448,41 @@ function renderReport() {
     ]));
   }
 
+  keepRefsWhole(doc);
   host.appendChild(doc);
+}
+/* A tag or reference with a hyphen in it, SV-201 or DP-401-LOTO, is one
+   thing, and the browser would happily end a line after its hyphen and
+   print "SV-" and "201" on two lines. In the report, a hyphenated token
+   carrying a digit is held on one line, and so is a short hyphenated
+   word such as "de-energized", so no word is ever seen split over two
+   lines. Long tokens are left alone so a path or a URL can still wrap
+   rather than run off the page. */
+var REF_TOKEN = /[A-Za-z0-9]+(?:[-.\/][A-Za-z0-9]+)+/g;
+function keepRefsWhole(root) {
+  var tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+  var nodes = [], n;
+  while ((n = tw.nextNode())) {
+    var pe = n.parentNode;
+    if (!pe || pe.closest && pe.closest('.nobr,textarea,input,svg,style,script')) continue;
+    REF_TOKEN.lastIndex = 0;
+    if (REF_TOKEN.test(n.nodeValue)) nodes.push(n);
+  }
+  nodes.forEach(function (t) {
+    var txt = t.nodeValue, frag = document.createDocumentFragment(), last = 0, m;
+    REF_TOKEN.lastIndex = 0;
+    while ((m = REF_TOKEN.exec(txt)) !== null) {
+      var tok = m[0];
+      if (tok.indexOf('-') < 0) continue;
+      if (!(/\d/.test(tok) ? tok.length <= 24 : tok.length <= 16)) continue;
+      if (m.index > last) frag.appendChild(document.createTextNode(txt.slice(last, m.index)));
+      frag.appendChild(el('span', { cls: 'nobr', text: tok }));
+      last = m.index + tok.length;
+    }
+    if (!last) return;
+    if (last < txt.length) frag.appendChild(document.createTextNode(txt.slice(last)));
+    t.parentNode.replaceChild(frag, t);
+  });
 }
 
 

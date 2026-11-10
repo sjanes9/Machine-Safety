@@ -943,6 +943,11 @@ table.mx select{padding:3px 5px;font-size:11.5px}
           <label class="f"><span>General description of the application</span><textarea id="p_narrative" data-meta="narrative" placeholder="What the cell does, how product moves through it, and where people interact with it."></textarea></label>
           <label class="f"><span>Assessment team and roles</span><textarea id="p_team" data-meta="team" placeholder="Name, role, qualification. One per line."></textarea></label>
           <label class="f internal"><span>Reviewer comments<span class="reqmark">  (excluded from the report)</span></span><textarea id="p_review" data-meta="reviewNotes" placeholder="Questions for the reviewer, things to check on the next visit, anything that should not reach the client."></textarea></label>
+          <div class="grid g2">
+            <label class="f"><span>Report title</span><input id="p_reportTitle" data-meta="reportTitle" placeholder="Compliance report"></label>
+            <label class="f"><span>Report subtitle</span><input id="p_reportSubtitle" data-meta="reportSubtitle" placeholder="Risk assessment, safety functions, verification and validation"></label>
+          </div>
+          <label class="f"><span>Whose risk assessment this is</span><textarea id="p_raBasis" data-meta="raBasis" placeholder="For example: The risk assessment is the owner's and the machine builder's. It was reviewed and verified for this report, not performed."></textarea></label>
           <label class="f"><span>Scope, boundaries, assumptions and limitations</span><textarea id="p_scope" data-meta="scope" placeholder="What is inside the assessment and what is excluded, the interfaces to adjacent equipment, the lifecycle phases covered, and the conditions the assessment holds under."></textarea></label>
           <div class="f"><span class="flab-plain" id="stdsLabel">Standards and documents applied</span><div id="stdsHost"></div></div>
         </div>
@@ -984,7 +989,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
               </select></label>
             <select id="p_method" data-meta="method">
               <option value="ANSI/RIA R15.306">ANSI/RIA R15.306-2016 task based, three levels each of S, E and A</option>
-              <option value="ISO 13849-1">ISO 13849-1:2015 Annex A risk graph, two levels each of S, F and P</option>
+              <option value="ISO 13849-1">ISO 13849-1 Annex A risk graph, two levels each of S, F and P</option>
             </select>
           </label>
           <p class="hint" id="methodNote"></p>
@@ -1220,9 +1225,9 @@ function debounce(fn, ms) {
 }
 
 /* ---------- 20.2 Schema and state ---------- */
-var SCHEMA = 18;
-var STORE_KEY = 'safetyFile.v18';
-var LEGACY_KEYS = ['safetyFile.v17', 'safetyFile.v16', 'safetyFile.v15', 'safetyFile.v14', 'safetyFile.v13', 'safetyFile.v12', 'safetyFile.v11', 'safetyFile.v10', 'safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
+var SCHEMA = 19;
+var STORE_KEY = 'safetyFile.v19';
+var LEGACY_KEYS = ['safetyFile.v18', 'safetyFile.v17', 'safetyFile.v16', 'safetyFile.v15', 'safetyFile.v14', 'safetyFile.v13', 'safetyFile.v12', 'safetyFile.v11', 'safetyFile.v10', 'safetyFile.v9', 'safetyFile.v8', 'safetyFile.v7', 'safetyFile.v6', 'safetyFile.v5', 'safetyFile.v4', 'safetyFile.v3', 'safety_dashboard', 'safetyFile.v1', 'safetyFile.v2'];
 
 function blankProject() {
   return {
@@ -1230,6 +1235,7 @@ function blankProject() {
     meta: {
       title: '', client: '', machine: '', location: '', rev: 'A', revDate: '',
       lead: '', reviewer: '', team: '', scope: '',
+      reportTitle: '', reportSubtitle: '', raBasis: '',
       /* Written for the reviewer, never for the client. Nothing in the
          report reads this field, and a test holds that. */
       reviewNotes: '',
@@ -1380,6 +1386,7 @@ function migrate(data) {
   if (v < 16) { migrateV15(base); }
   if (v < 17) { migrateV16(base, data); }
   if (v < 18) { migrateV17(base); }
+  if (v < 19) { migrateV18(base); }
   normalize(base);
   return base;
 }
@@ -1417,6 +1424,16 @@ function migrate(data) {
    printed the scope text at all; the combined text now prints in the
    Scope section, so a file that chose the old assumptions section gets
    the Scope section in its place. */
+/* v18 -> v19. The report gains a safeguard distance check, printed
+   after the safety function performance. A file that chose its own
+   sections gets it in that place; nothing is recorded in it until the
+   distances are entered, so an old file prints nothing new. */
+function migrateV18(base) {
+  if (Array.isArray(base.reportSections) && base.reportSections.indexOf('distance') < 0) {
+    var i = base.reportSections.indexOf('sfperf');
+    if (i >= 0) { base.reportSections.splice(i + 1, 0, 'distance'); }
+  }
+}
 function migrateV17(base) {
   var m = base.meta || {};
   var sc = String(m.scope || '').trim();
@@ -2663,7 +2680,13 @@ function duplicateFieldTest(t, targetDeviceUid, newTitle) {
          instruction to test the wrong device, so the tag is substituted
          here too. Any other wording is left exactly as written. */
       text: retitleForDevice(stp.text, from, to),
-      expected: retitleForDevice(stp.expected, from, to),
+      /* The expected result is copied as written. It often names other
+         devices, the ones the device under test acts on, and swapping
+         the tag there turned "DS-2 and DS-3 controls are disabled",
+         copied from DS-2 to DS-1, into "DS-1 and DS-3", which names a
+         device the procedure is not about. The copy dialog lists any
+         expected result that names the source device, to be checked. */
+      expected: stp.expected,
       result: '', verdict: 'Not run', note: ''
     };
   });
@@ -2989,16 +3012,23 @@ function parseSistemaReport(text) {
 
   /* Summary lines: Name: <name> [<id>] then Required/Reached/PFH/Status */
   var funcs = [], seen = {};
+  /* The identifier in brackets is optional: SISTEMA prints none when the
+     Identifier field on the function was left empty, and a function
+     printed without one was skipped altogether, so its report came in
+     with no functions. Without one, the name stands in for it. */
+  var fnIdByName = {};
   for (var i = 0; i < lines.length; i += 1) {
-    var nm = lines[i].match(/^Name:\s*(.+?)\s*\[([^\]]+)\]\s*$/);
+    var nm = lines[i].match(/^Name:\s*(.+?)(?:\s*\[([^\]]*)\])?\s*$/);
     if (!nm) continue;
     var next = lines[i + 1] || '';
     var sum = next.match(/Required:\s*PLr\s*(\S+)\s+Reached:\s*PL\s*(\S+)\s+PFH\s*\[1\/h\]:\s*(\S+)\s+Status:\s*(\S+)/);
     if (!sum) continue;
-    if (seen[nm[2]]) continue;
-    seen[nm[2]] = 1;
+    var fid = String(nm[2] || '').trim() || nm[1].trim();
+    if (seen[fid]) continue;
+    seen[fid] = 1;
+    fnIdByName[nm[1].trim()] = fid;
     funcs.push({
-      identifier: nm[2], name: nm[1],
+      identifier: fid, name: nm[1].trim(),
       plr: String(sum[1]).toLowerCase(), pl: String(sum[2]).toLowerCase(),
       pfhd: Number(sum[3]), status: sum[4]
     });
@@ -3095,14 +3125,39 @@ function parseSistemaReport(text) {
     /* A subsystem's detail runs over several pages, and SISTEMA repeats
        "Safety function: X" as a page header on each of them, so that is
        not a boundary. Only the next subsystem header ends the block. */
+    /* The function this subsystem belongs to: SISTEMA heads every page
+       of a function's subsystems with "Safety function: X", so the last
+       such heading before the block names it. */
+    var ownerName = '';
+    for (var bj = i - 1; bj >= 0; bj -= 1) {
+      var sh = lines[bj].match(/^Safety function:\s*(.+)$/);
+      if (sh) { ownerName = sh[1].trim(); break; }
+    }
+    /* The block also ends where another function's pages begin. The last
+       subsystem of one function used to run on into the next function's
+       documentation, and where the subsystem prints no "Reached PL" of
+       its own, the next function's PFH was read as the subsystem's. */
     var end = i + 1;
-    while (end < lines.length && !/^Subsystems \(\d+ \/ \d+\)/.test(lines[end])) { end += 1; }
+    while (end < lines.length && !/^Subsystems \(\d+ \/ \d+\)/.test(lines[end])) {
+      var other = lines[end].match(/^Safety function:\s*(.+)$/);
+      if (other && ownerName && other[1].trim() !== ownerName) { break; }
+      end += 1;
+    }
     var block = lines.slice(i, end);
     var bt = block.join('\n');
     function grab(re) { var m2 = bt.match(re); return m2 ? String(m2[1]).trim() : ''; }
+    /* A blank reference designator is followed by the next label, not a
+       value: "Inventory number:" was being read as the tag. */
+    var refAt = -1;
+    for (var rb = 0; rb < block.length; rb += 1) { if (/^Reference designator:/.test(block[rb])) { refAt = rb; break; } }
+    var refVal = refAt < 0 ? '' : block[refAt].replace(/^Reference designator:\s*/, '').trim();
+    /* the value sometimes prints on the line below the label; take it
+       from there unless that line is itself the next label */
+    if (refAt >= 0 && !refVal && block[refAt + 1] && !/:\s*$/.test(block[refAt + 1])) { refVal = block[refAt + 1].trim(); }
     var sub = {
       name: (block[1] && block[1].indexOf('Name:') === 0) ? block[1].slice(5).trim() : '',
-      ref: grab(/Reference designator:\s*\n?([^\n]*)/),
+      fn: fnIdByName[ownerName] || ownerName,
+      ref: /:\s*$/.test(refVal) ? '' : refVal,
       manufacturer: grab(/Device Manufacturer:\s*([^\n]*)/),
       partNumber: grab(/Part number:\s*([^\n]*)/),
       /* SISTEMA letter-spaces some labels and puts the value on the
@@ -3118,14 +3173,31 @@ function parseSistemaReport(text) {
     if (sub.name && !/^-/.test(sub.name)) { subs.push(sub); }
     i = end - 1;
   }
-  /* de-duplicate by name and reference, since a subsystem shared between
-     functions is printed once per function */
-  var uniq = [], byKey = {};
+  /* One device per subsystem, linked to the functions it serves.
+     A subsystem shared between functions is printed once under each, so
+     the k-th one of a kind in one function is the same device as the
+     k-th of that kind in another. "Of a kind" is the reference, the
+     name, the part number and the PFH together: the name alone merged
+     a 1734-IB8S input module and a 1734-OB8S output module, which
+     SISTEMA prints under the same name, into one device, and lost the
+     second module's PFH from the function's total. */
+  var uniq = [], detailLinks = [];
+  var keyD = function (x) { return [squash(x.ref || ''), squash(x.name), squash(x.partNumber || ''), x.pfhd].join('|'); };
+  var byFnD = {}, orderD = [];
   subs.forEach(function (x) {
-    var k = (x.ref || '') + '|' + x.name;
-    if (byKey[k]) return;
-    byKey[k] = 1;
-    uniq.push(x);
+    var f = x.fn || '';
+    if (!byFnD[f]) { byFnD[f] = []; orderD.push(f); }
+    byFnD[f].push(x);
+  });
+  orderD.forEach(function (f) {
+    var used = {};
+    byFnD[f].forEach(function (x) {
+      var k = keyD(x), q = -1;
+      for (var u = 0; u < uniq.length; u += 1) { if (!used[u] && keyD(uniq[u]) === k) { q = u; break; } }
+      if (q < 0) { uniq.push(x); q = uniq.length - 1; }
+      used[q] = 1;
+      if (f) { detailLinks.push({ fn: f, idx: q }); }
+    });
   });
 
   funcs.forEach(function (f) {
@@ -3151,8 +3223,8 @@ function parseSistemaReport(text) {
   var summary = [], curFn = '', inList = false;
   for (i = 0; i < lines.length; i += 1) {
     var l0 = lines[i];
-    var fnHead = l0.match(/^Name:\s*(.+?)\s*\[([^\]]+)\]\s*$/);
-    if (fnHead && /^Required:\s*PLr/.test(lines[i + 1] || '')) { curFn = fnHead[2]; inList = false; continue; }
+    var fnHead = l0.match(/^Name:\s*(.+?)(?:\s*\[([^\]]*)\])?\s*$/);
+    if (fnHead && /^Required:\s*PLr/.test(lines[i + 1] || '')) { curFn = String(fnHead[2] || '').trim() || fnHead[1].trim(); inList = false; continue; }
     if (/^Contained subsystems\s*$/.test(l0) && curFn) { inList = true; continue; }
     /* the detail pages and the closing pages end the summary */
     if (/^Subsystems \(\d+ \/ \d+\)/.test(l0) || /^Safety function:/.test(l0) || /^EXCLUSION OF LIABILITY/.test(l0)) { inList = false; curFn = ''; continue; }
@@ -3193,6 +3265,7 @@ function parseSistemaReport(text) {
      same device as the k-th in another when the values match too, since
      SISTEMA prints a shared subsystem once per function that uses it. */
   var links = [], unmatched = [];
+  if (!summary.length) { links = detailLinks; }
   if (summary.length) {
     var fromSummary = !uniq.length;
     var keyOf = function (x) {
@@ -3244,7 +3317,13 @@ function sistemaToRecords(res) {
     dv.tag = sub.ref || '';
     dv.manufacturer = sub.manufacturer && !/see parent/i.test(sub.manufacturer) ? sub.manufacturer : '';
     dv.partNumber = sub.partNumber && !/^n\/a$/i.test(sub.partNumber) ? sub.partNumber : '';
-    dv.role = roleGuess({ name: sub.name, useCase: '', role: '', deviceType: '' });
+    /* An I/O module is printed under one name whether it reads inputs or
+       drives outputs, so the part number decides where it can:
+       1734-IB8S is an input module, 1734-OB8S an output module. */
+    var pn = String(sub.partNumber || '');
+    dv.role = /(^|[^A-Z])OB\d|output/i.test(pn) ? 'Output'
+      : (/(^|[^A-Z])IB\d|input/i.test(pn) ? 'Input'
+        : roleGuess({ name: sub.name, useCase: '', role: '', deviceType: '' }));
     dv.cat = sub.cat || '';
     dv.plStated = sub.determination === 'ENCAPSULATED' ? sub.pl : '';
     dv.pfhd = sub.pfhd ? Number(sub.pfhd) : '';
@@ -4684,6 +4763,10 @@ function newSf() {
     ccf: '', ccfMeasures: [], demandRate: '',
     emiRoute: '', emiNote: '',
     sepDistance: '', sepDistanceBasis: '', wholeBodyAccess: '',
+    /* the distance as measured on the installed machine, from the
+       safeguard to the hazard, set against sepDistance, the distance
+       required */
+    sepDistanceMeas: '', sepDistanceMeasBy: '',
     images: [], drawingRef: '',
     importedFrom: '',
     standardBasis: 'ISO 13849-1:2015', notes: '',
@@ -6158,6 +6241,13 @@ function findings() {
       if (!c || !c.pl || c.pl === 'N/A' || !x.pl) return;
       if (!plMeets(c.pl, x.pl)) {
         add('bad', 'fs', x.k, 'The ' + x.what + ' system was observed at PL ' + c.pl + ', below the PL ' + x.pl + ' this file models for it. An observation of the installed system outranks a calculation about it, so either the model is wrong or the installation is.', 'clause 8');
+      } else if (c.pl !== x.pl) {
+        /* The other way round is not a shortfall but it is a contradiction
+           on the page: the checklist says PL e where every function is
+           shown reaching PL d. Looking at the hardware confirms the
+           architecture; it cannot lift the level above what the PFH and
+           the category support. */
+        add('warn', 'fs', x.k, 'The ' + x.what + ' system is recorded as observed at PL ' + c.pl + ', but this file shows it reaching PL ' + x.pl + '. An inspection confirms the architecture and cannot raise the level above the calculation, so record PL ' + x.pl + ' here, or correct the model if PL ' + c.pl + ' is right.', 'clause 8');
       }
       if (c.cat && c.cat !== 'N/A' && x.cat && c.cat !== x.cat) {
         add('warn', 'fs', x.k, 'The ' + x.what + ' system was observed at category ' + c.cat + ' while this file models category ' + x.cat + '. Resolve which is right before the file is issued.', 'clause 6.1.1');
@@ -6402,6 +6492,14 @@ function findings() {
       if (hasDist && !hasRunOn && !String(sf.runningOnTimeNa || '').trim()) {
         add('warn', 'sf', sf.id, lbl + ' states a separation distance but no running-on time, so the response time the distance assumed cannot be checked against this machine.', 'ISO 13855', 'runningOnTime');
       }
+      var dc = sfDistanceCheck(sf);
+      if (dc.state === 'fail') {
+        add('bad', 'sf', sf.id, lbl + ': the measured distance from the safeguard to the hazard, ' + dc.meas + ' mm, is less than the required ' + dc.req + ' mm.', 'ISO 13855', 'sepDistanceMeas');
+      } else if (dc.state === 'unmeasured') {
+        add('warn', 'sf', sf.id, lbl + ' states a required separation distance of ' + dc.req + ' mm, but no measured distance on the machine to check it against.', 'ISO 13855', 'sepDistanceMeas');
+      } else if (dc.state === 'unrequired') {
+        add('warn', 'sf', sf.id, lbl + ' records a measured distance of ' + dc.meas + ' mm, but no required distance to check it against.', 'ISO 13855', 'sepDistance');
+      }
       if (sf.wholeBodyAccess === 'Yes' && !/reset|restart|presence|detection|scan|mat/i.test([sf.muting, sf.reset, sf.description, sf.notes].filter(Boolean).join(' '))) {
         add('warn', 'sf', sf.id, lbl + ' allows whole body access, which requires additional protective measures against unexpected reset or restart with a person inside the safeguarded space. Nothing on this function records one.', 'ISO 13855', 'wholeBodyAccess');
       }
@@ -6480,6 +6578,20 @@ function findings() {
       add('warn', 'sf', sf.id, lbl + ' is missing its ' + (!hasTrigger ? 'initiating event' : 'machine reaction') + '.', '', !hasTrigger ? 'initiator' : 'reaction');
     }
     if (!sf.respReq) { add('warn', 'sf', sf.id, lbl + ' has no required response time, so the safety distance cannot be verified.'); }
+
+    /* A function's PLr can come from its own risk graph or be entered
+       directly, and then nothing compared it with the risk rows it
+       carries out. A row that needs PL e carried by a function specified
+       for PL d is a shortfall whichever of the two is right, and the
+       report showed both numbers without saying so. */
+    var fnPlr = sfRequiredPl(sf);
+    risksForSf(sf.id).forEach(function (r) {
+      var rp = requiredPl(r);
+      if (rp && rp !== '-' && PL_RANK[rp] !== undefined && PL_RANK[rp] > (PL_RANK[fnPlr] === undefined ? -1 : PL_RANK[fnPlr])) {
+        add('bad', 'sf', sf.id, (r.id || 'A risk row') + ' requires PL ' + rp + ', but ' + lbl + ', which carries its risk reduction, is specified for PL ' + (fnPlr && fnPlr !== '-' ? fnPlr : 'nothing')
+          + '. The row and the function have to agree: rescore whichever of the two is wrong.', 'PLr');
+      }
+    });
 
     var cov = vvCoverage(sf.id), recs = vvRecords(sf.id);
     if (!Object.keys(recs).length) { add('bad', 'sf', sf.id, lbl + ' has no verification or validation record.', '6.8'); }
@@ -8438,6 +8550,12 @@ function duplicateFieldTestForm(t) {
   devSel.addEventListener('change', syncTitle);
 
   var steps = (t.steps || []).length;
+  var named = (t.steps || []).filter(function (stp) {
+    var tag = src && (src.tag || src.name);
+    if (!tag) return false;
+    var esc = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp('(^|[^A-Za-z0-9])' + esc + '($|[^A-Za-z0-9])').test(stp.expected || '');
+  });
   var body = [
     el('p', { cls: 'hint', text: steps + ' ' + (steps === 1 ? 'step is' : 'steps are') + ' copied, along with the linked safety function and the test equipment. Every verdict returns to Not run and the observed column, the tester, the witness and the date are cleared: the copy has been run nowhere.' }),
     el('label', { cls: 'f' }, [
@@ -8449,6 +8567,12 @@ function duplicateFieldTestForm(t) {
       titleIn
     ])
   ];
+  body.push(el('div', { cls: 'notice' + (named.length ? ' warn' : '') }, [
+    el('strong', { text: 'Step instructions take the new tag; expected results are copied word for word' }),
+    el('span', { text: named.length
+      ? named.length + ' expected result' + (named.length === 1 ? ' names' : 's name') + ' ' + ((src && (src.tag || src.name)) || 'the source device') + ': ' + named.map(function (x) { return '"' + x.expected + '"'; }).join('; ') + '. Check on the copy whether each means the device under test or another device the test acts on.'
+      : 'An expected result often names the devices the tested one acts on, so it is never rewritten.' })
+  ]));
   var apply = function () {
     if (!devSel.value) { say('Add a device to the library first'); return false; }
     var c = duplicateFieldTest(t, devSel.value, titleIn.value.trim());
@@ -8632,7 +8756,7 @@ var GUIDE = [
     body: [
       'A safety function here is written on the four tabs SISTEMA gives one, with the same names in the same order. Documentation holds what the function is and what it does. PLr holds the required level, entered directly or read off the risk graph. PL holds what the chain reaches, with the PFH scale SISTEMA prints. Subsystems holds the input, logic and output positions, with the columns from SISTEMA’s own subsystem table.',
       'SISTEMA divides a subsystem further into channels and blocks. This app stops one level higher: the devices assigned to a position are that subsystem’s blocks, and the channel figures are worked out from them by the parts count formula of clause 6.1.6 and the DCavg formula of clause 6.1.7. Everything SISTEMA prints per subsystem appears in the same columns, so the two can be read side by side without translating anything.',
-      'Import a SISTEMA report from the safety functions step or the devices step and the functions, their subsystems and the device values are read straight out of it. What comes in is marked as modeled and not field verified, so nothing imported can pass itself off as proven hardware. Where the report lists the subsystems under each function, as its summary does when it is printed with "also show Subsystems", each device is added to the function it is listed under; the detail pages alone do not say which function a subsystem serves, so from those the devices come in unlinked. Where a report states a PFH for the function as a whole, that figure is kept beside the one this file builds from its devices rather than replacing it; if the two disagree, the app says so, because one of them is working from a different set of devices.'
+      'Import a SISTEMA report from the safety functions step or the devices step and the functions, their subsystems and the device values are read straight out of it. What comes in is marked as modeled and not field verified, so nothing imported can pass itself off as proven hardware. Each device is added to the function the report puts it under: the summary lists the subsystems under each function when it is printed with "also show Subsystems", and the detail pages carry the name of the function at the head of every page of its subsystems. Where a report states a PFH for the function as a whole, that figure is kept beside the one this file builds from its devices rather than replacing it; if the two disagree, the app says so, because one of them is working from a different set of devices.'
     ],
     tip: 'The reader handles the report SISTEMA prints. A PDF that has been re-saved, scanned or compressed by another tool needs exporting from SISTEMA again.'
   },
@@ -10496,6 +10620,7 @@ var REPORT_SECTIONS = [
   { k: 'risk', label: 'Risk assessment', help: 'One row per task and hazard pair, with initial score, measures and residual score.' },
   { k: 'devices', label: 'Safety device schedule', help: 'Every device with its safety values, provenance and the functions it serves.' },
   { k: 'sfperf', label: 'Safety function performance', help: 'Required against achieved performance level and structure category.' },
+  { k: 'distance', label: 'Safeguard distance check', help: 'For each function with a safeguard: the distance from the safeguard to the hazard as measured, against the distance required, and the result.', empty: function () { return !P.sfs.some(function (sf) { return sfDistanceCheck(sf).state; }); } },
   { k: 'spec', label: 'Safety function specification', help: 'The SISTEMA documentation fields, and which are blank.', empty: function () { return !P.sfs.length; } },
   { k: 'fschecklist', label: 'Functional safety onsite verification', help: 'The summary sheet read off the installed control system, with the observed category and performance level.' },
   { k: 'checklist', label: 'Safeguarding checklist', help: 'The onsite guarding record and the compliance score.' },
@@ -10517,11 +10642,11 @@ var REPORT_PRESETS = [
   { k: 'full', label: 'Everything', keys: REPORT_SECTIONS.map(function (x) { return x.k; }) },
   { k: 'walkdown', label: 'Safety report only', keys: ['scope', 'legend', 'hazards', 'hazardsDetail', 'checklist', 'conclusion', 'approval'] },
   { k: 'ra', label: 'Risk assessment only', keys: ['scope', 'legend', 'hazards', 'hazardsDetail', 'risk', 'approval'] },
-  { k: 'ra_sf', label: 'Risk assessment and safety functions', keys: ['scope', 'risk', 'sfperf', 'spec', 'devices', 'approval'] },
+  { k: 'ra_sf', label: 'Risk assessment and safety functions', keys: ['scope', 'risk', 'sfperf', 'distance', 'spec', 'devices', 'approval'] },
   { k: 'vv', label: 'Verification and validation only', keys: ['scope', 'vv', 'approval'] },
-  { k: 'controls', label: 'Controls package', keys: ['scope', 'devices', 'sfperf', 'spec', 'fschecklist', 'provenance', 'vv', 'approval'] },
+  { k: 'controls', label: 'Controls package', keys: ['scope', 'devices', 'sfperf', 'distance', 'spec', 'fschecklist', 'provenance', 'vv', 'approval'] },
   { k: 'field', label: 'Field verification only', keys: ['scope', 'legend', 'field', 'fschecklist', 'checklist', 'approval'] },
-  { k: 'guarding', label: 'Guarding package', keys: ['scope', 'legend', 'hazards', 'hazardsDetail', 'risk', 'checklist', 'approval'] },
+  { k: 'guarding', label: 'Guarding package', keys: ['scope', 'legend', 'hazards', 'hazardsDetail', 'risk', 'distance', 'checklist', 'approval'] },
   { k: 'findings', label: 'Findings only', keys: ['scope', 'findings', 'conclusion'] }
 ];
 
@@ -10852,6 +10977,10 @@ function renderReportPicker() {
         ]),
         el('span', { cls: 'hint', style: { marginLeft: 'auto' }, text: sel.length + ' of ' + REPORT_SECTIONS.length + ' sections. Numbering follows what is included.' + (renamedSectionCount() ? '  ' + renamedSectionCount() + ' renamed.' : '') })
       ]),
+      /* Chrome prints its own header and footer, the page address among
+         them, in the same margins as the report's. A page cannot change
+         or remove that text; only the print dialog can. */
+      P.reportStyle !== 'classic' ? el('p', { cls: 'hint', style: { margin: '0 0 8px' }, text: 'Before printing: in the browser\'s print dialog, open More settings and untick Headers and footers. Otherwise the browser prints the web address and date in the margins alongside this report\'s own header and footer.' }) : null,
       el('p', { cls: 'hint', style: { margin: '0 0 8px' }, text: 'The single line and the detail of each walkdown section are separate rows below, so either can be left out or moved on its own.' }),
       boxes
     ].filter(Boolean))
@@ -10926,8 +11055,8 @@ function renderReport() {
     /* the title block of the working screens does not print in this
        layout: the running header carries the project on every page */
     doc.appendChild(el('div', { cls: 'sis-doctitle' }, [
-      el('div', { cls: 'sis-doctitle-main', text: 'Compliance report: ' + (P.meta.title || 'Untitled project') }),
-      el('div', { cls: 'sis-doctitle-sub', text: 'Risk assessment, safety functions, verification and validation' })
+      el('div', { cls: 'sis-doctitle-main', text: reportTitle() + ': ' + (P.meta.title || 'Untitled project') }),
+      el('div', { cls: 'sis-doctitle-sub', text: reportSubtitle() })
     ]));
   }
   var m = P.meta;
@@ -10963,12 +11092,20 @@ function renderReport() {
       ['Basis for that requirement', m.machinePlrBasis || 'not recorded'],
       ['Revision', (m.rev || '') + (m.revDate ? '  dated ' + m.revDate : '')],
       ['Performed by', m.lead], ['Approved by', m.reviewer],
-      ['Method', m.method === 'ISO 13849-1' ? 'ISO 13849-1:2015 Annex A risk graph' : SRC]
+      /* the edition is the one under Standards applied; naming 2015 here
+         contradicted a file assessed to 2023 */
+      ['Method', m.method === 'ISO 13849-1' ? 'ISO 13849-1 Annex A risk graph' : SRC]
     ]));
     if (m.narrative) { doc.appendChild(el('p', { cls: 'wrap', text: m.narrative })); }
     if (m.scope) {
       doc.appendChild(el('h4', { text: 'Scope, boundaries, assumptions and limitations' }));
       doc.appendChild(el('p', { cls: 'wrap', text: m.scope }));
+    }
+    /* whose risk assessment the report rests on, so a verification of
+       somebody else's assessment does not read as a claim to have made it */
+    if (String(m.raBasis || '').trim()) {
+      doc.appendChild(el('h4', { text: 'Basis of the risk assessment' }));
+      doc.appendChild(el('p', { cls: 'wrap', text: m.raBasis }));
     }
     if ((m.images || []).length) { doc.appendChild(gallery(m.images, { editable: false })); }
   });
@@ -11264,7 +11401,10 @@ function renderReport() {
       var dh = el('tr');
       /* the manufacturer and part sit under the device name, so the
          name has the width to read as a phrase */
-      ['Tag', 'Device', 'Position', 'Cat', 'MTTFd', 'DC', 'PFHd', 'PL', 'Used by'].forEach(function (h) { dh.appendChild(el('th', { scope: 'col', text: h })); });
+      /* the PL here is each device's own rating; the function's PL is in
+         the performance section. Headed plainly so the two are not read
+         as disagreeing. */
+      ['Tag', 'Device', 'Position', 'Cat', 'MTTFd', 'DC', 'PFHd', 'Device PL', 'Used by'].forEach(function (h) { dh.appendChild(el('th', { scope: 'col', text: h })); });
       dt.appendChild(el('thead', null, dh));
       var db = el('tbody');
       P.devices.forEach(function (dv) {
@@ -11323,6 +11463,36 @@ function renderReport() {
     });
     st.appendChild(sb);
     doc.appendChild(P.sfs.length ? el('div', { cls: 'tw' }, st) : el('p', { cls: 'hint', text: 'No safety functions recorded.' }));
+  });
+
+  sec('distance', function (H) {
+    doc.appendChild(el('h3', { text: H }));
+    doc.appendChild(el('p', { cls: 'wrap', text: 'The distance from each safeguard to the hazard it protects, as measured on the installed machine, against the distance required. The required distance is the one recorded for the function, with the basis stated beside it. A result passes where the measured distance is at least the required one.' }));
+    var dt = el('table', { cls: 'dt' });
+    var dh = el('tr');
+    ['Function', 'Required', 'Measured', 'Result'].forEach(function (h) { dh.appendChild(el('th', { scope: 'col', text: h })); });
+    dt.appendChild(el('thead', null, dh));
+    var db = el('tbody');
+    P.sfs.forEach(function (sf) {
+      var c = sfDistanceCheck(sf);
+      if (!c.state) return;
+      var word = { pass: 'Pass', fail: 'Fail', unmeasured: 'Not measured', unrequired: 'No requirement recorded' }[c.state];
+      var tone = c.state === 'pass' ? 'ok' : (c.state === 'fail' ? 'bad' : 'warn');
+      db.appendChild(el('tr', null, [
+        el('td', null, [el('div', { cls: 'mono', text: sf.id || '--' }), sf.name ? el('div', { cls: 'hint', text: sf.name }) : null]),
+        el('td', null, [
+          el('div', { cls: 'nobr', text: c.req === null ? '--' : c.req + ' mm' }),
+          sf.sepDistanceBasis ? el('div', { cls: 'hint', text: sf.sepDistanceBasis }) : null
+        ]),
+        el('td', null, [
+          el('div', { cls: 'nobr', text: c.meas === null ? '--' : c.meas + ' mm' }),
+          sf.sepDistanceMeasBy ? el('div', { cls: 'hint', text: sf.sepDistanceMeasBy }) : null
+        ]),
+        el('td', null, el('span', { cls: 'chip ' + tone, text: word }))
+      ]));
+    });
+    dt.appendChild(db);
+    doc.appendChild(el('div', { cls: 'tw' }, dt));
   });
 
   sec('spec', function (H) {
@@ -11682,7 +11852,14 @@ function renderReport() {
 
   sec('approval', function (H) {
     doc.appendChild(el('h3', { text: H }));
-    doc.appendChild(el('p', { cls: 'hint', text: 'Signing this page states that the risk assessment is verified under clause 6.8.1, that every residual risk reaches an acceptable level of low or negligible, that every safety function meets its required performance level and structure category from Table 5, and that the validation records in section 7 were witnessed as recorded.' }));
+    /* The validation records are named by the number their section
+       actually carries in this report. The sentence used to say
+       "section 7" whatever the selection, which pointed at whichever
+       section happened to be seventh. */
+    var vvRef = reportSectionRef('vv'), fieldRef = reportSectionRef('field');
+    var where = vvRef && fieldRef ? 'in ' + vvRef + ', and the field verification in ' + fieldRef + ',' :
+      (vvRef ? 'in ' + vvRef + ',' : (fieldRef ? 'in ' + fieldRef + ',' : 'held in this file'));
+    doc.appendChild(el('p', { cls: 'hint', text: 'Signing this page states that the risk assessment is verified under clause 6.8.1, that every residual risk reaches an acceptable level of low or negligible, that every safety function meets its required performance level and structure category from Table 5, and that the validation records ' + where + ' were witnessed as recorded.' }));
     if ((P.signatures || []).length) {
       var st = el('table', { cls: 'dt' });
       var sth = el('tr');
@@ -11725,6 +11902,18 @@ function renderReport() {
   /* Emit in the order chosen, numbering as we go. A section with
      nothing to say does not consume a number, or the printed report
      skips numbers with no explanation for the gap. */
+  /* the number each section will carry, worked out before any of them
+     is built, so one section can refer to another by its number */
+  REPORT_NUM = {};
+  (function () {
+    var n = 0;
+    reportSelection().forEach(function (k) {
+      if (!BUILD[k]) return;
+      var d = reportSectionDef(k);
+      if (d && typeof d.empty === 'function' && d.empty()) return;
+      if (d && !d.unnumbered) { n += 1; REPORT_NUM[k] = n; }
+    });
+  }());
   var num = 0;
   reportSelection().forEach(function (k) {
     var fn = BUILD[k];
@@ -11772,7 +11961,9 @@ function setReportPageBoxes(on) {
   var dates = ['Revision ' + (m.rev || '-') + (m.revDate ? ' dated ' + m.revDate : ''),
     'Report date ' + new Date().toISOString().slice(0, 10),
     'Fingerprint ' + contentFingerprint()].join('\n');
-  var foot = m.lead ? 'Prepared by ' + m.lead + (m.reviewer ? ', approved by ' + m.reviewer : '') : (m.title || '');
+  /* the application's name, and nothing else: who prepared and approved
+     the file is in the Scope section and on the signature page */
+  var foot = 'Machine-Safety';
   var rule = 'border-bottom:1pt solid #000;padding-bottom:4pt;vertical-align:bottom;color:#000;';
   var frule = 'border-top:.75pt solid #000;padding-top:3pt;vertical-align:top;color:#000;font:7.5pt ' + font + ';';
   function lines(s) { return String(s).split('\n').map(cssString).join(' "\\A" '); }
@@ -11785,6 +11976,39 @@ function setReportPageBoxes(on) {
     + '@bottom-right{content:"Page " counter(page) " / " counter(pages);text-align:right;' + frule + '}'
     + '}}';
 }
+/* A distance written the way people write them: "1 100 mm", "1,250mm",
+   "43.3 in", "1.1 m". Millimetres when no unit is given. */
+function mmOf(text) {
+  var t = String(text || '').replace(/,/g, '').trim();
+  var m = t.match(/(-?\d[\d ]*(?:\.\d+)?)\s*(mm|cm|m|in|inch|inches|"|ft|')?/i);
+  if (!m) return null;
+  var v = Number(m[1].replace(/\s+/g, ''));
+  if (!isFinite(v)) return null;
+  var u = (m[2] || 'mm').toLowerCase();
+  if (u === 'cm') v *= 10;
+  else if (u === 'm') v *= 1000;
+  else if (u === 'in' || u === 'inch' || u === 'inches' || u === '"') v *= 25.4;
+  else if (u === 'ft' || u === "'") v *= 304.8;
+  return Math.round(v);
+}
+/* Measured against required, for one function. The required distance
+   is the one recorded on the function, with its basis; the app does not
+   compute it, because the ISO 13855 formulae are not in the copy held
+   with this project. */
+function sfDistanceCheck(sf) {
+  var req = mmOf(sf.sepDistance), meas = mmOf(sf.sepDistanceMeas);
+  var state = req === null && meas === null ? '' :
+    (req === null ? 'unrequired' : (meas === null ? 'unmeasured' : (meas >= req ? 'pass' : 'fail')));
+  return { req: req, meas: meas, state: state };
+}
+var REPORT_NUM = {};
+/* "section 15, Risk assessment verification", or null when the section
+   is not in this report */
+function reportSectionRef(k) {
+  return REPORT_NUM[k] ? 'section ' + REPORT_NUM[k] + ', ' + reportSectionTitle(k) : null;
+}
+function reportTitle() { return String(P.meta.reportTitle || '').trim() || 'Compliance report'; }
+function reportSubtitle() { return String(P.meta.reportSubtitle || '').trim() || 'Risk assessment, safety functions, verification and validation'; }
 function reportMinWords() {
   var n = Number(P.reportMinWords);
   return [1, 2, 3, 4].indexOf(n) >= 0 ? n : 3;
@@ -12536,6 +12760,8 @@ function buildTables(host) {
 function renderChrome() {
   var m = P.meta;
   $('tbTitle').textContent = m.title || 'Untitled project';
+  if ($('tbSub')) { $('tbSub').textContent = reportSubtitle(); }
+  if ($('h-report')) { $('h-report').textContent = reportTitle(); }
   $('railProject').textContent = m.title || 'Untitled project';
   $('tbMachine').textContent = m.machine || '--';
   $('tbLoc').textContent = m.location || '--';
@@ -13426,7 +13652,7 @@ function sistemaPreview(res) {
     chk('The safety functions', true, 'Created with their identifier, required and achieved performance level taken directly from the report.', function (v) { takeSfs = v; }),
     chk('The subsystems, as devices', true, hasLinks
       ? 'Each subsystem becomes a device with its category, performance level and values, and is added to the function the report lists it under, in the report\'s order. Check the role each device was given: it is inferred from the name.'
-      : 'Each subsystem becomes a device with its category, performance level and values. Devices are not linked to functions automatically, because this report does not say which subsystem serves which function. Print the summary with "also show Subsystems" ticked and the links come with it.', function (v) { takeDevs = v; }),
+      : 'Each subsystem becomes a device with its category, performance level and values. This report does not say which function each subsystem serves, so the devices are not linked; add them to their functions in the safety functions step.', function (v) { takeDevs = v; }),
     chk('Keep the report itself', true, 'Stores the extracted text with the project, so the source of every imported value stays with the file.', function (v) { keepReport = v; })
   ]));
 
@@ -13757,6 +13983,8 @@ var FIELD_HELP = {
   plrGraphNote: 'Why the severity, frequency and avoidance were scored as they were. The graph shows the answer; this says how it was reached.',
   drawingRef: 'Sheet number and revision of the schematic this simplified drawing came from, so the picture can be traced back to the controlling document.',
   wellTriedKind: 'Which row of ISO 13849-2 Table D.3 this component matches. Selecting one shows the conditions it carries and whether a fault exclusion is possible for it at all.',
+  sepDistanceMeas: 'The distance from the safeguard, the door or the detection plane, to the nearest hazard, measured on the installed machine. Set against the required distance in the report, which gives the result: pass where the measured distance is at least the required one.',
+  sepDistanceMeasBy: 'Who measured the distance and when.',
   sepDistance: 'The distance between the safeguard and the hazard zone, as calculated or as taken from a type-C standard. Where more than one hazard zone is served, record the largest of the distances.',
   sepDistanceBasis: 'Where the distance came from: which standard, which approach direction was considered, and what response time the calculation assumed. The response time has to match the running-on time recorded above.',
   wholeBodyAccess: 'Whether a person can get their whole body inside the safeguarded space. If so, additional measures against unexpected reset or restart with someone inside are required, and reaching distances to the manual controls have to be determined too.',
@@ -13813,6 +14041,9 @@ var FIELD_HELP = {
   lead: 'Who carried out the assessment. Named, because the report is signed.',
   reviewer: 'Who checked the assessment independently of whoever performed it.',
   team: 'Everyone who took part, with their role. An assessment done alone is worth saying so.',
+  reportTitle: 'The title printed at the head of the report. Leave it blank for "Compliance report". A file that verifies someone else\'s assessment would read "Safety Verification and Validation Report".',
+  reportSubtitle: 'The line under the title, in the title block and in the Word export. Leave it blank for the usual wording.',
+  raBasis: 'Who carried out the risk assessment and what was done with it here. Where the owner or the machine builder assessed the machine and this file reviews and verifies their work, say so: the report then cannot be read as claiming the assessment.',
   scope: 'What is inside the assessment boundary and what is outside it, and the conditions the assessment holds under. The exclusions matter more than the inclusions: name the adjacent equipment that was not assessed. Then the assumptions: speed, product, staffing, which procedures are assumed to be followed, and anything taken as already meeting its requirement. If one of those turns out to be false, the assessment does not hold.',
   reviewNotes: 'Written for whoever reviews this file, not for the client. Questions to settle, things to check on the next visit, anything that should not reach the report. Nothing in the report reads this field.',
   standards: 'The documents this was carried out against, with editions. An edition matters: the 2023 and 2015 editions of ISO 13849-1 differ.',
@@ -15767,8 +15998,12 @@ function sfForm(existing, opts) {
     put(host, [
       el('p', { cls: 'hint', text: APPROACH_CALC_NOTE }),
       row('g2', [
-        fText(bag, 'sepDistance', 'Separation distance', work, { mono: true, ph: 'e.g. 1 100 mm' }),
+        fText(bag, 'sepDistance', 'Required separation distance', work, { mono: true, ph: 'e.g. 1 100 mm' }),
         fWrap('Whole body access possible', 'wholeBodyAccess', wb)
+      ]),
+      row('g2', [
+        fText(bag, 'sepDistanceMeas', 'Measured distance, safeguard to hazard', work, { mono: true, ph: 'e.g. 1 250 mm, as measured on the machine' }),
+        fText(bag, 'sepDistanceMeasBy', 'Measured by and when', work, { ph: 'Name, date' })
       ]),
       out,
       fArea(bag, 'sepDistanceBasis', 'How the distance was arrived at', work, {
@@ -16664,7 +16899,7 @@ function buildReportDocx() {
       }).join('') + '</w:tr>';
     }
     body += '</w:tbl>' + docxPara('', { after: 120 });
-    body += docxPara(docxRun('Compliance report', { bold: true, caps: true, size: 18 }), { after: 120 });
+    body += docxPara(docxRun(reportTitle(), { bold: true, caps: true, size: 18 }), { after: 120 });
     Array.prototype.forEach.call(doc.children, function (n) { body += B.blockXml(n, {}, DOCX_TEXT_W).join(''); });
     return { bytes: docxPackage(body, B.media, title), title: title };
   }).then(function (res) {

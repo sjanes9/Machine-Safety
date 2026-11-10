@@ -551,6 +551,14 @@ table.dt.risk .chip{white-space:normal;display:inline-block;max-width:100%;line-
 .empty{padding:22px 14px;text-align:center;color:var(--ink-3);font-size:13px}
 .doc .muted{color:var(--ink-3);font-style:italic}
 .doc .nobr{white-space:nowrap!important}
+/* the minimum width holdWordsPerLine gives a column, plus the cell's own
+   padding, which differs between screen and paper */
+.doc table.dt td.mw{width:calc(var(--mw) + 21px)}
+/* a level in a report table reads as well with less tracking, and the
+   width saved goes to the measures beside it */
+.doc table.dt .rl{letter-spacing:.04em;padding:3px 5px}
+.storewarn{position:fixed;top:10px;right:14px;max-width:440px;z-index:60;box-shadow:0 6px 24px rgba(0,0,0,.25);
+  display:flex;flex-direction:column;gap:4px;margin:0}
 .rowacts{display:flex;gap:5px;flex-wrap:wrap}
 
 /* ---------- Chips ---------- */
@@ -726,6 +734,11 @@ table.mx select{padding:3px 5px;font-size:11.5px}
   .doc .kv dd{color:#111;font-family:var(--mono);font-size:8.8pt}
   .wrap,.doc p{color:#111}
   .hint{color:#333}
+  /* a note under a value is secondary, and set a step below the table
+     text on paper rather than a step above it, which is where the
+     screen size left it */
+  .doc table.dt .hint{font-size:7.8pt}
+
 
   /* headings: numbered, dark, and never left stranded at a page foot */
   .doc h3{font:700 11pt/1.25 var(--sans);letter-spacing:.06em;color:#000;
@@ -750,7 +763,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
   table.dt{width:100%;table-layout:auto;font-size:8.4pt;border-collapse:collapse}
   table.dt thead{display:table-header-group}
   table.dt tfoot{display:table-footer-group}
-  table.dt th{border-bottom:1.2pt solid #000;color:#000;padding:4pt 5pt;
+  table.dt th{border-bottom:1.2pt solid #000;color:#000;padding:4pt 3.5pt;
     font-size:7.4pt;letter-spacing:.07em;background:#fff}
   /* break-word, never anywhere: `anywhere` splits "Mechanical" into
      "Mechan / ical" the moment a column is tight, which is how the
@@ -767,12 +780,15 @@ table.mx select{padding:3px 5px;font-size:11.5px}
      column in an automatic table is never narrower than its longest
      word, so words wrap whole. break-word stays only as the last resort
      for a single token longer than the page allows. */
-  table.dt td{padding:4pt 5pt;border-bottom:.5pt solid var(--rule-2);color:#111;
+  /* 3.5 pt either side rather than 5: across seven columns that is the
+     width of another word in each */
+  table.dt td{padding:4pt 3.5pt;border-bottom:.5pt solid var(--rule-2);color:#111;
     vertical-align:top;word-break:normal;overflow-wrap:break-word;
     -webkit-hyphens:manual;hyphens:manual}
   table.dt td.num,table.dt td.mono,table.dt td .mono,table.dt td .chip,table.dt td .rl{
     -webkit-hyphens:none;hyphens:none}
   table.dt th{word-break:normal;overflow-wrap:break-word}
+  .doc table.dt td.mw{width:calc(var(--mw) + 7pt + 1px)}
   table.dt td.nw,table.dt th.nw{white-space:nowrap}
   table.dt caption{font-weight:700;color:#000;text-align:left;padding:4pt 0;font-size:9pt}
   tr,.stat,.sigrow{break-inside:avoid;page-break-inside:avoid}
@@ -1182,6 +1198,7 @@ function blankProject() {
     checklist: null,       // null means "use shipped question set"
     fsChecklist: null,     // functional safety onsite verification, same rule
     guardOpenings: [],     // ANSI B11.19 reach measurements
+    reportMinWords: 3,     // report table text holds at least this many words to a line
     reportSections: null,  // null means "every section"
     sectionTitles: {},     // section key -> the heading this file prints for it
     muteField: false,      // field verification findings set aside for now
@@ -1201,11 +1218,28 @@ function saveLocal() {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify(P));
     if (typeof markDirty === 'function') { markDirty(); }
+    storageWarning(false);
     return true;
   } catch (err) {
     console.warn('Local save failed', err);
+    storageWarning(true);
     return false;
   }
+}
+/* A failed save used to go to the console only. The browser keeps the
+   working copy, photographs and all, in a store of a few megabytes; once
+   a file's photographs fill it, every later change, a mark on a photo
+   among them, was kept on the page and lost on the next reload with no
+   word said. Now it is said, and stays said until a save gets through. */
+function storageWarning(on) {
+  var n = document.getElementById('storeWarn');
+  if (!on) { if (n && n.parentNode) { n.parentNode.removeChild(n); } return; }
+  if (n) return;
+  n = el('div', { id: 'storeWarn', cls: 'notice bad noprint storewarn', role: 'alert' }, [
+    el('strong', { text: 'Changes are not being kept in this browser' }),
+    el('span', { text: 'Its storage is full, mostly with photographs, so anything changed since this appeared, marks on photos included, will be lost when the page is closed or reloaded. Use Save or Save as now to keep it in a file. Removing photographs you do not need frees the space.' })
+  ]);
+  document.body.appendChild(n);
 }
 var saveLocalSoon = debounce(saveLocal, 400);
 
@@ -1276,6 +1310,7 @@ function migrate(data) {
   base.sectionTitles = (data.sectionTitles && typeof data.sectionTitles === 'object' && !Array.isArray(data.sectionTitles))
     ? data.sectionTitles : {};
   base.muteField = !!data.muteField;
+  base.reportMinWords = [1, 2, 3, 4].indexOf(Number(data.reportMinWords)) >= 0 ? Number(data.reportMinWords) : 3;
   base.tablesEdited = !!data.tablesEdited;
   if (v < 4) { migrateV3(base); }
   if (v < 5) { migrateV4(base); }
@@ -5778,13 +5813,33 @@ function provAuto(d) {
   }
   return null;
 }
-function vvCoverage(sfId) {
+/* Every record against a function, grouped by the clause it answers,
+   whatever its verdict. */
+function vvRecords(sfId) {
   var have = {};
   testsForSf(sfId).forEach(function (t) {
     var m = vvMethod(t.method);
     if (m) { have[m.kind] = have[m.kind] || []; have[m.kind].push(t); }
   });
   return have;
+}
+/* What the function has actually satisfied: only records with a Pass
+   verdict count. A record used to count the moment it existed, so a
+   test still at "Not run", or one that failed, showed the clause as
+   done. "Pass with deviation" does not count either: the deviation is
+   an open question until someone settles it and records a Pass. */
+function vvCoverage(sfId) {
+  var have = {};
+  testsForSf(sfId).forEach(function (t) {
+    if (t.verdict !== 'Pass') return;
+    var m = vvMethod(t.method);
+    if (m) { have[m.kind] = have[m.kind] || []; have[m.kind].push(t); }
+  });
+  return have;
+}
+/* "VV-002 Not run, VV-004 Fail" */
+function vvListText(list) {
+  return (list || []).map(function (t) { return (t.id || 'a record') + ' ' + (t.verdict || 'Not run'); }).join(', ');
 }
 
 /* ---------- Gap analysis ---------- */
@@ -6373,11 +6428,19 @@ function findings() {
     }
     if (!sf.respReq) { add('warn', 'sf', sf.id, lbl + ' has no required response time, so the safety distance cannot be verified.'); }
 
-    var cov = vvCoverage(sf.id);
-    if (!Object.keys(cov).length) { add('bad', 'sf', sf.id, lbl + ' has no verification or validation record.', '6.8'); }
+    var cov = vvCoverage(sf.id), recs = vvRecords(sf.id);
+    if (!Object.keys(recs).length) { add('bad', 'sf', sf.id, lbl + ' has no verification or validation record.', '6.8'); }
     else {
-      if (!cov.VAL_A) { add('bad', 'sf', sf.id, lbl + ' has no physical test or inspection record. Validation shall include one.', '6.8.2 a'); }
-      if (!cov.VAL_B) { add('bad', 'sf', sf.id, lbl + ' has no functional safety validation record. Validation shall include one, per ISO 13849-2.', '6.8.2 b'); }
+      if (!cov.VAL_A) {
+        add('bad', 'sf', sf.id, recs.VAL_A
+          ? lbl + ' has a physical test or inspection record (' + vvListText(recs.VAL_A) + ') but none has passed. Validation needs one that passes.'
+          : lbl + ' has no physical test or inspection record. Validation shall include one.', '6.8.2 a');
+      }
+      if (!cov.VAL_B) {
+        add('bad', 'sf', sf.id, recs.VAL_B
+          ? lbl + ' has a functional safety validation record (' + vvListText(recs.VAL_B) + ') but none has passed. Validation needs one that passes, per ISO 13849-2.'
+          : lbl + ' has no functional safety validation record. Validation shall include one, per ISO 13849-2.', '6.8.2 b');
+      }
       var ac = sfAchievedCat(sf);
       if ((ac === '3' || ac === '4') && !testsForSf(sf.id).some(function (t) { return t.method === 'FAULT'; })) {
         add('warn', 'sf', sf.id, lbl + ' reaches category ' + ac + ' but no fault injection test is recorded.', 'ISO 13849-2');
@@ -7373,10 +7436,26 @@ function markupForm(img, onDone) {
   draw();
   applyZoom();
   if (typeof requestAnimationFrame === 'function') { requestAnimationFrame(applyZoom); }
-  openDlg('Mark up the photograph', body, function () {
+  function saveMarks() {
     img.marks = marks;
     if (onDone) { onDone(); }
     say(marks.length ? (marks.length + ' mark' + (marks.length === 1 ? '' : 's') + ' saved on the photograph') : 'Marks cleared');
+  }
+  /* A photograph on a device, an observation or a risk row is marked up
+     from inside that record's form. Opening the markup the ordinary way
+     swapped the form out of the one dialog: Save marks then closed the
+     dialog altogether, taking the form, its unsaved edits and the marks
+     with it. So inside a form the markup is pushed on top, and saving or
+     cancelling returns to the form with the marks on its copy of the
+     photograph, kept when the form is saved. */
+  if ($('dlg').open) {
+    pushDlg('Mark up the photograph', body, 'Save marks');
+    _dlgSave = function () { saveMarks(); popDlg(); return false; };
+    if (typeof requestAnimationFrame === 'function') { requestAnimationFrame(applyZoom); }
+    return;
+  }
+  openDlg('Mark up the photograph', body, function () {
+    saveMarks();
     return true;
   }, 'Save marks');
 }
@@ -10241,13 +10320,15 @@ function renderSf() {
     card.appendChild(chain);
     if (sf.notes) card.appendChild(el('p', { cls: 'hint wrap', style: { marginTop: '10px' }, text: sf.notes }));
 
-    var cov = vvCoverage(sf.id);
+    var cov = vvCoverage(sf.id), recs = vvRecords(sf.id);
     var covRow = el('div', { style: { marginTop: '10px', display: 'flex', gap: '6px', flexWrap: 'wrap' } });
     VV_KIND_ORDER.forEach(function (k) {
-      var got = cov[k] || [];
+      var all = recs[k] || [], passed = (cov[k] || []).length > 0;
+      /* green only once a record has passed; amber while the records
+         there are still not run or failed */
       covRow.appendChild(el('span', {
-        cls: 'chip ' + (got.length ? 'ok' : (k === 'VERIFY' ? 'tag' : 'bad')),
-        text: VV_KINDS[k] + ': ' + (got.length ? got.map(function (t) { return t.id + ' ' + t.verdict; }).join(', ') : 'none')
+        cls: 'chip ' + (passed ? 'ok' : (all.length ? 'warn' : (k === 'VERIFY' ? 'tag' : 'bad'))),
+        text: VV_KINDS[k] + ': ' + (all.length ? vvListText(all) : 'none')
       }));
     });
     card.appendChild(covRow);
@@ -10522,6 +10603,18 @@ function renderReportPicker() {
     if (match === pr.k) { o.selected = true; }
     presetSel.appendChild(o);
   });
+  /* how many words a table column holds to a line before it wraps */
+  var wplSel = el('select', { cls: 'inp' });
+  [[1, 'No minimum'], [2, '2 words'], [3, '3 words'], [4, '4 words']].forEach(function (o) {
+    var op = el('option', { value: String(o[0]), text: o[1] });
+    if (reportMinWords() === o[0]) { op.selected = true; }
+    wplSel.appendChild(op);
+  });
+  wplSel.title = 'Each table column is made wide enough to hold this many words of its text on one line. Where a table cannot fit that on a portrait page, it takes one word fewer.';
+  wplSel.addEventListener('change', function () {
+    P.reportMinWords = Number(wplSel.value);
+    commit(P.reportMinWords > 1 ? 'Report tables hold at least ' + P.reportMinWords + ' words to a line where the page allows' : 'No minimum words per line');
+  });
   presetSel.addEventListener('change', function () {
     var pr = REPORT_PRESETS.filter(function (x) { return x.k === presetSel.value; })[0];
     if (!pr) return;
@@ -10650,6 +10743,9 @@ function renderReportPicker() {
       el('div', { style: { display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: '10px' } }, [
         el('label', { cls: 'f', style: { margin: 0, minWidth: '260px' } }, [
           el('span', { text: 'What goes in this report' }), presetSel
+        ]),
+        el('label', { cls: 'f', style: { margin: 0, minWidth: '200px' } }, [
+          el('span', { text: 'Words per line in tables, at least' }), wplSel
         ]),
         el('div', { cls: 'rowacts' }, [
           el('button', {
@@ -10838,19 +10934,38 @@ function renderReport() {
     var built = compactTable([
       { label: 'Ref', always: true, value: function (h) { return h.id; }, cell: function (h) { return el('td', { cls: 'mono nw', text: h.id || '' }); } },
       { label: 'Hazard', always: true, value: function (h) { return h.title; } },
+      /* Seven columns at most rather than ten, so the hazard and where
+         it is read as phrases on a portrait page: the phase sits under
+         the type, the status under the priority, the due date under
+         the owner. */
       { label: 'Where', value: function (h) { return h.area; } },
-      { label: 'Phase', value: function (h) { return h.phase; } },
-      { label: 'Type', value: function (h) { return h.hazardType; } },
       {
-        label: 'Priority', always: true, value: function (h) { return h.priority; },
-        cell: function (h) { return el('td', null, el('span', { cls: 'chip nw ' + (h.priority === 'Immediate' ? 'bad' : 'tag'), text: h.priority || '' })); }
+        label: 'Type and phase', value: function (h) { return [h.hazardType, h.phase].filter(Boolean).join(' '); },
+        cell: function (h) {
+          return el('td', null, [
+            h.hazardType ? el('div', { text: h.hazardType }) : null,
+            h.phase ? el('div', { cls: 'hint', text: h.phase }) : null
+          ]);
+        }
       },
       {
-        label: 'Status', always: true, value: function (h) { return h.status; },
-        cell: function (h) { return el('td', null, el('span', { cls: 'chip nw ' + hazardStatusTone(h), text: h.status || '' })); }
+        label: 'Priority and status', always: true, value: function (h) { return h.priority; },
+        cell: function (h) {
+          return el('td', null, [
+            el('div', null, el('span', { cls: 'chip nw ' + (h.priority === 'Immediate' ? 'bad' : 'tag'), text: h.priority || '--' })),
+            el('div', { style: { marginTop: '3px' } }, el('span', { cls: 'chip nw ' + hazardStatusTone(h), text: h.status || '--' }))
+          ]);
+        }
       },
-      { label: 'Owner', value: function (h) { return h.owner; } },
-      { label: 'Due', value: function (h) { return h.due; } },
+      {
+        label: 'Owner and due', value: function (h) { return [h.owner, h.due].filter(Boolean).join(' '); },
+        cell: function (h) {
+          return el('td', null, [
+            h.owner ? el('div', { text: h.owner }) : null,
+            h.due ? el('div', { cls: 'hint mono nobr', text: 'due ' + h.due }) : null
+          ]);
+        }
+      },
       {
         label: 'Risk rows', value: function (h) { return hazardRisks(h).map(function (r) { return r.id || '?'; }).join(', '); },
         cell: function (h) { return el('td', { cls: 'mono', text: hazardRisks(h).map(function (r) { return r.id || '?'; }).join(', ') }); }
@@ -10981,12 +11096,18 @@ function renderReport() {
        measures column: it carries the most text and gets the least
        room. */
     var rcg = el('colgroup');
-    ['8%', '15%', '13%', '9%', '9%', '23%', '10%', '8%', '5%'].forEach(function (w) {
+    ['8%', '18%', '21%', '10%', '26%', '10%', '7%'].forEach(function (w) {
       rcg.appendChild(el('col', { style: { width: w } }));
     });
     rt.appendChild(rcg);
     var rh = el('tr');
-    ['ID', 'Task', 'Hazard', 'In place', 'Initial', 'Measures', 'Residual', 'PLr / Cat', 'SF'].forEach(function (h) { rh.appendChild(el('th', { scope: 'col', text: h })); });
+    /* Seven columns. What was in place at the time reads under the
+       hazard it was in place against. The functions carrying the row
+       are named beside the measure they carry, so they no longer take a
+       column of their own; one linked to the row but to no measure is
+       named under PLr / Cat. Task, Hazard and Measures then have the
+       width to read as sentences on a portrait page. */
+    ['ID', 'Task', 'Hazard, and what was in place', 'Initial', 'Measures', 'Residual', 'PLr / Cat'].forEach(function (h) { rh.appendChild(el('th', { scope: 'col', text: h })); });
     rt.appendChild(el('thead', null, rh));
     var rb = el('tbody');
     P.risks.forEach(function (r) {
@@ -11001,8 +11122,10 @@ function renderReport() {
           r.steps ? el('div', { cls: 'hint', text: r.steps }) : null,
           el('div', { cls: 'hint', text: r.phase + '  /  ' + personnelText(r) })
         ].filter(Boolean)),
-        el('td', { text: r.hazard }),
-        el('td', { cls: 'hint', text: r.existingControls || 'not recorded' }),
+        el('td', null, [
+          el('div', { text: r.hazard || '--' }),
+          el('div', { cls: 'hint', text: 'In place: ' + (r.existingControls || 'not recorded') })
+        ]),
         el('td', null, [
           levelChipOr(initialLevel(r), initialLevelText(r)),
           el('div', { cls: 'hint nobr', text: iso ? nsTriple(sch, r.isoS, r.isoF, r.isoP) : nsTriple(sch, r.s, r.e, r.e === 'E0' ? '' : r.a) }),
@@ -11035,9 +11158,14 @@ function renderReport() {
         ]),
         el('td', { cls: 'num' }, [
           el('div', { cls: 'nobr', text: (requiredPl(r) && requiredPl(r) !== '-' ? 'PL' + requiredPl(r) : '--') + (requiredCat(r) && requiredCat(r) !== '-' ? ' / ' + requiredCat(r) : '') }),
-          requiredControlReliable(r) ? el('div', { cls: 'hint', text: 'Control reliable' }) : null
-        ].filter(Boolean)),
-        el('td', { cls: 'num nw', text: rowSfIds(r).join(', ') })
+          requiredControlReliable(r) ? el('div', { cls: 'hint', text: 'Control reliable' }) : null,
+          (function () {
+            var shown = {};
+            (r.measures || []).forEach(function (m) { (m.sfIds || []).forEach(function (id) { shown[id] = 1; }); });
+            var extra = rowSfIds(r).filter(function (id) { return !shown[id]; });
+            return extra.length ? el('div', { cls: 'mono', style: { marginTop: '3px' }, text: extra.join(', ') }) : null;
+          }())
+        ].filter(Boolean))
       ]));
     });
     rt.appendChild(rb);
@@ -11050,20 +11178,25 @@ function renderReport() {
     else {
       var dt = el('table', { cls: 'dt' });
       var dh = el('tr');
-      ['Tag', 'Device', 'Manufacturer and part', 'Position', 'Cat', 'MTTFd', 'DC', 'PFHd', 'PL', 'Used by'].forEach(function (h) { dh.appendChild(el('th', { scope: 'col', text: h })); });
+      /* the manufacturer and part sit under the device name, so the
+         name has the width to read as a phrase */
+      ['Tag', 'Device', 'Position', 'Cat', 'MTTFd', 'DC', 'PFHd', 'PL', 'Used by'].forEach(function (h) { dh.appendChild(el('th', { scope: 'col', text: h })); });
       dt.appendChild(el('thead', null, dh));
       var db = el('tbody');
       P.devices.forEach(function (dv) {
         var sum = deviceSummary(dv);
         db.appendChild(el('tr', null, [
-          el('td', { cls: 'num', text: dv.tag }), el('td', { text: dv.name }),
-          el('td', { text: [dv.manufacturer, dv.partNumber].filter(Boolean).join(' ') }),
+          el('td', { cls: 'tagcell', text: dv.tag }),
+          el('td', null, [
+            el('div', { text: dv.name || '--' }),
+            (dv.manufacturer || dv.partNumber) ? el('div', { cls: 'hint', text: [dv.manufacturer, dv.partNumber].filter(Boolean).join(' ') }) : null
+          ]),
           el('td', { text: dv.role }), el('td', { cls: 'num', text: dv.cat || '--' }),
           el('td', { cls: 'num', text: sum.mttfdYears === null ? '--' : (Math.round(sum.mttfdYears * 10) / 10) + ' y' }),
           el('td', { cls: 'num', text: dv.dcPct === '' ? '--' : dv.dcPct + '%' }),
           el('td', { cls: 'num', text: dv.pfhd === '' ? '--' : Number(dv.pfhd).toExponential(2) }),
           el('td', { cls: 'num', text: sum.pl.pl ? 'PL' + sum.pl.pl : '--' }),
-          el('td', { cls: 'num', text: sfsUsingDevice(dv.uid).map(function (s) { return s.id; }).join(' ') })
+          el('td', { cls: 'tagcell', text: sfsUsingDevice(dv.uid).map(function (s) { return s.id; }).join(' ') })
         ]));
       });
       dt.appendChild(db);
@@ -11342,19 +11475,32 @@ function renderReport() {
 
   sec('vv', function (H) {
     doc.appendChild(el('h3', { text: H }));
-    var vt = el('table', { cls: 'dt' });
+    /* Six columns rather than nine. On a portrait page nine left the
+       acceptance criterion and the actual result a word or two to a
+       line. The record and its function stack, as do the method and the
+       clause it answers, and the tester and the date. */
+    var vt = el('table', { cls: 'dt vvtbl' });
     var vh = el('tr');
-    ['ID', 'SF', 'Activity', 'Method', 'Acceptance criterion', 'Actual', 'Verdict', 'Tested by', 'Date'].forEach(function (h) { vh.appendChild(el('th', { scope: 'col', text: h })); });
+    ['Record', 'Method and clause', 'Acceptance criterion', 'Actual', 'Verdict', 'Tested by'].forEach(function (h) { vh.appendChild(el('th', { scope: 'col', text: h })); });
     vt.appendChild(el('thead', null, vh));
     var vb = el('tbody');
     P.tests.forEach(function (t) {
       var mm = vvMethod(t.method) || { label: t.method, kind: '' };
       vb.appendChild(el('tr', null, [
-        el('td', { cls: 'num', text: t.id }), el('td', { cls: 'num', text: t.sfId }),
-        el('td', { text: VV_KINDS[mm.kind] || '' }), el('td', { text: mm.label }),
+        el('td', null, [
+          el('div', { cls: 'mono nobr', text: t.id || '--' }),
+          t.sfId ? el('div', { cls: 'hint mono', text: t.sfId }) : null
+        ]),
+        el('td', null, [
+          el('div', { text: mm.label || '--' }),
+          VV_KINDS[mm.kind] ? el('div', { cls: 'hint', text: VV_KINDS[mm.kind] }) : null
+        ]),
         el('td', { text: t.acceptance }), el('td', { text: t.actual }),
         el('td', null, el('span', { cls: 'chip nw ' + (t.verdict === 'Pass' ? 'ok' : (t.verdict === 'Fail' ? 'bad' : 'tag')), text: t.verdict })),
-        el('td', { text: t.testedBy }), el('td', { cls: 'num nw', text: t.date })
+        el('td', null, [
+          el('div', { text: t.testedBy || 'not recorded' }),
+          t.date ? el('div', { cls: 'hint mono nobr', text: t.date }) : null
+        ])
       ]));
     });
     vt.appendChild(vb);
@@ -11450,6 +11596,191 @@ function renderReport() {
 
   keepRefsWhole(doc);
   host.appendChild(doc);
+  holdWordsPerLine(doc, reportMinWords());
+}
+function reportMinWords() {
+  var n = Number(P.reportMinWords);
+  return [1, 2, 3, 4].indexOf(n) >= 0 ? n : 3;
+}
+
+/* ---------------------------------------------------------------------
+   Words per line in the report's tables.
+
+   An automatic table gives a column no more than it has to: room for its
+   longest word. A column of sentences beside eight others then reads a
+   word to a line, "Confirmed / and / Working / as / expected". So each
+   column is given a minimum width: room for the widest run of N
+   consecutive words anywhere in it, N being the setting on the report
+   screen. Any N words in that column then fit on one line.
+
+   The widths are set in em of the cell's own font, so they hold when the
+   page is printed in a smaller face, and the cell padding for screen
+   and paper is added in CSS. A portrait page has only so much width:
+   where N words to a line in every column would push a table past the
+   page, that table steps down to N - 1, and so on, rather than run off
+   the edge. The estimate is made from the text itself, not from layout,
+   so it works the same whether or not the report is on screen.
+   --------------------------------------------------------------------- */
+var PRINT_PAGE_PX = 8.5 * 96 - 2 * 13 * 96 / 25.4;   /* letter, 13 mm margins */
+var PRINT_TD_PX = 8.4 * 96 / 72;                      /* table text on paper */
+var PRINT_TH_PX = 7.4 * 96 / 72;                      /* table headings on paper */
+var PRINT_HINT_PX = 7.8 * 96 / 72;                    /* a note under a value, on paper */
+var PRINT_PAD_PX = 7 * 96 / 72;                       /* 3.5 pt either side of a cell */
+var _wplCtx = null;
+/* The width a run of text will take on paper, in px. It is measured in
+   the font it is set in on screen and scaled to the size that font takes
+   in print: table text and headings change size on paper, a hint or a
+   chip that carries its own size does not. */
+function wplWidth(str, node, tdPx) {
+  if (!_wplCtx) { _wplCtx = document.createElement('canvas').getContext('2d'); }
+  var cs = getComputedStyle(node);
+  _wplCtx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+  var t = cs.textTransform === 'uppercase' ? str.toUpperCase() : str;
+  var fs = parseFloat(cs.fontSize) || 12;
+  var ls = parseFloat(cs.letterSpacing) || 0;
+  var w = _wplCtx.measureText(t).width + ls * t.length;
+  var onPaper = node.closest('th') ? PRINT_TH_PX
+    : (node.closest('.hint') ? PRINT_HINT_PX : (Math.abs(fs - tdPx) < 0.3 ? PRINT_TD_PX : fs));
+  w = w * onPaper / fs;
+  /* a chip is text in a box: its padding and border travel with it */
+  var chip = node.closest('.chip,.rl');
+  if (chip) {
+    var cc = getComputedStyle(chip);
+    w += (parseFloat(cc.paddingLeft) || 0) + (parseFloat(cc.paddingRight) || 0) + (parseFloat(cc.borderLeftWidth) || 0) + (parseFloat(cc.borderRightWidth) || 0);
+  }
+  return w;
+}
+/* the runs of text in a cell, one per block of it, each with the node
+   whose font it is set in and whether it may wrap at all */
+function wplGroups(cell) {
+  var groups = [], byBlock = new Map();
+  var tw = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null, false), n;
+  while ((n = tw.nextNode())) {
+    var t = n.nodeValue;
+    if (!t || !t.trim()) continue;
+    var pe = n.parentElement;
+    if (!pe || pe.closest('.noprint')) continue;
+    var blk = pe, a = pe;
+    while (a && a !== cell) {
+      var d = getComputedStyle(a).display;
+      if (d === 'block' || d === 'list-item' || d === 'flex' || d === 'grid' || d === 'inline-block') { blk = a; break; }
+      a = a.parentElement;
+    }
+    if (a === cell || !a) { blk = cell; }
+    var g = byBlock.get(blk);
+    if (!g) { g = { node: pe, text: '', parts: [] }; byBlock.set(blk, g); groups.push(g); }
+    /* a stretch that cannot wrap, a nowrap cell, a chip held whole or a
+       reference kept on one line, is one unit however many words it has */
+    var ws = getComputedStyle(pe).whiteSpace;
+    var whole = /nowrap|pre/.test(ws) && !/pre-wrap|pre-line/.test(ws);
+    g.parts.push({ text: t, whole: whole });
+  }
+  groups.forEach(function (g) {
+    var units = [];
+    g.parts.forEach(function (pt) {
+      if (pt.whole) { if (pt.text.trim()) units.push(pt.text.trim()); }
+      else { pt.text.split(/\s+/).forEach(function (w) { if (w) units.push(w); }); }
+    });
+    g.units = units;
+  });
+  return groups;
+}
+function holdWordsPerLine(doc, want) {
+  if (!doc) return;
+  want = Math.max(1, Math.min(4, want || 1));
+  Array.prototype.forEach.call(doc.querySelectorAll('table.dt'), function (t) {
+    /* for each column, the widest run of k units (k = 1 to 4) in px at
+       its own font, and the cell font size to turn it into em */
+    var cols = [];
+    var tdPx = parseFloat(getComputedStyle(t).fontSize) || 12.5;
+    function colAt(i) { return cols[i] || (cols[i] = { run: [0, 0, 0, 0, 0], fs: 0, cells: [], words: 0 }); }
+    Array.prototype.forEach.call(t.rows, function (tr) {
+      Array.prototype.forEach.call(tr.cells, function (cell) {
+        if ((cell.colSpan || 1) > 1) return;
+        var c = colAt(cell.cellIndex);
+        if (cell.tagName === 'TD') {
+          c.cells.push(cell);
+          if (!c.fs) { c.fs = parseFloat(getComputedStyle(cell).fontSize) || 12.5; }
+        }
+        wplGroups(cell).forEach(function (g) {
+          var u = g.units;
+          if (cell.tagName === 'TD') { c.words += u.length; }
+          for (var k = 1; k <= 4; k += 1) {
+            var kk = Math.min(k, u.length), best = 0;
+            for (var i = 0; i + kk <= u.length; i += 1) {
+              var w = wplWidth(u.slice(i, i + kk).join(' '), g.node, tdPx);
+              if (w > best) { best = w; }
+            }
+            if (best > c.run[k]) { c.run[k] = best; }
+          }
+        });
+        Array.prototype.forEach.call(cell.querySelectorAll('img'), function (im) {
+          var w = parseFloat(im.style.width) || 0;
+          for (var k = 1; k <= 4; k += 1) { if (w > c.run[k]) { c.run[k] = w; } }
+        });
+      });
+    });
+    cols = cols.filter(Boolean);
+    var lvl = cols.map(function () { return 1; });
+    function total() {
+      return cols.reduce(function (a, c, i) { return a + c.run[lvl[i]] + PRINT_PAD_PX + 1; }, 0);
+    }
+    var room = PRINT_PAGE_PX - 2;
+    /* Raise the columns a step at a time, as far as the page allows:
+       every column to two words a line before any to three. */
+    for (var L = 2; L <= want; L += 1) {
+      /* cheapest first at each step, so as many columns as the page
+         allows reach it, rather than one wide column taking the lot */
+      var order = cols.map(function (c, i) { return i; }).sort(function (x, y) {
+        return (cols[x].run[L] - cols[x].run[lvl[x]]) - (cols[y].run[L] - cols[y].run[lvl[y]]);
+      });
+      var short = false;
+      order.forEach(function (i) {
+        /* free when the wider run is no wider than what it has now */
+        if (cols[i].run[L] <= cols[i].run[lvl[i]]) { lvl[i] = L; return; }
+        var was = lvl[i];
+        lvl[i] = L;
+        if (total() > room) { lvl[i] = was; short = true; }
+      });
+      /* if a column could not reach this step, no other column goes a
+         step further: the width left over is better spread by the
+         browser than spent giving one column three words while another
+         still has one */
+      if (short) { break; }
+    }
+    /* Fixed proportions from a colgroup would override these widths and
+       hand the room back to whichever column the proportions favor, so
+       a table this manages lays out from its content alone. */
+    if (want > 1) {
+      Array.prototype.forEach.call(t.querySelectorAll('colgroup'), function (cg) { cg.parentNode.removeChild(cg); });
+    }
+    var least = want;
+    cols.forEach(function (c, i) {
+      if (!c.fs) return;
+      if (c.run[lvl[i]] > c.run[1] && lvl[i] < least) { least = lvl[i]; }
+      /* in em of the cell's paper size: on screen, where the text is
+         larger, the same em comes out larger too */
+      var em = lvl[i] > 1 ? (c.run[lvl[i]] / PRINT_TD_PX) : 0;
+      c.cells.forEach(function (cell) {
+        cell.classList.remove('mw');
+        cell.style.removeProperty('--mw');
+        if (em > 0) {
+          cell.classList.add('mw');
+          cell.style.setProperty('--mw', (Math.ceil(em * 100) / 100) + 'em');
+        }
+      });
+    });
+    t.setAttribute('data-wpl', String(least));
+    /* say so on screen, never on paper, when a table could not reach the
+       setting, so a short line is not taken for the setting failing */
+    var wrapNode = t.parentNode && t.parentNode.classList && t.parentNode.classList.contains('tw') ? t.parentNode : t;
+    var old = wrapNode.nextSibling;
+    if (old && old.classList && old.classList.contains('wplnote')) { old.parentNode.removeChild(old); }
+    if (want > 1 && least < want && wrapNode.parentNode) {
+      wrapNode.parentNode.insertBefore(el('p', { cls: 'hint noprint wplnote', text: 'This table holds at least ' + least + ' word' + (least === 1 ? '' : 's') + ' to a line in its narrowest column. ' + want + ' would not fit across a portrait page.' }), wrapNode.nextSibling);
+    }
+    t.setAttribute('data-wpl-est', String(Math.round(total())));
+  });
 }
 /* A tag or reference with a hyphen in it, SV-201 or DP-401-LOTO, is one
    thing, and the browser would happily end a line after its hyphen and

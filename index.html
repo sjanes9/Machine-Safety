@@ -550,6 +550,42 @@ table.dt.risk th{white-space:normal}
 table.dt.risk .chip{white-space:normal;display:inline-block;max-width:100%;line-height:1.35}
 .empty{padding:22px 14px;text-align:center;color:var(--ink-3);font-size:13px}
 .doc .muted{color:var(--ink-3);font-style:italic}
+/* ---------- Report, SISTEMA style ----------
+   Set out the way a SISTEMA report reads: plain Arial, black on white,
+   each fact a row with its label in bold on the left and a hairline
+   under it, groups of rows under a small italic caption, status as
+   colored words rather than boxes. The page is white whatever the
+   screen theme, because this is what the paper will look like. */
+.doc.sis{--ink:#14181d;--ink-2:#3d474f;--ink-3:#5b6670;--panel:#ffffff;--panel-2:#f4f5f6;
+  --rule:#9aa3ab;--rule-2:#c9cfd4;--ok:#1d6b45;--ok-bg:#dff0e6;--warn:#8a5a00;--warn-bg:#fbeccd;
+  --bad:#9c1f1f;--bad-bg:#f8dede;--info:#1f4e79;--info-bg:#e2edf7;--accent-bg:#f8efcb;--accent-line:#c79f00;
+  --r0:#1d6b45;--r0b:#dcefe4;--r1:#3d6415;--r1b:#eaf3dd;--r2:#8a5a00;--r2b:#fbeccd;--r3:#a34a09;--r3b:#fbe0cd;--r4:#8f1414;--r4b:#f7d7d7;
+  background:#fff;color:#111;font-size:13px;line-height:1.45}
+.doc.sis,.doc.sis *{font-family:Arial,Helvetica,"Liberation Sans",sans-serif!important}
+.doc.sis .sis-doctitle{border-bottom:2px solid #000;padding-bottom:6px;margin-bottom:14px}
+.doc.sis .sis-doctitle-main{font-weight:700;font-size:16px;color:#000}
+.doc.sis .sis-doctitle-sub{font-size:12px;color:#333;margin-top:2px}
+.doc.sis h3{font-size:14.5px;font-weight:700;letter-spacing:0;text-transform:none;color:#000;
+  border-bottom:1.5px solid #000;padding-bottom:4px;margin:24px 0 8px}
+.doc.sis h4{font-size:13px;font-weight:700;color:#000;border-bottom:1px solid #000;padding-bottom:3px;margin:16px 0 4px}
+.doc.sis .kv{grid-template-columns:minmax(150px,34%) 1fr;gap:0;align-items:stretch;font-size:12.5px;
+  border-top:1px solid var(--rule-2);margin-bottom:10px}
+.doc.sis .kv dt,.doc.sis .kv dd{padding:4px 8px 4px 2px;border-bottom:1px solid var(--rule-2);margin:0}
+.doc.sis .kv dt{font-weight:700;color:#000}
+.doc.sis .kv dd{color:#111}
+.doc.sis table.dt th{font-weight:700;letter-spacing:0;text-transform:none;background:#fff;color:#000;border-bottom:1.5px solid #000}
+.doc.sis table.dt td{border-bottom:1px solid var(--rule-2)}
+.doc.sis .tw{border:0;background:#fff}
+.doc.sis .chip,.doc.sis .rl{background:none!important;border:0!important;padding:0!important;letter-spacing:0!important;
+  font-size:inherit!important;font-weight:700;box-shadow:none!important}
+.doc.sis .rl{text-transform:uppercase}
+.doc.sis .hint{color:#4a4a4a}
+/* a small italic caption over a group of rows, as SISTEMA heads its groups */
+.doc .sis-cap{font-style:italic;font-size:12px;color:#222;margin:12px 0 0;padding:0 0 2px 2px;border-bottom:1px solid var(--rule)}
+.doc .sis-cap + .kv{border-top:0}
+/* a caption, and the heading over it, stay with the rows they head */
+.doc .sis-cap,.doc.sis h4{break-after:avoid;page-break-after:avoid}
+.doc .sis-group,.doc .sis-keep{break-inside:avoid;page-break-inside:avoid}
 .doc .nobr{white-space:nowrap!important}
 /* the minimum width holdWordsPerLine gives a column, plus the cell's own
    padding, which differs between screen and paper */
@@ -789,6 +825,20 @@ table.mx select{padding:3px 5px;font-size:11.5px}
     -webkit-hyphens:none;hyphens:none}
   table.dt th{word-break:normal;overflow-wrap:break-word}
   .doc table.dt td.mw{width:calc(var(--mw) + 7pt + 1px)}
+  /* SISTEMA style on paper: the running header carries the project, so
+     the working title block and the screen heading stay off the page */
+  body.rep-sis .titleblock,body.rep-sis #h-report{display:none!important}
+  .doc.sis{font-size:9pt}
+  .doc.sis .kv{grid-template-columns:34% 1fr;font-size:8.8pt;margin-bottom:6pt}
+  .doc.sis .kv dt,.doc.sis .kv dd{padding:2.5pt 4pt 2.5pt 1pt;font-size:8.8pt}
+  .doc.sis .kv dd{color:#000}
+  .doc.sis h3{font:700 11pt/1.3 Arial,Helvetica,"Liberation Sans",sans-serif;letter-spacing:0;text-transform:none;border-bottom:1pt solid #000;margin:14pt 0 6pt}
+  .doc.sis h4{font:700 9.6pt/1.3 Arial,Helvetica,"Liberation Sans",sans-serif;border-bottom:.75pt solid #000}
+  .doc.sis .sis-cap{font-size:8.4pt;margin-top:8pt}
+  .doc.sis table.dt th{font-size:7.4pt;letter-spacing:0;text-transform:none}
+  .doc.sis .sis-doctitle{margin-bottom:10pt}
+  .doc.sis .sisblock{break-inside:auto;page-break-inside:auto}
+  .doc.sis .sisblock dl{break-inside:avoid;page-break-inside:avoid}
   table.dt td.nw,table.dt th.nw{white-space:nowrap}
   table.dt caption{font-weight:700;color:#000;text-align:left;padding:4pt 0;font-size:9pt}
   tr,.stat,.sigrow{break-inside:avoid;page-break-inside:avoid}
@@ -1200,6 +1250,7 @@ function blankProject() {
     fsChecklist: null,     // functional safety onsite verification, same rule
     guardOpenings: [],     // ANSI B11.19 reach measurements
     reportMinWords: 3,     // report table text holds at least this many words to a line
+    reportStyle: 'sistema', // 'sistema': labelled rows, running page header; 'classic': the earlier layout
     reportSections: null,  // null means "every section"
     sectionTitles: {},     // section key -> the heading this file prints for it
     muteField: false,      // field verification findings set aside for now
@@ -1312,6 +1363,7 @@ function migrate(data) {
     ? data.sectionTitles : {};
   base.muteField = !!data.muteField;
   base.reportMinWords = [1, 2, 3, 4].indexOf(Number(data.reportMinWords)) >= 0 ? Number(data.reportMinWords) : 3;
+  base.reportStyle = data.reportStyle === 'classic' ? 'classic' : 'sistema';
   base.tablesEdited = !!data.tablesEdited;
   if (v < 4) { migrateV3(base); }
   if (v < 5) { migrateV4(base); }
@@ -10604,6 +10656,18 @@ function renderReportPicker() {
     if (match === pr.k) { o.selected = true; }
     presetSel.appendChild(o);
   });
+  /* the layout of the report */
+  var styleSel = el('select', { cls: 'inp' });
+  [['sistema', 'SISTEMA style'], ['classic', 'Compact']].forEach(function (o) {
+    var op = el('option', { value: o[0], text: o[1] });
+    if ((P.reportStyle === 'classic' ? 'classic' : 'sistema') === o[0]) { op.selected = true; }
+    styleSel.appendChild(op);
+  });
+  styleSel.title = 'SISTEMA style sets the report out the way a SISTEMA report reads: label and value rows with a rule between them, grouped under captions, with the project and Page x of y on every printed page.';
+  styleSel.addEventListener('change', function () {
+    P.reportStyle = styleSel.value;
+    commit(styleSel.value === 'classic' ? 'Report set to the compact layout' : 'Report set to the SISTEMA style layout');
+  });
   /* how many words a table column holds to a line before it wraps */
   var wplSel = el('select', { cls: 'inp' });
   [[1, 'No minimum'], [2, '2 words'], [3, '3 words'], [4, '4 words']].forEach(function (o) {
@@ -10745,6 +10809,9 @@ function renderReportPicker() {
         el('label', { cls: 'f', style: { margin: 0, minWidth: '260px' } }, [
           el('span', { text: 'What goes in this report' }), presetSel
         ]),
+        el('label', { cls: 'f', style: { margin: 0, minWidth: '170px' } }, [
+          el('span', { text: 'Layout' }), styleSel
+        ]),
         el('label', { cls: 'f', style: { margin: 0, minWidth: '200px' } }, [
           el('span', { text: 'Words per line in tables, at least' }), wplSel
         ]),
@@ -10851,7 +10918,18 @@ function signPanel() {
 function renderReport() {
   renderReportPicker();
   var host = clear($('reportBody'));
-  var doc = el('article', { cls: 'doc' });
+  var sis = P.reportStyle !== 'classic';
+  var doc = el('article', { cls: 'doc' + (sis ? ' sis' : '') });
+  document.body.classList.toggle('rep-sis', sis);
+  setReportPageBoxes(sis);
+  if (sis) {
+    /* the title block of the working screens does not print in this
+       layout: the running header carries the project on every page */
+    doc.appendChild(el('div', { cls: 'sis-doctitle' }, [
+      el('div', { cls: 'sis-doctitle-main', text: 'Compliance report: ' + (P.meta.title || 'Untitled project') }),
+      el('div', { cls: 'sis-doctitle-sub', text: 'Risk assessment, safety functions, verification and validation' })
+    ]));
+  }
   var m = P.meta;
   var f = findings(), blocking = f.filter(function (x) { return x.sev === 'bad'; });
 
@@ -11266,15 +11344,25 @@ function renderReport() {
         ['Blank with no reason', String(blanks)]
       ]));
 
-      /* Then one block per function. This was a table of nine columns,
-         six of them holding sentences, which no portrait page can lay
-         out: the words ended up broken mid-syllable one per line. A
-         function is a record, so it prints as one. */
+      /* Then one block per function, in the order and under the group
+         names SISTEMA prints a safety function in: its documentation,
+         the required performance level and the risk graph behind it,
+         the performance level reached, electromagnetic immunity, and
+         the subsystems. A reader holding the SISTEMA report can go down
+         the two side by side. */
+      function cap(t) { return el('div', { cls: 'sis-cap', text: t }); }
+      function gist(list, k) {
+        var d = list.filter(function (x) { return x.k === k; })[0];
+        return d ? d.label.replace(/^ISO [SFP][12] /, '') : '';
+      }
       P.sfs.forEach(function (sf) {
-        var block = el('section', { cls: 'recblock' });
-        block.appendChild(el('h4', { text: (sf.id || 'Function') + (sf.identifier ? '  ' + sf.identifier : '') + '  ' + (sf.name || '') }));
+        var block = el('section', { cls: 'recblock sisblock' });
+        var head = el('h4', { text: 'Safety function: ' + (sf.name || sf.id || 'unnamed') + (sf.id && sf.name ? '  [' + sf.id + ']' : '') });
         var rows = [
-          ['SISTEMA function type', sf.sistemaType || 'not set'],
+          ['Identifier of the safety function', sf.identifier || sf.id || 'not set'],
+          ['Safety function type', sf.sistemaType || 'not set'],
+          ['Triggering event', sf.triggeringEvent || sf.initiator || 'not recorded'],
+          ['Reaction and behaviour on power failure', sf.reactionPowerFail || sf.reaction || 'not recorded'],
           ['Dangerous part of the machine', sf.dangerousPart || 'not named']
         ];
         SF_REQUIRED.forEach(function (fdef) {
@@ -11282,7 +11370,63 @@ function renderReport() {
           var na = String(sf[fdef.na] || '').trim();
           rows.push([fdef.label, v || (na ? 'blank. Reason given: ' + na : 'BLANK, no reason recorded')]);
         });
-        block.appendChild(dl(rows));
+        /* each caption travels with its rows, and the function's heading
+           with its first group, so neither is left at the foot of a page */
+        block.appendChild(el('div', { cls: 'sis-keep' }, [head, el('div', { cls: 'sis-group' }, [cap('Documentation, safety function'), dl(rows)])]));
+
+        var plr = sfRequiredPl(sf);
+        var reqRows = [['PLr', plr && plr !== '-' ? plr : 'not determined']];
+        if (sf.plrMethod === 'RISK') {
+          reqRows.push(['Severity of injury (S)', sf.isoS ? sf.isoS + ', ' + gist(ISO_S, sf.isoS) : 'not scored']);
+          reqRows.push(['Frequency or exposure time (F)', sf.isoF ? sf.isoF + ', ' + gist(ISO_F, sf.isoF) : 'not scored']);
+          reqRows.push(['Possibility of avoiding (P)', sf.isoP ? sf.isoP + ', ' + gist(ISO_P, sf.isoP) : 'not scored']);
+          reqRows.push(['Risk graph', [sf.isoS, sf.isoF, sf.isoP].filter(Boolean).join(' \u2192 ') + (plr && plr !== '-' ? ' \u2192 PLr ' + plr : '')]);
+        } else if (sf.plrGraphNote) {
+          reqRows.push(['How it was determined', sf.plrGraphNote]);
+        }
+        block.appendChild(el('div', { cls: 'sis-group' }, [cap('Required performance level, safety function'), dl(reqRows)]));
+
+        var bld = sfBuild(sf), ach = sfAchievedPl(sf);
+        var pfh = bld.sumPfhd !== null && bld.sumPfhd !== undefined ? bld.sumPfhd : (isFinite(Number(sf.pfhdStated)) && Number(sf.pfhdStated) > 0 ? Number(sf.pfhdStated) : null);
+        block.appendChild(el('div', { cls: 'sis-group' }, [cap('Performance level, safety function'), dl([
+          ['Reached PL', ach ? ach : 'not determined'],
+          ['PFH [1/h]', pfh !== null ? Number(pfh).toExponential(2) : 'not determined'],
+          ['Category', sfAchievedCat(sf) || 'not determined'],
+          ['PFH stated by the source', sf.pfhdStated ? Number(sf.pfhdStated).toExponential(2) + (sf.pfhdStatedFrom ? ', ' + sf.pfhdStatedFrom : '') : '']
+        ])]));
+
+        block.appendChild(el('div', { cls: 'sis-group' }, [cap('Electromagnetic immunity, EMI (Annex L), safety function'), dl([
+          ['Route for fulfilment of EMI measures', sf.emiRoute || 'not selected'],
+          ['Note', sf.emiNote || '']
+        ])]));
+
+        var subs = (sf.devices || []).map(function (l) { return deviceByUid(l.uid) ? { dv: deviceByUid(l.uid), role: l.role } : null; }).filter(Boolean);
+        block.appendChild(cap('Subsystems (' + subs.length + ')'));
+        if (subs.length) {
+          var stb = el('table', { cls: 'dt' });
+          var sth = el('tr');
+          ['Tag', 'Subsystem', 'Position', 'Cat', 'PL', 'PFH [1/h]'].forEach(function (h) { sth.appendChild(el('th', { scope: 'col', text: h })); });
+          stb.appendChild(el('thead', null, sth));
+          var sbb = el('tbody');
+          subs.forEach(function (x) {
+            var sm = deviceSummary(x.dv), eff = effectivePfhd(x.dv);
+            sbb.appendChild(el('tr', null, [
+              el('td', { cls: 'tagcell', text: x.dv.tag || '--' }),
+              el('td', null, [
+                el('div', { text: x.dv.name || '--' }),
+                (x.dv.manufacturer || x.dv.partNumber) ? el('div', { cls: 'hint', text: [x.dv.manufacturer, x.dv.partNumber].filter(Boolean).join(' ') }) : null
+              ]),
+              el('td', { text: x.role || x.dv.role || '' }),
+              el('td', { cls: 'num', text: x.dv.cat || '--' }),
+              el('td', { cls: 'num', text: sm.pl.pl ? 'PL' + sm.pl.pl : '--' }),
+              el('td', { cls: 'num', text: eff.raw === null ? '--' : eff.value.toExponential(2) })
+            ]));
+          });
+          stb.appendChild(sbb);
+          block.appendChild(el('div', { cls: 'tw' }, stb));
+        } else {
+          block.appendChild(el('p', { cls: 'hint', text: 'No device is assigned to this function.' }));
+        }
         doc.appendChild(block);
       });
     }());
@@ -11603,6 +11747,43 @@ function renderReport() {
   keepRefsWhole(doc);
   host.appendChild(doc);
   holdWordsPerLine(doc, reportMinWords());
+}
+/* ---------------------------------------------------------------------
+   The running page header and footer of the SISTEMA style: the project
+   on every page above a rule, and "Page x / y" below one. They are drawn
+   in the page margin by the browser's print engine, which is the only
+   place a printed page number can come from, so the text is written
+   into a style rule each time the report is drawn.
+   --------------------------------------------------------------------- */
+function cssString(s) {
+  return '"' + String(s === null || s === undefined ? '' : s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[\r\n]+/g, ' ') + '"';
+}
+function setReportPageBoxes(on) {
+  var node = document.getElementById('reportPageBoxes');
+  if (!node) {
+    node = document.createElement('style');
+    node.id = 'reportPageBoxes';
+    document.head.appendChild(node);
+  }
+  if (!on) { node.textContent = ''; return; }
+  var m = P.meta;
+  var font = 'Arial,Helvetica,"Liberation Sans",sans-serif';
+  var place = [m.client, m.location, m.machine ? 'Machine ' + m.machine : ''].filter(Boolean).join('   ');
+  var dates = ['Revision ' + (m.rev || '-') + (m.revDate ? ' dated ' + m.revDate : ''),
+    'Report date ' + new Date().toISOString().slice(0, 10),
+    'Fingerprint ' + contentFingerprint()].join('\n');
+  var foot = m.lead ? 'Prepared by ' + m.lead + (m.reviewer ? ', approved by ' + m.reviewer : '') : (m.title || '');
+  var rule = 'border-bottom:1pt solid #000;padding-bottom:4pt;vertical-align:bottom;color:#000;';
+  var frule = 'border-top:.75pt solid #000;padding-top:3pt;vertical-align:top;color:#000;font:7.5pt ' + font + ';';
+  function lines(s) { return String(s).split('\n').map(cssString).join(' "\\A" '); }
+  node.textContent = '@media print{@page{margin:25mm 13mm 16mm 13mm;'
+    + '@top-left{content:' + cssString(m.title || 'Untitled project') + ' "\\A" ' + cssString(place) + ';white-space:pre;font:700 10pt/1.5 ' + font + ';' + rule + '}'
+    + '@top-center{content:"";' + rule + '}'
+    + '@top-right{content:' + lines(dates) + ';white-space:pre;text-align:right;font:7.5pt/1.4 ' + font + ';' + rule + '}'
+    + '@bottom-left{content:' + cssString(foot) + ';' + frule + '}'
+    + '@bottom-center{content:"";' + frule + '}'
+    + '@bottom-right{content:"Page " counter(page) " / " counter(pages);text-align:right;' + frule + '}'
+    + '}}';
 }
 function reportMinWords() {
   var n = Number(P.reportMinWords);
@@ -16189,7 +16370,7 @@ function docxBuilder() {
   }
   function hidden(n) {
     if (n.nodeType !== 1) return false;
-    if (n.classList.contains('noprint')) return true;
+    if (n.classList.contains('noprint') || n.classList.contains('sis-doctitle')) return true;
     var cs = getComputedStyle(n);
     return cs.display === 'none' || cs.visibility === 'hidden';
   }
@@ -16201,7 +16382,8 @@ function docxBuilder() {
     var tag = n.tagName, cl = n.classList;
     if (tag === 'STRONG' || tag === 'B' || tag === 'TH') f.bold = true;
     if (tag === 'EM' || tag === 'I') f.italic = true;
-    if (cl.contains('mono') || cl.contains('num') || cl.contains('tagcell')) f.mono = true;
+    if ((cl.contains('mono') || cl.contains('num') || cl.contains('tagcell')) && P.reportStyle === 'classic') f.mono = true;
+    if (cl.contains('sis-cap')) { f.italic = true; f.color = '222222'; }
     if (cl.contains('hint')) { f.color = '555555'; f.size = Math.min(f.size || 99, 15); }
     if (cl.contains('chip') || cl.contains('rl')) {
       var cs = getComputedStyle(n);
@@ -16406,7 +16588,7 @@ function docxPackage(bodyXml, media, title) {
     + '<w:r><w:rPr><w:sz w:val="14"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:sz w:val="14"/></w:rPr><w:instrText xml:space="preserve"> NUMPAGES </w:instrText></w:r><w:r><w:rPr><w:sz w:val="14"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:sz w:val="14"/></w:rPr><w:t>1</w:t></w:r><w:r><w:rPr><w:sz w:val="14"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r>'
     + '</w:p></w:ftr>';
   var styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-    + '<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault>'
+    + '<w:docDefaults><w:rPrDefault><w:rPr>' + (P.reportStyle === 'classic' ? '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/>' : '<w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Arial" w:cs="Arial"/>') + '<w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault>'
     + '<w:pPrDefault><w:pPr><w:spacing w:after="60" w:line="252" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>'
     + '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>'
     + '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="40"/></w:pPr><w:rPr><w:b/><w:sz w:val="34"/><w:szCs w:val="34"/></w:rPr></w:style>'

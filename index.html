@@ -851,6 +851,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
       <p class="railfile" id="railFile">No file linked</p>
       <button class="btn ghost sm" id="btnCsv" type="button">Export CSV</button>
       <button class="btn ghost sm" id="btnPrint" type="button">Print / PDF</button>
+      <button class="btn ghost sm" id="btnDocx" type="button">Export Word</button>
       <button class="btn ghost sm" id="btnTheme" type="button" aria-pressed="false">Dark theme</button>
       <button class="btn ghost sm" id="btnHints" type="button" aria-pressed="true">Hide hints</button>
       <button class="btn ghost sm" id="btnFindings" type="button" aria-pressed="true">Hide findings</button>
@@ -1059,7 +1060,7 @@ table.mx select{padding:3px 5px;font-size:11.5px}
       <section class="view" id="v-report" aria-labelledby="h-report">
         <div class="noprint" id="reportPicker"></div>
         <h2 class="sec" id="h-report">Compliance report</h2>
-        <div class="btnbar noprint"><button class="btn" id="btnPrint2" type="button">Print / PDF</button></div>
+        <div class="btnbar noprint"><button class="btn" id="btnPrint2" type="button">Print / PDF</button><button class="btn ghost" id="btnDocx2" type="button">Export Word (.docx)</button></div>
         <div id="reportBody"></div>
       </section>
 
@@ -10775,6 +10776,11 @@ function renderReportPicker() {
           el('button', {
             cls: 'btn sm', type: 'button', text: 'Print this selection',
             on: { click: function () { window.print(); } }
+          }),
+          el('button', {
+            cls: 'btn ghost sm', type: 'button', text: 'Export Word (.docx)',
+            title: 'The same report as a Word document: every table a Word table, every cell one cell, ready to edit.',
+            on: { click: function () { exportReportDocx(); } }
           })
         ]),
         el('span', { cls: 'hint', style: { marginLeft: 'auto' }, text: sel.length + ' of ' + REPORT_SECTIONS.length + ' sections. Numbering follows what is included.' + (renamedSectionCount() ? '  ' + renamedSectionCount() + ' renamed.' : '') })
@@ -15998,6 +16004,507 @@ function download(name, text, mime) {
   document.body.removeChild(a);
   setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
 }
+/* =====================================================================
+   Word export
+
+   A printed PDF is a picture of the page: the browser writes each line,
+   often each word, as a separate piece of text, and a PDF editor shows
+   them as separate boxes. A report that is going to be edited after it
+   leaves this file needs a format with real tables in it, so the report
+   is also written as a Word document: every table a Word table, every
+   cell one cell, the headings real headings, the photographs with their
+   marks drawn on.
+
+   It is built from the report exactly as it stands on screen, so the
+   sections, their order, their names and their numbering are the ones
+   chosen for printing. Nothing leaves the browser: the document is
+   assembled here and handed to the download.
+   ===================================================================== */
+
+/* ---- a ZIP writer, stored rather than compressed, which Word reads ---- */
+var _crcTable = null;
+function crc32(bytes) {
+  if (!_crcTable) {
+    _crcTable = new Uint32Array(256);
+    for (var n = 0; n < 256; n += 1) {
+      var c = n;
+      for (var k = 0; k < 8; k += 1) { c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); }
+      _crcTable[n] = c >>> 0;
+    }
+  }
+  var crc = 0xFFFFFFFF;
+  for (var i = 0; i < bytes.length; i += 1) { crc = _crcTable[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8); }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+function utf8(s) { return new TextEncoder().encode(s); }
+function zipFiles(files) {
+  /* files: [{ name, data: Uint8Array }] */
+  var now = new Date();
+  var dosTime = (now.getHours() << 11) | (now.getMinutes() << 5) | Math.floor(now.getSeconds() / 2);
+  var dosDate = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+  var parts = [], central = [], offset = 0;
+  files.forEach(function (f) {
+    var name = utf8(f.name), data = f.data, crc = crc32(data);
+    var lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+    lh.setUint16(8, 0, true); lh.setUint16(10, dosTime, true); lh.setUint16(12, dosDate, true);
+    lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true);
+    lh.setUint16(26, name.length, true); lh.setUint16(28, 0, true);
+    parts.push(new Uint8Array(lh.buffer), name, data);
+    var ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(10, 0, true); ch.setUint16(12, dosTime, true); ch.setUint16(14, dosDate, true);
+    ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true);
+    ch.setUint16(28, name.length, true); ch.setUint16(30, 0, true); ch.setUint16(32, 0, true);
+    ch.setUint16(34, 0, true); ch.setUint16(36, 0, true); ch.setUint32(38, 0, true); ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), name);
+    offset += 30 + name.length + data.length;
+  });
+  var cdSize = central.reduce(function (a, b) { return a + b.length; }, 0);
+  var end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  var all = parts.concat(central, [new Uint8Array(end.buffer)]);
+  var total = all.reduce(function (a, b) { return a + b.length; }, 0);
+  var out = new Uint8Array(total), at = 0;
+  all.forEach(function (b) { out.set(b, at); at += b.length; });
+  return out;
+}
+
+/* ---- photographs: drawn with their marks into one picture ---- */
+function dataUrlBytes(url) {
+  var b64 = String(url).split(',')[1] || '';
+  var bin = atob(b64), out = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i += 1) { out[i] = bin.charCodeAt(i); }
+  return out;
+}
+function loadImg(src) {
+  return new Promise(function (res, rej) {
+    var im = new Image();
+    im.onload = function () { res(im); };
+    im.onerror = function () { rej(new Error('image')); };
+    im.src = src;
+  });
+}
+/* The marks sit over the photograph as a layer on screen. Word has no
+   such layer, so they are painted onto the picture itself, at the same
+   proportions, with the stroke scaled the way fitMarkStroke scales it. */
+function flattenImage(imgNode) {
+  var wrap = imgNode.parentNode && imgNode.parentNode.classList && imgNode.parentNode.classList.contains('markwrap') ? imgNode.parentNode : null;
+  var layer = wrap ? wrap.querySelector('svg.marklayer') : null;
+  return loadImg(imgNode.src).then(function (im) {
+    var w = im.naturalWidth || 800, h = im.naturalHeight || 600;
+    var scale = Math.min(1, 1400 / Math.max(w, h));
+    var cw = Math.max(1, Math.round(w * scale)), chh = Math.max(1, Math.round(h * scale));
+    var cv = document.createElement('canvas');
+    cv.width = cw; cv.height = chh;
+    var g = cv.getContext('2d');
+    g.fillStyle = '#ffffff'; g.fillRect(0, 0, cw, chh);
+    g.drawImage(im, 0, 0, cw, chh);
+    var done = Promise.resolve();
+    if (layer) {
+      var svg = layer.cloneNode(true);
+      svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      svg.setAttribute('width', String(cw));
+      svg.setAttribute('height', String(chh));
+      var k = markStrokeRatio(cw);
+      Array.prototype.forEach.call(svg.querySelectorAll('[data-sw]'), function (n) {
+        n.setAttribute('stroke-width', String(Math.max(0.6, (parseFloat(n.getAttribute('data-sw')) || 0) * k)));
+        var dash = n.getAttribute('data-dash');
+        if (dash) { n.setAttribute('stroke-dasharray', dash.split(' ').map(function (v) { return String(Math.max(1, parseFloat(v) * k)); }).join(' ')); }
+      });
+      var src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(svg));
+      done = loadImg(src).then(function (ov) { g.drawImage(ov, 0, 0, cw, chh); }, function () { /* marks could not be drawn; the photograph still goes in */ });
+    }
+    return done.then(function () {
+      return { bytes: dataUrlBytes(cv.toDataURL('image/jpeg', 0.86)), w: cw, h: chh };
+    });
+  });
+}
+
+/* ---- WordprocessingML ---- */
+function xesc(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+}
+var DOCX_PAGE_W = 12240, DOCX_MARGIN = 720, DOCX_TEXT_W = 12240 - 2 * 720;
+function hexOf(css) {
+  var m = String(css || '').match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+))?/);
+  if (!m) return '';
+  if (m[4] !== undefined && Number(m[4]) === 0) return '';
+  return [m[1], m[2], m[3]].map(function (v) { var h = Number(v).toString(16); return h.length < 2 ? '0' + h : h; }).join('').toUpperCase();
+}
+function docxRun(text, f) {
+  f = f || {};
+  var pr = '';
+  if (f.mono) pr += '<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/>';
+  if (f.bold) pr += '<w:b/>';
+  if (f.italic) pr += '<w:i/>';
+  if (f.caps) pr += '<w:caps/>';
+  if (f.color) pr += '<w:color w:val="' + f.color + '"/>';
+  if (f.size) pr += '<w:sz w:val="' + f.size + '"/><w:szCs w:val="' + f.size + '"/>';
+  if (f.shade) pr += '<w:shd w:val="clear" w:color="auto" w:fill="' + f.shade + '"/>';
+  var pieces = String(text).split('\n'), out = '';
+  pieces.forEach(function (pc, i) {
+    if (i > 0) out += '<w:r>' + (pr ? '<w:rPr>' + pr + '</w:rPr>' : '') + '<w:br/></w:r>';
+    if (pc) out += '<w:r>' + (pr ? '<w:rPr>' + pr + '</w:rPr>' : '') + '<w:t xml:space="preserve">' + xesc(pc) + '</w:t></w:r>';
+  });
+  return out;
+}
+function docxPara(runs, p) {
+  p = p || {};
+  var pr = '';
+  if (p.style) pr += '<w:pStyle w:val="' + p.style + '"/>';
+  if (p.keepNext) pr += '<w:keepNext/>';
+  if (p.pageBreak) pr += '<w:pageBreakBefore/>';
+  if (p.borderTop) pr += '<w:pBdr><w:top w:val="single" w:sz="6" w:space="2" w:color="000000"/></w:pBdr>';
+  if (p.shade) pr += '<w:pBdr><w:left w:val="single" w:sz="18" w:space="6" w:color="' + (p.bar || '888888') + '"/></w:pBdr><w:shd w:val="clear" w:color="auto" w:fill="' + p.shade + '"/>';
+  var after = p.after === undefined ? 60 : p.after;
+  pr += '<w:spacing w:before="' + (p.before || 0) + '" w:after="' + after + '"/>';
+  /* the order of these elements is fixed by the schema, and Word
+     refuses a document that puts them out of order */
+  if (p.indent) pr += '<w:ind w:left="' + p.indent + '"' + (p.hanging ? ' w:hanging="' + p.hanging + '"' : '') + '/>';
+  if (p.align) pr += '<w:jc w:val="' + p.align + '"/>';
+  return '<w:p><w:pPr>' + pr + '</w:pPr>' + (runs || '') + '</w:p>';
+}
+
+function docxBuilder() {
+  var media = [], images = new Map(), drawingId = 1;
+  function imageRun(node, maxTw) {
+    var im = images.get(node);
+    if (!im) return '';
+    var rid = 'rIdImg' + im.n;
+    /* EMU: 914400 per inch, 635 per twip */
+    var wEmu = Math.round(Math.min(maxTw, 1440 * 6.5) * 635);
+    var hEmu = Math.round(wEmu * im.h / im.w);
+    var id = drawingId++;
+    return '<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">'
+      + '<wp:extent cx="' + wEmu + '" cy="' + hEmu + '"/><wp:docPr id="' + id + '" name="Picture ' + id + '"/>'
+      + '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+      + '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="' + id + '" name="image' + im.n + '.jpg"/><pic:cNvPicPr/></pic:nvPicPr>'
+      + '<pic:blipFill><a:blip r:embed="' + rid + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>'
+      + '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + wEmu + '" cy="' + hEmu + '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>'
+      + '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+  }
+  function hidden(n) {
+    if (n.nodeType !== 1) return false;
+    if (n.classList.contains('noprint')) return true;
+    var cs = getComputedStyle(n);
+    return cs.display === 'none' || cs.visibility === 'hidden';
+  }
+  var BLOCKS = /^(DIV|P|UL|OL|LI|DL|DT|DD|TABLE|FIGURE|FIGCAPTION|SECTION|H1|H2|H3|H4|H5|BLOCKQUOTE)$/;
+  /* the formatting a run inherits from the elements around it */
+  function fmtOf(n, base) {
+    var f = Object.assign({}, base || {});
+    if (n.nodeType !== 1) return f;
+    var tag = n.tagName, cl = n.classList;
+    if (tag === 'STRONG' || tag === 'B' || tag === 'TH') f.bold = true;
+    if (tag === 'EM' || tag === 'I') f.italic = true;
+    if (cl.contains('mono') || cl.contains('num') || cl.contains('tagcell')) f.mono = true;
+    if (cl.contains('hint')) { f.color = '555555'; f.size = Math.min(f.size || 99, 15); }
+    if (cl.contains('chip') || cl.contains('rl')) {
+      var cs = getComputedStyle(n);
+      f.bold = true; f.mono = cl.contains('chip');
+      f.color = hexOf(cs.color) || f.color;
+      var bg = hexOf(cs.backgroundColor);
+      if (bg && bg !== 'FFFFFF') f.shade = bg;
+      if (cl.contains('rl')) f.caps = true;
+    }
+    return f;
+  }
+  /* paragraphs for a node that holds text and may hold blocks */
+  function paras(node, base, pp, maxTw) {
+    var out = [], runs = '';
+    function flush() { if (runs) { out.push(docxPara(runs, pp)); runs = ''; } }
+    function inline(n, f) {
+      if (n.nodeType === 3) {
+        var t = n.nodeValue;
+        var ws = n.parentElement ? getComputedStyle(n.parentElement).whiteSpace : 'normal';
+        if (!/pre/.test(ws)) { t = t.replace(/\s+/g, ' '); }
+        if (t) runs += docxRun(t, f);
+        return;
+      }
+      if (n.nodeType !== 1 || hidden(n)) return;
+      if (n.tagName === 'IMG') { runs += imageRun(n, Math.min(maxTw || DOCX_TEXT_W, n.style.width ? parseFloat(n.style.width) * 15 : DOCX_TEXT_W)); return; }
+      if (n.tagName === 'BR') { runs += '<w:r><w:br/></w:r>'; return; }
+      if (n.tagName === 'svg') return;
+      var nf = fmtOf(n, f);
+      var cs = getComputedStyle(n);
+      /* an empty shape with a colored border is a swatch, the ring in the
+         legend: it goes in as a ring character in that color */
+      if (!n.textContent.trim() && !n.querySelector('img') && parseFloat(cs.borderTopWidth) > 0 && cs.borderTopStyle !== 'none') {
+        runs += docxRun('\u25EF', { bold: true, size: 24, color: hexOf(cs.borderTopColor) || '000000' });
+        return;
+      }
+      /* laid out as a block on the page, a paragraph of its own here:
+         the bold lead line of a notice is a span set to display block */
+      if (BLOCKS.test(n.tagName) || /^(block|flex|grid|list-item)$/.test(cs.display)) {
+        flush();
+        out.push.apply(out, blockXml(n, nf, maxTw, pp));
+        return;
+      }
+      Array.prototype.forEach.call(n.childNodes, function (c) { inline(c, nf); });
+      /* a chip beside more text keeps a space from it */
+      if ((n.classList.contains('chip') || n.classList.contains('rl')) && n.nextSibling && String(n.nextSibling.textContent || '').trim()) { runs += docxRun(' ', {}); }
+    }
+    Array.prototype.forEach.call(node.childNodes, function (c) { inline(c, base); });
+    flush();
+    return out.map(function (x) { return x; });
+  }
+  /* one block element to a list of body parts (paragraphs and tables) */
+  function blockXml(n, base, maxTw, pp) {
+    if (hidden(n)) return [];
+    var tag = n.tagName, cl = n.classList;
+    base = base || {};
+    maxTw = maxTw || DOCX_TEXT_W;
+    if (tag === 'H3') return [docxPara(docxRun(n.textContent.trim(), {}), { style: 'Heading1', keepNext: true, pageBreak: cl.contains('detailsec') })];
+    if (tag === 'H4') return [docxPara(docxRun(n.textContent.trim(), {}), { style: 'Heading2', keepNext: true })];
+    if (tag === 'TABLE') return [tableXml(n, maxTw)];
+    if (tag === 'DL') return [dlXml(n, maxTw)];
+    if (tag === 'UL' || tag === 'OL') {
+      var out = [], i = 0;
+      Array.prototype.forEach.call(n.children, function (li) {
+        if (hidden(li)) return;
+        i += 1;
+        var mark = tag === 'OL' ? i + '.' : '•';
+        var ps = paras(li, base, { indent: 360, hanging: 300 }, maxTw);
+        if (ps.length) { ps[0] = ps[0].replace('</w:pPr>', '</w:pPr>' + docxRun(mark, {}) + '<w:r><w:tab/></w:r>'); }
+        out.push.apply(out, ps);
+      });
+      return out;
+    }
+    if (cl.contains('notice')) {
+      var bar = cl.contains('bad') ? 'B42318' : (cl.contains('warn') ? 'B7791F' : '3A6EA5');
+      var fill = cl.contains('bad') ? 'FDECEA' : (cl.contains('warn') ? 'FFF6DD' : 'EEF3F8');
+      return paras(n, base, { shade: fill, bar: bar, after: 40 }, maxTw);
+    }
+    if (cl.contains('sigrow')) {
+      var cells = Array.prototype.filter.call(n.children, function (c) { return !hidden(c); });
+      var w = Math.floor(maxTw / Math.max(1, cells.length));
+      return ['<w:tbl><w:tblPr><w:tblW w:w="' + maxTw + '" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="0" w:type="dxa"/><w:right w:w="240" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>'
+        + cells.map(function () { return '<w:gridCol w:w="' + w + '"/>'; }).join('') + '</w:tblGrid><w:tr>'
+        + cells.map(function (c) {
+          return '<w:tc><w:tcPr><w:tcW w:w="' + w + '" w:type="dxa"/></w:tcPr>'
+            + docxPara('', { before: 600, after: 0 })
+            + docxPara(docxRun(c.textContent.trim(), { size: 14, caps: true, color: '333333' }), { borderTop: true }) + '</w:tc>';
+        }).join('') + '</w:tr></w:tbl>', docxPara('', {})];
+    }
+    /* a photograph gallery: a grid of figures, laid out two to a row */
+    var figs = Array.prototype.filter.call(n.children, function (c) { return c.tagName === 'FIGURE' && !hidden(c); });
+    if (figs.length && figs.length === Array.prototype.filter.call(n.children, function (c) { return !hidden(c); }).length) {
+      return [galleryXml(figs, maxTw)];
+    }
+    if (tag === 'FIGURE') return [galleryXml([n], maxTw)];
+    if (tag === 'P' || tag === 'DIV' || tag === 'SECTION' || tag === 'LI' || tag === 'DD' || tag === 'DT' || tag === 'FIGCAPTION' || tag === 'BLOCKQUOTE') {
+      return paras(n, fmtOf(n, base), pp || {}, maxTw);
+    }
+    return paras(n, fmtOf(n, base), pp || {}, maxTw);
+  }
+  function cellXml(cellNode, w, isHead, span) {
+    var ps = paras(cellNode, fmtOf(cellNode, isHead ? { bold: true, size: 15, caps: true } : {}), { after: 20 }, w - 140);
+    if (!ps.length) ps = [docxPara('', { after: 0 })];
+    return '<w:tc><w:tcPr><w:tcW w:w="' + w + '" w:type="dxa"/>' + (span > 1 ? '<w:gridSpan w:val="' + span + '"/>' : '')
+      + (isHead ? '<w:shd w:val="clear" w:color="auto" w:fill="F2F2F2"/>' : '') + '</w:tcPr>' + ps.join('') + '</w:tc>';
+  }
+  /* A report table becomes a Word table with the same columns, in the
+     proportions the report laid them out in, its heading row repeated
+     at the top of every page it runs over. */
+  function tableXml(t, maxTw) {
+    var rows = Array.prototype.filter.call(t.rows, function (r) { return !hidden(r); });
+    if (!rows.length) return '';
+    var ref = rows[0];
+    rows.forEach(function (r) {
+      var span = 0;
+      Array.prototype.forEach.call(r.cells, function (c) { if (!hidden(c)) span += c.colSpan || 1; });
+      var rs = 0; Array.prototype.forEach.call(ref.cells, function (c) { if (!hidden(c)) rs += c.colSpan || 1; });
+      if (span > rs) ref = r;
+    });
+    var cols = [];
+    Array.prototype.forEach.call(ref.cells, function (c) {
+      if (hidden(c)) return;
+      var wpx = c.getBoundingClientRect().width || 1, sp = c.colSpan || 1;
+      for (var s = 0; s < sp; s += 1) cols.push(wpx / sp);
+    });
+    var sum = cols.reduce(function (a, b) { return a + b; }, 0) || 1;
+    var grid = cols.map(function (px) { return Math.max(360, Math.round(maxTw * px / sum)); });
+    var gsum = grid.reduce(function (a, b) { return a + b; }, 0);
+    grid[grid.length - 1] += maxTw - gsum;
+    var x = '<w:tbl><w:tblPr><w:tblW w:w="' + maxTw + '" w:type="dxa"/>'
+      + '<w:tblBorders><w:top w:val="single" w:sz="4" w:color="000000"/><w:bottom w:val="single" w:sz="4" w:color="000000"/>'
+      + '<w:insideH w:val="single" w:sz="2" w:color="BFBFBF"/></w:tblBorders><w:tblLayout w:type="fixed"/>'
+      + '<w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:left w:w="70" w:type="dxa"/><w:bottom w:w="40" w:type="dxa"/><w:right w:w="70" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>'
+      + grid.map(function (g) { return '<w:gridCol w:w="' + g + '"/>'; }).join('') + '</w:tblGrid>';
+    rows.forEach(function (r) {
+      var isHead = r.parentNode && r.parentNode.tagName === 'THEAD';
+      var gi = 0;
+      x += '<w:tr><w:trPr><w:cantSplit/>' + (isHead ? '<w:tblHeader/>' : '') + '</w:trPr>';
+      Array.prototype.forEach.call(r.cells, function (c) {
+        if (hidden(c)) return;
+        var sp = c.colSpan || 1, w = 0;
+        for (var s = 0; s < sp && gi + s < grid.length; s += 1) w += grid[gi + s];
+        gi += sp;
+        x += cellXml(c, w || 600, isHead || c.tagName === 'TH', sp);
+      });
+      while (gi < grid.length) { x += cellXml(document.createElement('td'), grid[gi], false, 1); gi += 1; }
+      x += '</w:tr>';
+    });
+    return x + '</w:tbl>' + docxPara('', { after: 60 });
+  }
+  /* a list of label and value pairs, as a two column table without lines */
+  function dlXml(d, maxTw) {
+    var dts = d.querySelectorAll(':scope > dt'), wl = 2600, wr = maxTw - wl;
+    var x = '<w:tbl><w:tblPr><w:tblW w:w="' + maxTw + '" w:type="dxa"/><w:tblLayout w:type="fixed"/>'
+      + '<w:tblCellMar><w:left w:w="0" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="' + wl + '"/><w:gridCol w:w="' + wr + '"/></w:tblGrid>';
+    Array.prototype.forEach.call(dts, function (dt) {
+      var dd = dt.nextElementSibling;
+      x += '<w:tr><w:trPr><w:cantSplit/></w:trPr>'
+        + '<w:tc><w:tcPr><w:tcW w:w="' + wl + '" w:type="dxa"/></w:tcPr>' + (paras(dt, { bold: true }, { after: 20 }, wl).join('') || docxPara('', {})) + '</w:tc>'
+        + '<w:tc><w:tcPr><w:tcW w:w="' + wr + '" w:type="dxa"/></w:tcPr>' + ((dd && paras(dd, {}, { after: 20 }, wr).join('')) || docxPara('', {})) + '</w:tc></w:tr>';
+    });
+    return x + '</w:tbl>' + docxPara('', { after: 40 });
+  }
+  function galleryXml(figs, maxTw) {
+    var per = figs.length === 1 ? 1 : 2, w = Math.floor(maxTw / per);
+    var x = '<w:tbl><w:tblPr><w:tblW w:w="' + maxTw + '" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="60" w:type="dxa"/><w:right w:w="60" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>';
+    for (var i = 0; i < per; i += 1) x += '<w:gridCol w:w="' + w + '"/>';
+    x += '</w:tblGrid>';
+    for (var r = 0; r < figs.length; r += per) {
+      x += '<w:tr><w:trPr><w:cantSplit/></w:trPr>';
+      for (var c = 0; c < per; c += 1) {
+        var f = figs[r + c], body = '';
+        if (f) {
+          var im = f.querySelector('img');
+          var picW = Math.min(w - 120, per === 1 ? 1440 * 4.5 : w - 120);
+          body += docxPara(im ? imageRun(im, picW) : '', { after: 20, align: per === 1 ? 'left' : 'center' });
+          var cap = Array.prototype.filter.call(f.querySelectorAll('figcaption, .caption, input'), function () { return true; })[0];
+          var capText = cap ? (cap.value || cap.textContent || '').trim() : '';
+          if (capText) body += docxPara(docxRun(capText, { size: 16, color: '333333' }), { after: 80, align: per === 1 ? 'left' : 'center' });
+        }
+        x += '<w:tc><w:tcPr><w:tcW w:w="' + w + '" w:type="dxa"/></w:tcPr>' + (body || docxPara('', {})) + '</w:tc>';
+      }
+      x += '</w:tr>';
+    }
+    return x + '</w:tbl>' + docxPara('', { after: 60 });
+  }
+  return {
+    images: images, media: media, blockXml: blockXml,
+    addImage: function (node, im) { var n = media.length + 1; media.push({ n: n, bytes: im.bytes }); images.set(node, { n: n, w: im.w, h: im.h }); }
+  };
+}
+
+function docxPackage(bodyXml, media, title) {
+  var NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"';
+  var sect = '<w:sectPr><w:footerReference w:type="default" r:id="rIdFooter"/><w:pgSz w:w="' + DOCX_PAGE_W + '" w:h="15840"/>'
+    + '<w:pgMar w:top="' + DOCX_MARGIN + '" w:right="' + DOCX_MARGIN + '" w:bottom="' + DOCX_MARGIN + '" w:left="' + DOCX_MARGIN + '" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr>';
+  var doc = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ' + NS + '><w:body>' + bodyXml + sect + '</w:body></w:document>';
+  var footer = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:ftr ' + NS + '>'
+    + '<w:p><w:pPr><w:tabs><w:tab w:val="right" w:pos="' + DOCX_TEXT_W + '"/></w:tabs><w:spacing w:after="0"/></w:pPr>'
+    + docxRun(title, { size: 14, color: '555555' }) + '<w:r><w:rPr><w:sz w:val="14"/><w:color w:val="555555"/></w:rPr><w:tab/><w:t xml:space="preserve">Page </w:t></w:r>'
+    + '<w:r><w:rPr><w:sz w:val="14"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:sz w:val="14"/></w:rPr><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r><w:r><w:rPr><w:sz w:val="14"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:sz w:val="14"/></w:rPr><w:t>1</w:t></w:r><w:r><w:rPr><w:sz w:val="14"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r>'
+    + '<w:r><w:rPr><w:sz w:val="14"/><w:color w:val="555555"/></w:rPr><w:t xml:space="preserve"> of </w:t></w:r>'
+    + '<w:r><w:rPr><w:sz w:val="14"/></w:rPr><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:rPr><w:sz w:val="14"/></w:rPr><w:instrText xml:space="preserve"> NUMPAGES </w:instrText></w:r><w:r><w:rPr><w:sz w:val="14"/></w:rPr><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:rPr><w:sz w:val="14"/></w:rPr><w:t>1</w:t></w:r><w:r><w:rPr><w:sz w:val="14"/></w:rPr><w:fldChar w:fldCharType="end"/></w:r>'
+    + '</w:p></w:ftr>';
+  var styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+    + '<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/><w:sz w:val="18"/><w:szCs w:val="18"/><w:lang w:val="en-US"/></w:rPr></w:rPrDefault>'
+    + '<w:pPrDefault><w:pPr><w:spacing w:after="60" w:line="252" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>'
+    + '<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>'
+    + '<w:style w:type="paragraph" w:styleId="Title"><w:name w:val="Title"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:spacing w:after="40"/></w:pPr><w:rPr><w:b/><w:sz w:val="34"/><w:szCs w:val="34"/></w:rPr></w:style>'
+    + '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:pBdr><w:bottom w:val="single" w:sz="8" w:space="2" w:color="000000"/></w:pBdr><w:spacing w:before="280" w:after="100"/><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:b/><w:caps/><w:spacing w:val="10"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:style>'
+    + '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:spacing w:before="200" w:after="60"/><w:outlineLvl w:val="1"/></w:pPr><w:rPr><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>'
+    + '<w:style w:type="table" w:default="1" w:styleId="TableNormal"><w:name w:val="Normal Table"/><w:tblPr><w:tblInd w:w="0" w:type="dxa"/><w:tblCellMar><w:top w:w="0" w:type="dxa"/><w:left w:w="108" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="108" w:type="dxa"/></w:tblCellMar></w:tblPr></w:style>'
+    + '</w:styles>';
+  var settings = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:updateFields w:val="true"/><w:defaultTabStop w:val="720"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>';
+  var rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + '<Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+    + '<Relationship Id="rIdSettings" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>'
+    + '<Relationship Id="rIdFooter" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer" Target="footer1.xml"/>'
+    + media.map(function (m) { return '<Relationship Id="rIdImg' + m.n + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image' + m.n + '.jpg"/>'; }).join('')
+    + '</Relationships>';
+  var types = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="jpg" ContentType="image/jpeg"/>'
+    + '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+    + '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
+    + '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>'
+    + '<Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/>'
+    + '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'
+    + '</Types>';
+  var root = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+    + '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>';
+  var core = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+    + '<dc:title>' + xesc(title) + '</dc:title><dc:creator>' + xesc(P.meta.lead || '') + '</dc:creator>'
+    + '<dcterms:created xsi:type="dcterms:W3CDTF">' + new Date().toISOString().replace(/\.\d+Z$/, 'Z') + '</dcterms:created></cp:coreProperties>';
+  var files = [
+    { name: '[Content_Types].xml', data: utf8(types) },
+    { name: '_rels/.rels', data: utf8(root) },
+    { name: 'docProps/core.xml', data: utf8(core) },
+    { name: 'word/document.xml', data: utf8(doc) },
+    { name: 'word/styles.xml', data: utf8(styles) },
+    { name: 'word/settings.xml', data: utf8(settings) },
+    { name: 'word/footer1.xml', data: utf8(footer) },
+    { name: 'word/_rels/document.xml.rels', data: utf8(rels) }
+  ];
+  media.forEach(function (m) { files.push({ name: 'word/media/image' + m.n + '.jpg', data: m.bytes }); });
+  return zipFiles(files);
+}
+
+/* Build the document from the report on screen. Resolves to the bytes,
+   so the export can be tested without a download. */
+function buildReportDocx() {
+  if (VIEW !== 'report') { show('report'); }
+  var doc = document.querySelector('#reportBody .doc');
+  if (!doc) { return Promise.reject(new Error('The report could not be built.')); }
+  /* colors are read from the page, so read them from the light theme:
+     a chip in the dark theme has light text meant for a dark page */
+  var root = document.documentElement, was = root.getAttribute('data-theme');
+  root.setAttribute('data-theme', 'light');
+  var B = docxBuilder();
+  var imgs = Array.prototype.filter.call(doc.querySelectorAll('img'), function (im) { return !im.closest('.noprint') && im.src; });
+  return Promise.all(imgs.map(function (im) {
+    return flattenImage(im).then(function (r) { B.addImage(im, r); }, function () { /* a picture that will not load is left out */ });
+  })).then(function () {
+    var m = P.meta;
+    var tb = function (id) { var n = $(id); return n ? n.textContent.trim() : ''; };
+    var title = tb('tbTitle') || m.title || 'Safety file';
+    var body = '';
+    body += docxPara(docxRun(title, {}), { style: 'Title' });
+    body += docxPara(docxRun(tb('tbSub'), { color: '444444' }), { after: 120 });
+    var head = [['Machine / cell', tb('tbMachine')], ['Location', tb('tbLoc')], ['Method', tb('tbMethod')], ['Rev / date', tb('tbRev')]];
+    var hw = Math.floor(DOCX_TEXT_W / 2);
+    body += '<w:tbl><w:tblPr><w:tblW w:w="' + DOCX_TEXT_W + '" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="8" w:color="000000"/><w:left w:val="single" w:sz="8" w:color="000000"/><w:bottom w:val="single" w:sz="8" w:color="000000"/><w:right w:val="single" w:sz="8" w:color="000000"/><w:insideH w:val="single" w:sz="4" w:color="000000"/><w:insideV w:val="single" w:sz="4" w:color="000000"/></w:tblBorders><w:tblLayout w:type="fixed"/>'
+      + '<w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid><w:gridCol w:w="' + hw + '"/><w:gridCol w:w="' + hw + '"/></w:tblGrid>';
+    for (var i = 0; i < head.length; i += 2) {
+      body += '<w:tr>' + [head[i], head[i + 1]].map(function (h) {
+        return '<w:tc><w:tcPr><w:tcW w:w="' + hw + '" w:type="dxa"/></w:tcPr>'
+          + docxPara(docxRun(h[0], { size: 13, caps: true, bold: true, color: '444444' }), { after: 0 })
+          + docxPara(docxRun(h[1] || '--', { mono: true }), { after: 0 }) + '</w:tc>';
+      }).join('') + '</w:tr>';
+    }
+    body += '</w:tbl>' + docxPara('', { after: 120 });
+    body += docxPara(docxRun('Compliance report', { bold: true, caps: true, size: 18 }), { after: 120 });
+    Array.prototype.forEach.call(doc.children, function (n) { body += B.blockXml(n, {}, DOCX_TEXT_W).join(''); });
+    return { bytes: docxPackage(body, B.media, title), title: title };
+  }).then(function (res) {
+    if (was === null) { root.removeAttribute('data-theme'); } else { root.setAttribute('data-theme', was); }
+    return res;
+  }, function (err) {
+    if (was === null) { root.removeAttribute('data-theme'); } else { root.setAttribute('data-theme', was); }
+    throw err;
+  });
+}
+function exportReportDocx() {
+  say('Building the Word document');
+  buildReportDocx().then(function (res) {
+    var name = slug(P.meta.title || res.title) + '-report.docx';
+    download(name, res.bytes, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    say('Word document saved: ' + name);
+  }, function (err) {
+    console.warn(err);
+    say('The Word document could not be built: ' + (err && err.message ? err.message : 'unknown error'));
+  });
+}
+
 function slug(s) { return String(s || 'safety-file').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'safety-file'; }
 
 /* ---------------------------------------------------------------------
@@ -16861,6 +17368,8 @@ function boot() {
   $('btnCsv').addEventListener('click', exportCsv);
   $('btnPrint').addEventListener('click', function () { show('report'); setTimeout(function () { window.print(); }, 60); });
   $('btnPrint2').addEventListener('click', function () { window.print(); });
+  $('btnDocx').addEventListener('click', function () { exportReportDocx(); });
+  $('btnDocx2').addEventListener('click', function () { exportReportDocx(); });
   $('btnTheme').addEventListener('click', function () {
     applyTheme(document.documentElement.getAttribute('data-theme') !== 'dark');
   });
